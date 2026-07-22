@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>COWORK Widget</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  :root{
+    --bg:#161821;--panel:#1e2130;--panel-2:#242838;--line:#2c3040;--line-soft:#22252f;
+    --ink:#dfe3f0;--muted:#9aa0b8;--dim:#666c85;
+    --accent:#7aa2f7;--green:#8fcf7a;--amber:#e0af68;--rose:#e97a8c;--cyan:#67c9dc;--violet:#a98bf0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:transparent;overflow:hidden}
+  body{font-family:'Sarabun',system-ui,sans-serif;padding:10px}
+  .shell{
+    height:100%;border-radius:16px;overflow:hidden;position:relative;
+    background:var(--bg);
+    border:1px solid var(--line);
+    box-shadow:0 18px 44px rgba(0,0,0,.5);
+    display:flex;flex-direction:column;color:var(--ink);
+  }
+  /* drag handle */
+  .bar{-webkit-app-region:drag;display:flex;align-items:center;justify-content:space-between;
+    padding:12px 14px;gap:8px;flex-shrink:0;border-bottom:1px solid var(--line-soft)}
+  .bar .title{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  .ctrls{-webkit-app-region:no-drag;display:flex;gap:6px}
+  .ctrls button{width:24px;height:24px;border-radius:7px;border:1px solid var(--line);background:var(--panel);
+    color:var(--muted);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:.15s}
+  .ctrls button:hover{color:var(--ink);border-color:var(--accent)}
+  .ctrls button.on{background:var(--accent);color:#161821;border-color:var(--accent)}
+  .body{flex:1;overflow-y:auto;padding:6px 16px 16px;-webkit-app-region:no-drag}
+  .body::-webkit-scrollbar{width:6px}.body::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+
+  .clock{font-family:'JetBrains Mono',monospace;font-size:44px;font-weight:700;line-height:1;letter-spacing:-.02em}
+  .clock .sec{color:var(--accent);font-size:.4em;vertical-align:super}
+  .date{color:var(--muted);font-size:13px;margin-top:6px}
+  .greet{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:2px}
+
+  h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:18px 0 10px}
+
+  .row-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:5px}
+  .hint{font-size:12px;color:var(--dim);padding:6px 0}
+
+  /* project filter — multi-select chips */
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px}
+  .chip{-webkit-app-region:no-drag;font-size:10.5px;font-weight:600;color:var(--muted);background:var(--panel);
+    border:1px solid var(--line);border-radius:7px;padding:4px 9px;cursor:pointer;transition:.12s;
+    display:flex;align-items:center;gap:5px}
+  .chip:hover{border-color:var(--accent);color:var(--ink)}
+  .chip.active{color:#161821;background:var(--accent);border-color:var(--accent)}
+  .chip .n{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:var(--ink);
+    background:rgba(0,0,0,.28);border-radius:20px;padding:1px 6px}
+  .chip.active .n{color:#161821;background:rgba(22,24,33,.22)}
+
+  /* status tabs — single-select, color-coded */
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .tab{-webkit-app-region:no-drag;font-size:11px;font-weight:600;color:var(--muted);background:transparent;
+    border:1px solid var(--line);border-radius:7px;padding:5px 11px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:.12s}
+  .tab .dot{width:7px;height:7px;border-radius:50%;background:var(--sc,var(--dim));flex-shrink:0}
+  .tab .n{font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--ink);
+    background:rgba(0,0,0,.28);border-radius:20px;padding:1px 6px}
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--ink);background:var(--panel-2);border-color:var(--sc,var(--accent))}
+  .tab.active .n{color:var(--muted)}
+
+  /* task rows */
+  .task{display:flex;align-items:center;gap:10px;padding:10px 8px;cursor:pointer;transition:.12s;
+    border-bottom:1px solid var(--line-soft)}
+  .task:last-child{border-bottom:none}
+  .task:hover{background:var(--panel);border-radius:8px;border-bottom-color:transparent}
+  .idnum{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);flex-shrink:0;width:36px}
+  .t{flex:1;font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .proj{font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;flex-shrink:0;
+    max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .who{font-size:10.5px;font-weight:600;flex-shrink:0;max-width:88px;padding:2px 8px;border-radius:6px;
+    border:1px solid currentColor;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .risk{font-size:8.5px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:6px;
+    flex-shrink:0;width:66px;text-align:center;text-transform:uppercase}
+  .risk.rk-none{background:transparent;color:var(--line);border:1px dashed var(--line)}
+  .rk0{background:rgba(143,207,122,.16);color:#9ed687}   /* Low */
+  .rk1{background:rgba(103,201,220,.16);color:#7fd3e4}   /* Fairly Low */
+  .rk2{background:rgba(224,175,104,.16);color:#e8bd76}   /* Moderate */
+  .rk3{background:rgba(240,150,90,.18);color:#f0a35f}    /* Medium */
+  .rk4{background:rgba(233,90,110,.20);color:#f56b82}    /* High */
+  /* project pill palette (muted, curated) */
+  .pc0{background:rgba(122,162,247,.16);color:#9bbcff}
+  .pc1{background:rgba(143,207,122,.16);color:#a6dd93}
+  .pc2{background:rgba(224,175,104,.16);color:#e8c184}
+  .pc3{background:rgba(233,122,140,.16);color:#f096a4}
+  .pc4{background:rgba(103,201,220,.16);color:#87d6e6}
+  .pc5{background:rgba(169,139,240,.16);color:#bda6f5}
+  /* assignee name colour (text only, same hue family) */
+  .wc0{color:#9bbcff}.wc1{color:#a6dd93}.wc2{color:#e8c184}
+  .wc3{color:#f096a4}.wc4{color:#87d6e6}.wc5{color:#bda6f5}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
+  .stat{background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:10px 6px;text-align:center}
+  .stat .n{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--accent)}
+  .stat .l{font-size:9px;color:var(--muted);margin-top:2px;text-transform:uppercase}
+</style>
+</head>
+<body>
+  <div class="shell">
+    <div class="bar">
+      <span class="title">◈ COWORK</span>
+      <div class="ctrls">
+        <button id="pin" title="ปักหมุดบนสุด">📌</button>
+        <button id="max" title="ขยายเต็มจอ / คืนขนาด">⛶</button>
+        <button id="close" title="ปิด">✕</button>
+      </div>
+    </div>
+    <div class="body">
+      <div class="greet" id="greet">—</div>
+      <div class="clock"><span id="hm">--:--</span><span class="sec" id="s">00</span></div>
+      <div class="date" id="date">—</div>
+
+      <h3>งาน Redmine</h3>
+      <div class="row-label">โปรเจกต์ · เลือกได้หลายอัน</div>
+      <div id="projectFilter" class="chips"></div>
+      <div class="row-label">ผู้รับผิดชอบ · เลือกได้หลายคน</div>
+      <div id="assigneeFilter" class="chips"></div>
+      <div class="row-label">สถานะ</div>
+      <div id="tabs" class="tabs"></div>
+      <div id="tasks"><div class="hint">กำลังโหลด...</div></div>
+
+      <h3>ภาพรวม vault</h3>
+      <div class="stats">
+        <div class="stat"><div class="n">7</div><div class="l">proj</div></div>
+        <div class="stat"><div class="n">398</div><div class="l">node</div></div>
+        <div class="stat"><div class="n">575</div><div class="l">edge</div></div>
+        <div class="stat"><div class="n">12</div><div class="l">todo</div></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const D=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+  const M=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  function tick(){
+    const n=new Date(),p=x=>String(x).padStart(2,'0'),h=n.getHours();
+    hm.textContent=`${p(h)}:${p(n.getMinutes())}`; s.textContent=p(n.getSeconds());
+    greet.textContent=(h<12?'Good morning':h<18?'Good afternoon':'Good evening')+', Ball';
+    date.textContent=`${D[n.getDay()]} ${n.getDate()} ${M[n.getMonth()]} ${n.getFullYear()+543}`;
+  }
+  const hm=document.getElementById('hm'),s=document.getElementById('s'),
+        greet=document.getElementById('greet'),date=document.getElementById('date');
+  tick();setInterval(tick,1000);
+
+  // window controls (guard if opened in plain browser)
+  const api=window.cowork;
+  document.getElementById('close').onclick=()=>api&&api.close();
+  let pinned=false;
+  document.getElementById('pin').onclick=(e)=>{pinned=!pinned;e.target.classList.toggle('on',pinned);api&&api.pin(pinned);};
+  let maxed=false;
+  document.getElementById('max').onclick=(e)=>{maxed=!maxed;e.target.classList.toggle('on',maxed);api&&api.maximize();};
+
+  // Redmine tasks, grouped by status, filtered by a multi-select project set
+  function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+  const STATUS_COLOR={'In Progress':'var(--accent)','New':'var(--cyan)','Test':'var(--amber)',
+    'Backlog':'var(--dim)','Resolved':'var(--green)'};
+  function hashN(key,n){ let h=0; for(const c of String(key)) h=(h*31+c.charCodeAt(0))>>>0; return h%n; }
+  function projColor(key){ return 'pc'+hashN(key,6); }
+  function whoColor(key){ return 'wc'+hashN(key,6); }
+  const RISK_ORDER=['Low','Fairly Low','Moderate','Medium','High'];
+  let lastPayload=null, activeStatus=null;
+  const selectedProjects=new Set();    // empty = show all projects
+  const selectedAssignees=new Set();   // empty = show all assignees
+  function issueMatch(i){
+    return (selectedProjects.size===0 || selectedProjects.has(i.project))
+        && (selectedAssignees.size===0 || selectedAssignees.has(i.assignee));
+  }
+  function allIssues(){ return lastPayload.groups.flatMap(g=>g.issues); }
+  function statusIssues(status){
+    const g=lastPayload.groups.find(g=>g.status===status);
+    return (g?g.issues:[]).filter(issueMatch);
+  }
+  function renderPanel(){
+    const el=document.getElementById('tasks');
+    const issues=statusIssues(activeStatus);
+    if(!issues.length){ el.innerHTML='<div class="hint">ไม่มีงานในสถานะนี้</div>'; return; }
+    el.innerHTML='';
+    issues.forEach(issue=>{
+      const row=document.createElement('div');
+      row.className='task';
+      row.title='เปิดใน Redmine';
+      const rank=RISK_ORDER.indexOf(issue.risk);
+      const riskCls=rank>=0?`rk${rank}`:'rk-none';
+      const riskTxt=issue.risk||'–';
+      row.innerHTML=`
+        <span class="idnum">#${issue.id}</span>
+        <div class="t" title="${esc(issue.subject)}">${esc(issue.subject)}</div>
+        <span class="proj ${projColor(issue.project)}" title="${esc(issue.project)}">${esc(issue.project)}</span>
+        <span class="who ${whoColor(issue.assignee)}" title="${esc(issue.assignee)}">${esc(issue.assignee)}</span>
+        <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>`;
+      row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
+      el.appendChild(row);
+    });
+  }
+  function renderTabs(){
+    const tabsEl=document.getElementById('tabs');
+    tabsEl.innerHTML='';
+    lastPayload.groups.forEach(g=>{
+      const tab=document.createElement('div');
+      tab.className='tab'+(g.status===activeStatus?' active':'');
+      tab.style.setProperty('--sc', STATUS_COLOR[g.status]||'var(--dim)');
+      tab.innerHTML=`<span class="dot"></span>${esc(g.status)}<span class="n">${statusIssues(g.status).length}</span>`;
+      tab.onclick=()=>{ activeStatus=g.status; renderTabs(); renderPanel(); };
+      tabsEl.appendChild(tab);
+    });
+  }
+  function renderChipFilter(elId, keyFn, selected){
+    const el=document.getElementById(elId);
+    el.innerHTML='';
+    const counts=new Map();
+    allIssues().forEach(i=>{ const k=keyFn(i); counts.set(k,(counts.get(k)||0)+1); });
+    [...counts.keys()].sort().forEach(k=>{
+      const chip=document.createElement('div');
+      chip.className='chip'+(selected.has(k)?' active':'');
+      chip.innerHTML=`${esc(k)}<span class="n">${counts.get(k)}</span>`;
+      chip.onclick=()=>{
+        selected.has(k)?selected.delete(k):selected.add(k);
+        renderFilters(); renderTabs(); renderPanel();
+      };
+      el.appendChild(chip);
+    });
+  }
+  function renderFilters(){
+    renderChipFilter('projectFilter', i=>i.project, selectedProjects);
+    renderChipFilter('assigneeFilter', i=>i.assignee, selectedAssignees);
+  }
+  function renderTasks(payload){
+    const el=document.getElementById('tasks');
+    document.getElementById('tabs').innerHTML='';
+    document.getElementById('projectFilter').innerHTML='';
+    document.getElementById('assigneeFilter').innerHTML='';
+    if(payload.error){ el.innerHTML=`<div class="hint">โหลด Redmine ไม่สำเร็จ: ${esc(payload.error)}</div>`; return; }
+    if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; return; }
+    lastPayload=payload;
+    // drop selections that no longer exist
+    const projNames=new Set(allIssues().map(i=>i.project));
+    const asgNames=new Set(allIssues().map(i=>i.assignee));
+    [...selectedProjects].forEach(p=>{ if(!projNames.has(p)) selectedProjects.delete(p); });
+    [...selectedAssignees].forEach(a=>{ if(!asgNames.has(a)) selectedAssignees.delete(a); });
+    if(!activeStatus || !payload.groups.some(g=>g.status===activeStatus)){
+      activeStatus=(payload.groups.find(g=>g.status==='In Progress')||payload.groups[0]).status;
+    }
+    renderFilters(); renderTabs(); renderPanel();
+  }
+  api && api.onTasks && api.onTasks(renderTasks);
+</script>
+</body>
+</html>

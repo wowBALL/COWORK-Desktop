@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>COWORK Screensaver</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  :root{--ink:#e8e6f0;--muted:#8f8ca6;--dim:#5f5d72;--accent:#a78bfa;--cyan:#63d3e0;--rose:#f2778f}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;cursor:none}
+  body{
+    background:radial-gradient(1200px 700px at 70% 20%, #201f2b, #121118 70%);
+    color:var(--ink);font-family:'Sarabun',sans-serif;
+    display:flex;align-items:center;justify-content:center;height:100%;
+  }
+  canvas{position:fixed;inset:0;z-index:0}
+  .wrap{position:relative;z-index:1;text-align:center;transition:transform 4s ease-in-out}
+  .greet{font-size:14px;letter-spacing:.3em;text-transform:uppercase;color:var(--accent);margin-bottom:18px;font-weight:600}
+  .clock{font-family:'JetBrains Mono',monospace;font-size:clamp(90px,16vw,220px);font-weight:700;line-height:.85;letter-spacing:-.02em}
+  .clock .sec{color:var(--accent);font-size:.32em;vertical-align:super}
+  .date{font-size:clamp(18px,2.4vw,30px);color:var(--muted);margin-top:22px;font-weight:500}
+  .rot{margin-top:52px;height:56px;position:relative;width:min(720px,80vw)}
+  .slide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:14px;
+    opacity:0;transform:translateY(12px);transition:.8s;font-size:clamp(15px,1.8vw,20px)}
+  .slide.on{opacity:1;transform:none}
+  .slide .k{font-family:'JetBrains Mono',monospace;color:var(--accent);font-weight:700}
+  .slide .p{background:rgba(242,119,143,.14);color:var(--rose);font-size:.8em;padding:3px 10px;border-radius:20px;font-family:'JetBrains Mono',monospace}
+  .hint{position:fixed;bottom:32px;left:0;right:0;text-align:center;color:var(--dim);font-size:12px;letter-spacing:.1em;z-index:1;font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="wrap" id="wrap">
+    <div class="greet" id="greet">—</div>
+    <div class="clock"><span id="hm">--:--</span><span class="sec" id="s">00</span></div>
+    <div class="date" id="date">—</div>
+    <div class="rot" id="rot"></div>
+  </div>
+  <div class="hint">ขยับเมาส์หรือกดปุ่มใดๆ เพื่อออก · Esc</div>
+
+<script>
+  const D=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+  const M=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  const hm=document.getElementById('hm'),s=document.getElementById('s'),
+        greet=document.getElementById('greet'),date=document.getElementById('date');
+  function tick(){
+    const n=new Date(),p=x=>String(x).padStart(2,'0'),h=n.getHours();
+    hm.textContent=`${p(h)}:${p(n.getMinutes())}`; s.textContent=p(n.getSeconds());
+    greet.textContent=(h<12?'Good morning':h<18?'Good afternoon':'Good evening')+', Ball';
+    date.textContent=`วัน${D[n.getDay()]}ที่ ${n.getDate()} ${M[n.getMonth()]} ${n.getFullYear()+543}`;
+  }
+  tick();setInterval(tick,1000);
+
+  // rotating info slides
+  const slides=[
+    '<span class="k">4</span> tasks เหลือวันนี้ · <span class="k">forex-ea</span> เป็นหลัก',
+    'FTMO Free Trial <span class="p">14-day clock</span> กำลังเดิน',
+    '<span class="k">7</span> projects · <span class="k">398</span> nodes · <span class="k">575</span> edges',
+    'คืนนี้: เขียนแผน EA ก่อนรันพรุ่งนี้',
+    '<span class="k">My Garden</span> · รดน้ำมะพร้าวหอม + อัปเดต plant log'
+  ];
+  const rot=document.getElementById('rot');
+  rot.innerHTML=slides.map((t,i)=>`<div class="slide${i===0?' on':''}">${t}</div>`).join('');
+  const els=[...rot.children]; let idx=0;
+  setInterval(()=>{els[idx].classList.remove('on');idx=(idx+1)%els.length;els[idx].classList.add('on');},5000);
+
+  // gentle drift to avoid burn-in
+  const wrap=document.getElementById('wrap');
+  setInterval(()=>{
+    const x=(Math.random()*2-1)*22,y=(Math.random()*2-1)*16;
+    wrap.style.transform=`translate(${x}px,${y}px)`;
+  },4000);
+
+  // ambient floating graph nodes
+  const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+  let W,H,pts;
+  function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight;
+    pts=Array.from({length:38},()=>({x:Math.random()*W,y:Math.random()*H,
+      vx:(Math.random()*2-1)*.25,vy:(Math.random()*2-1)*.25,r:Math.random()*2+1}));}
+  resize();addEventListener('resize',resize);
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(let i=0;i<pts.length;i++){
+      const a=pts[i]; a.x+=a.vx;a.y+=a.vy;
+      if(a.x<0||a.x>W)a.vx*=-1; if(a.y<0||a.y>H)a.vy*=-1;
+      for(let j=i+1;j<pts.length;j++){
+        const b=pts[j],d=Math.hypot(a.x-b.x,a.y-b.y);
+        if(d<150){ctx.strokeStyle=`rgba(167,139,250,${(1-d/150)*.12})`;ctx.lineWidth=1;
+          ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+      }
+      ctx.fillStyle='rgba(167,139,250,.5)';ctx.beginPath();ctx.arc(a.x,a.y,a.r,0,7);ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+
+  // exit on real input (ignore the first ~800ms + tiny jitters)
+  const api=window.cowork; const born=Date.now(); let last=null;
+  function bye(){ if(Date.now()-born<800)return; api?api.quitSaver():window.close(); }
+  addEventListener('mousemove',(e)=>{
+    if(last&&Math.hypot(e.screenX-last.x,e.screenY-last.y)>6)bye();
+    last={x:e.screenX,y:e.screenY};
+  });
+  ['keydown','mousedown','wheel','touchstart'].forEach(ev=>addEventListener(ev,bye));
+</script>
+</body>
+</html>

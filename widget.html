@@ -152,7 +152,9 @@
   .entry:last-child .rail .ln{display:none}
   .entry .content{flex:1}
   .entry .pname{font-size:12px;font-weight:700;color:var(--pc,var(--ink));margin-bottom:3px}
-  .entry .ptext{font-size:12px;color:var(--muted);line-height:1.5;transition:.12s}
+  .entry .ptext{font-size:12px;color:var(--muted);line-height:1.5;transition:.12s;cursor:pointer}
+  .entry .ptext:hover{color:var(--ink)}
+  .entry .ptext + .ptext{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line-soft)}
 
   .lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
   .lcard{background:var(--panel);border:1px solid var(--line-soft);border-radius:11px;padding:12px 14px;cursor:pointer;transition:.14s}
@@ -457,20 +459,32 @@
   }
   function renderWsFeed(){
     const el=document.getElementById('wsFeed');
-    const days=(wsData.daily||[]).filter(d=>d.entries&&d.entries.length).slice(0,6);
-    if(!days.length){ el.innerHTML='<div class="empty">ยังไม่มีบันทึกรายวัน</div>'; return; }
+    const files=(wsData.daily||[]).filter(d=>d.entries&&d.entries.length);
+    if(!files.length){ el.innerHTML='<div class="empty">ยังไม่มีบันทึกรายวัน</div>'; return; }
+    // group by date, then by project — merges Public+Private daily files of the same day
+    const byDate=new Map();
+    files.forEach(d=>d.entries.forEach(e=>{
+      if(!byDate.has(d.date)) byDate.set(d.date,new Map());
+      const projs=byDate.get(d.date);
+      if(!projs.has(e.project)) projs.set(e.project,[]);
+      const arr=projs.get(e.project);
+      if(!arr.some(x=>x.text===e.text)) arr.push({text:e.text,file:d.file,visibility:d.visibility});
+    }));
+    const dates=[...byDate.keys()].sort((a,b)=>b.localeCompare(a)).slice(0,6);
     el.innerHTML='';
-    days.forEach(d=>{
+    dates.forEach(date=>{
+      const projs=byDate.get(date);
       const day=document.createElement('div'); day.className='day';
-      day.innerHTML=`<div class="dhead"><span class="ddate">${esc(d.date)}</span>
-        <span class="dsub">${d.visibility==='Public'?'Public':'Private'} · ${d.entries.length} โปรเจกต์อัปเดต</span></div>`;
-      d.entries.forEach(e=>{
+      day.innerHTML=`<div class="dhead"><span class="ddate">${esc(date)}</span>
+        <span class="dsub">${projs.size} โปรเจกต์อัปเดต</span></div>`;
+      projs.forEach((items,project)=>{
         const en=document.createElement('div'); en.className='entry';
-        en.style.setProperty('--pc',hueOf(e.project));
-        en.title='เปิดไฟล์บันทึกรายวัน';
+        en.style.setProperty('--pc',hueOf(project));
+        const texts=items.map(it=>
+          `<div class="ptext" data-file="${esc(it.file)}" title="เปิดไฟล์บันทึกรายวัน (${esc(it.visibility)})">${esc(it.text)}</div>`).join('');
         en.innerHTML=`<div class="rail"><span class="pin"></span><span class="ln"></span></div>
-          <div class="content"><div class="pname">${esc(e.project)}</div><div class="ptext">${esc(e.text)}</div></div>`;
-        en.onclick=()=>openFile(d.file);
+          <div class="content"><div class="pname">${esc(project)}</div>${texts}</div>`;
+        en.querySelectorAll('.ptext').forEach(t=>t.onclick=()=>openFile(t.dataset.file));
         day.appendChild(en);
       });
       el.appendChild(day);

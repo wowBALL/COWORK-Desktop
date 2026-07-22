@@ -82,6 +82,8 @@ async function fetchRedmineTasks() {
         projectId: issue.project?.identifier || issue.project?.id || '',
         assignee: issue.assigned_to?.name || 'ไม่ระบุ',
         risk: topRisk(issue),
+        createdOn: issue.created_on,
+        updatedOn: issue.updated_on,
         url: `${ENV.REDMINE_URL}/issues/${issue.id}`,
       });
     }

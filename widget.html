@@ -70,7 +70,16 @@
   .task:last-child{border-bottom:none}
   .task:hover{background:var(--panel);border-radius:8px;border-bottom-color:transparent}
   .idnum{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);flex-shrink:0;width:36px}
-  .t{flex:1;font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tmain{flex:1;min-width:0;position:relative}
+  .t{font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* hover tooltip: created / updated timing */
+  .tip{position:absolute;left:0;bottom:calc(100% + 8px);z-index:20;
+    background:#0b0c13;color:#ffffff;font-size:11.5px;font-weight:600;line-height:1.5;
+    padding:7px 11px;border-radius:8px;border:1px solid var(--accent);
+    white-space:nowrap;box-shadow:0 10px 26px rgba(0,0,0,.55);
+    opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity .12s,transform .12s}
+  .tip b{color:var(--accent);font-weight:700}
+  .task:hover .tip{opacity:1;transform:translateY(0)}
   .proj{font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;flex-shrink:0;
     max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .who{font-size:10.5px;font-weight:600;flex-shrink:0;max-width:88px;padding:2px 8px;border-radius:6px;
@@ -262,6 +271,20 @@
   const STATUS_COLOR={'In Progress':'var(--accent)','New':'var(--cyan)','Test':'var(--amber)',
     'Backlog':'var(--dim)','Resolved':'var(--green)'};
   function hashN(key,n){ let h=0; for(const c of String(key)) h=(h*31+c.charCodeAt(0))>>>0; return h%n; }
+  function timeAgo(iso){
+    if(!iso) return 'ไม่ระบุ';
+    const diff=Date.now()-new Date(iso).getTime();
+    const min=Math.floor(diff/60000);
+    if(min<1) return 'เมื่อสักครู่';
+    if(min<60) return `${min} นาทีที่แล้ว`;
+    const hr=Math.floor(min/60);
+    if(hr<24) return `${hr} ชม.ที่แล้ว`;
+    const day=Math.floor(hr/24);
+    if(day<30) return `${day} วันที่แล้ว`;
+    const mon=Math.floor(day/30);
+    if(mon<12) return `${mon} เดือนที่แล้ว`;
+    return `${Math.floor(mon/12)} ปีที่แล้ว`;
+  }
   function projColor(key){ return 'pc'+hashN(key,6); }
   function whoColor(key){ return 'wc'+hashN(key,6); }
   const RISK_ORDER=['Low','Fairly Low','Moderate','Medium','High'];
@@ -285,13 +308,15 @@
     issues.forEach(issue=>{
       const row=document.createElement('div');
       row.className='task';
-      row.title='เปิดใน Redmine';
       const rank=RISK_ORDER.indexOf(issue.risk);
       const riskCls=rank>=0?`rk${rank}`:'rk-none';
       const riskTxt=issue.risk||'–';
       row.innerHTML=`
         <span class="idnum">#${issue.id}</span>
-        <div class="t" title="${esc(issue.subject)}">${esc(issue.subject)}</div>
+        <div class="tmain">
+          <div class="t">${esc(issue.subject)}</div>
+          <div class="tip">สร้าง <b>${timeAgo(issue.createdOn)}</b> · แก้ไข <b>${timeAgo(issue.updatedOn)}</b></div>
+        </div>
         <span class="proj ${projColor(issue.project)}" title="${esc(issue.project)}">${esc(issue.project)}</span>
         <span class="who ${whoColor(issue.assignee)}" title="${esc(issue.assignee)}">${esc(issue.assignee)}</span>
         <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>`;

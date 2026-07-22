@@ -114,6 +114,10 @@
   .navrow .refresh:hover{color:var(--ink);border-color:var(--accent)}
   .chip .dot{width:7px;height:7px;border-radius:50%;background:var(--cc,var(--dim));flex-shrink:0}
 
+  .search{width:100%;font-family:inherit;font-size:12.5px;color:var(--ink);background:var(--panel);
+    border:1px solid var(--line);border-radius:9px;padding:8px 12px;margin-bottom:12px;outline:none;transition:.14s}
+  .search::placeholder{color:var(--dim)}
+  .search:focus{border-color:var(--accent);background:var(--panel-2)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
   .card{background:var(--panel);border:1px solid var(--line-soft);border-radius:12px;padding:13px 14px;
     cursor:pointer;transition:.14s;position:relative;overflow:hidden}
@@ -214,6 +218,7 @@
         <div id="wsStats" class="stats w5"></div>
 
         <h3>โปรเจกต์</h3>
+        <input id="wsSearch" class="search" type="text" placeholder="🔍 ค้นหาโปรเจกต์ (ชื่อ / path / คำอธิบาย)" autocomplete="off">
         <div class="row-label">การมองเห็น</div>
         <div id="wsVis" class="chips"></div>
         <div class="row-label">สถานะ</div>
@@ -364,13 +369,18 @@
   let wsData=null;
   const wsVisSel=new Set();     // empty = all visibilities
   const wsStatSel=new Set();    // empty = all statuses
+  let wsQuery='';               // project search text
   function openFile(p){ api&&api.openFile&&api.openFile(p); }
 
   function wsProjectsFiltered(){
     if(!wsData||!wsData.projects) return [];
-    return wsData.projects.filter(p=>
-      (wsVisSel.size===0 || wsVisSel.has(p.visibility)) &&
-      (wsStatSel.size===0 || wsStatSel.has(p.status)));
+    const terms=wsQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return wsData.projects.filter(p=>{
+      const hay=(p.name+' '+(p.path||'')+' '+(p.desc||'')).toLowerCase();
+      return (wsVisSel.size===0 || wsVisSel.has(p.visibility)) &&
+        (wsStatSel.size===0 || wsStatSel.has(p.status)) &&
+        terms.every(t=>hay.includes(t));   // all words must match (AND)
+    });
   }
   function renderWsStats(){
     const s=wsData.stats||{};
@@ -419,7 +429,10 @@
   function renderWsProjects(){
     const el=document.getElementById('wsProjects');
     const list=wsProjectsFiltered();
-    if(!list.length){ el.innerHTML='<div class="empty">ไม่มีโปรเจกต์ตามตัวกรองนี้</div>'; return; }
+    if(!list.length){
+      el.innerHTML=`<div class="empty">${wsQuery.trim()?'ไม่พบโปรเจกต์ที่ตรงกับ "'+esc(wsQuery.trim())+'"':'ไม่มีโปรเจกต์ตามตัวกรองนี้'}</div>`;
+      return;
+    }
     el.innerHTML='';
     list.forEach(p=>{
       const m=ST_META[p.status]||ST_META.unknown;
@@ -516,6 +529,10 @@
   navR.onclick=()=>showTab('rm');
   navW.onclick=()=>showTab('ws');
   wsRefresh.onclick=()=>api&&api.refreshWorkspace&&api.refreshWorkspace();
+
+  // project search
+  const wsSearch=document.getElementById('wsSearch');
+  wsSearch.oninput=()=>{ wsQuery=wsSearch.value; if(wsData) renderWsProjects(); };
 </script>
 </body>
 </html>

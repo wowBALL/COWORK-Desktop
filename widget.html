@@ -210,6 +210,8 @@
         <div id="projectFilter" class="chips"></div>
         <div class="row-label">ผู้รับผิดชอบ · เลือกได้หลายคน</div>
         <div id="assigneeFilter" class="chips"></div>
+        <div class="row-label">ระดับความเสี่ยง</div>
+        <div id="riskFilter" class="tabs"></div>
         <div class="row-label">สถานะ</div>
         <div id="tabs" class="tabs"></div>
         <div id="tasks"><div class="hint">กำลังโหลด...</div></div>
@@ -288,12 +290,15 @@
   function projColor(key){ return 'pc'+hashN(key,6); }
   function whoColor(key){ return 'wc'+hashN(key,6); }
   const RISK_ORDER=['Low','Fairly Low','Moderate','Medium','High'];
+  const RISK_COLORS=['#9ed687','#7fd3e4','#e8bd76','#f0a35f','#f56b82'];
   let lastPayload=null, activeStatus=null;
   const selectedProjects=new Set();    // empty = show all projects
   const selectedAssignees=new Set();   // empty = show all assignees
+  let selectedRisk=null;   // null = ทั้งหมด; 'none' = ไม่ระบุ; else exact risk string
   function issueMatch(i){
     return (selectedProjects.size===0 || selectedProjects.has(i.project))
-        && (selectedAssignees.size===0 || selectedAssignees.has(i.assignee));
+        && (selectedAssignees.size===0 || selectedAssignees.has(i.assignee))
+        && (selectedRisk===null || (selectedRisk==='none' ? !i.risk : i.risk===selectedRisk));
   }
   function allIssues(){ return lastPayload.groups.flatMap(g=>g.issues); }
   function statusIssues(status){
@@ -359,15 +364,40 @@
       el.appendChild(chip);
     });
   }
+  function renderRiskFilter(){
+    const el=document.getElementById('riskFilter');
+    el.innerHTML='';
+    const issues=allIssues();
+    const mk=(cls,sc,label,count,onclick)=>{
+      const tab=document.createElement('div');
+      tab.className='tab'+cls;
+      tab.style.setProperty('--sc',sc);
+      tab.innerHTML=`<span class="dot"></span>${esc(label)}<span class="n">${count}</span>`;
+      tab.onclick=onclick;
+      el.appendChild(tab);
+    };
+    mk(selectedRisk===null?' active':'','var(--accent)','ทั้งหมด',issues.length,
+      ()=>{ selectedRisk=null; renderRiskFilter(); renderTabs(); renderPanel(); });
+    RISK_ORDER.forEach((r,idx)=>{
+      const n=issues.filter(i=>i.risk===r).length;
+      mk(selectedRisk===r?' active':'',RISK_COLORS[idx],r,n,
+        ()=>{ selectedRisk=(selectedRisk===r?null:r); renderRiskFilter(); renderTabs(); renderPanel(); });
+    });
+    const noneN=issues.filter(i=>!i.risk).length;
+    mk(selectedRisk==='none'?' active':'','var(--dim)','ไม่ระบุ',noneN,
+      ()=>{ selectedRisk=(selectedRisk==='none'?null:'none'); renderRiskFilter(); renderTabs(); renderPanel(); });
+  }
   function renderFilters(){
     renderChipFilter('projectFilter', i=>i.project, selectedProjects);
     renderChipFilter('assigneeFilter', i=>i.assignee, selectedAssignees);
+    renderRiskFilter();
   }
   function renderTasks(payload){
     const el=document.getElementById('tasks');
     document.getElementById('tabs').innerHTML='';
     document.getElementById('projectFilter').innerHTML='';
     document.getElementById('assigneeFilter').innerHTML='';
+    document.getElementById('riskFilter').innerHTML='';
     if(payload.error){ el.innerHTML=`<div class="hint">โหลด Redmine ไม่สำเร็จ: ${esc(payload.error)}</div>`; return; }
     if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; return; }
     lastPayload=payload;
@@ -376,6 +406,8 @@
     const asgNames=new Set(allIssues().map(i=>i.assignee));
     [...selectedProjects].forEach(p=>{ if(!projNames.has(p)) selectedProjects.delete(p); });
     [...selectedAssignees].forEach(a=>{ if(!asgNames.has(a)) selectedAssignees.delete(a); });
+    const riskValues=new Set(allIssues().map(i=>i.risk).filter(Boolean));
+    if(selectedRisk && selectedRisk!=='none' && !riskValues.has(selectedRisk)) selectedRisk=null;
     if(!activeStatus || (activeStatus!=='ALL' && !payload.groups.some(g=>g.status===activeStatus))){
       activeStatus='ALL';
     }

@@ -33,6 +33,7 @@
         "to": ".env"
       }
     ],
+    "publish": null,
     "win": {
       "target": [
         "nsis"

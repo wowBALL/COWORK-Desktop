@@ -81,6 +81,17 @@ npx electron-builder --win
 ```
 ได้ installer ใน `dist/` แจกลงเครื่องอื่นได้
 
+## อัปเดตอัตโนมัติ
+Widget ที่ติดตั้งแล้วเช็คเวอร์ชันใหม่จาก GitHub Releases (`wowBALL/myjobs`) เองตอนเปิดโปรแกรม และเช็คซ้ำทุก 1 ชั่วโมง — ถ้ามีเวอร์ชันใหม่จะโหลดมาเงียบๆ แล้วถามว่าจะรีสตาร์ทติดตั้งเลยไหม
+
+ต้องมี:
+- `.env` (ทั้งของตัวเองตอน dev และไฟล์ extraResource ที่แพ็กไปกับ installer) มีค่า `GH_TOKEN` เป็น GitHub personal access token (fine-grained, scope แค่ repo นี้, permission "Contents: read") — เพราะ repo เป็น private
+- ตอนจะออกเวอร์ชันใหม่ ให้ bump `version` ใน `package.json` แล้วรัน:
+  ```bash
+  GH_TOKEN=<token ที่มีสิทธิ์ write releases> npm run release
+  ```
+  คำสั่งนี้จะ build แล้วอัปโหลด installer + `latest.yml` ขึ้นเป็น GitHub Release ให้เอง — widget ของทุกคนที่ติดตั้งไว้แล้วจะเห็นอัปเดตในเช็ครอบถัดไปโดยไม่ต้องแจกไฟล์เอง
+
 ## หมายเหตุ
 - ส่วนงาน Redmine ของ widget = ข้อมูลจริงจาก API แล้ว (ตั้งค่าใน `.env`)
 - ส่วน "ภาพรวม vault" (proj / node / edge / todo) ยัง hardcode ใน html — ไว้ ver.2 ค่อยต่อจาก vault จริง

@@ -177,7 +177,7 @@
   }
   function renderPanel(){
     const el=document.getElementById('tasks');
-    const issues=statusIssues(activeStatus);
+    const issues=activeStatus==='ALL'?allIssues().filter(issueMatch):statusIssues(activeStatus);
     if(!issues.length){ el.innerHTML='<div class="hint">ไม่มีงานในสถานะนี้</div>'; return; }
     el.innerHTML='';
     issues.forEach(issue=>{
@@ -200,6 +200,13 @@
   function renderTabs(){
     const tabsEl=document.getElementById('tabs');
     tabsEl.innerHTML='';
+    // ALL tab (default) — every status combined
+    const allTab=document.createElement('div');
+    allTab.className='tab'+(activeStatus==='ALL'?' active':'');
+    allTab.style.setProperty('--sc','var(--accent)');
+    allTab.innerHTML=`<span class="dot"></span>ALL<span class="n">${allIssues().filter(issueMatch).length}</span>`;
+    allTab.onclick=()=>{ activeStatus='ALL'; renderTabs(); renderPanel(); };
+    tabsEl.appendChild(allTab);
     lastPayload.groups.forEach(g=>{
       const tab=document.createElement('div');
       tab.className='tab'+(g.status===activeStatus?' active':'');
@@ -242,8 +249,8 @@
     const asgNames=new Set(allIssues().map(i=>i.assignee));
     [...selectedProjects].forEach(p=>{ if(!projNames.has(p)) selectedProjects.delete(p); });
     [...selectedAssignees].forEach(a=>{ if(!asgNames.has(a)) selectedAssignees.delete(a); });
-    if(!activeStatus || !payload.groups.some(g=>g.status===activeStatus)){
-      activeStatus=(payload.groups.find(g=>g.status==='In Progress')||payload.groups[0]).status;
+    if(!activeStatus || (activeStatus!=='ALL' && !payload.groups.some(g=>g.status===activeStatus))){
+      activeStatus='ALL';
     }
     renderFilters(); renderTabs(); renderPanel();
   }

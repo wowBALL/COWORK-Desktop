@@ -52,6 +52,11 @@ const STATUS_ORDER = ['Backlog', 'New', 'In Progress', 'Test', 'Resolved'];
 // low → high severity; index used to pick the worst when an issue has several
 const RISK_ORDER = ['Low', 'Fairly Low', 'Moderate', 'Medium', 'High'];
 
+function fmtDateTime(iso) {
+  const d = new Date(iso), p = x => String(x).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function topRisk(issue) {
   const cf = (issue.custom_fields || []).find(f => f.name === 'Risk Level');
   if (!cf) return '';
@@ -191,16 +196,41 @@ ipcMain.on('open-link', (_e, url) => shell.openExternal(url));
 ipcMain.on('open-file', (_e, p) => { if (p) shell.openPath(p); });
 // renderer asks to re-read the workspace vault (manual refresh button)
 ipcMain.on('workspace-refresh', () => pushWorkspace());
-// renderer asks to close a Resolved issue (Resolved -> Closed)
-ipcMain.handle('close-issue', async (_e, issueId) => {
+// renderer asks for an issue's journal history + current "Test Results" field,
+// to preview before closing (see docs/superpowers/specs/2026-07-22-close-issue-test-results-design.md)
+ipcMain.handle('get-issue-preview', async (_e, issueId) => {
+  if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return { ok: false, error: 'ยังไม่ได้ตั้งค่า .env' };
+  try {
+    const res = await fetch(`${ENV.REDMINE_URL}/issues/${issueId}.json?include=journals,custom_fields`,
+      { headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY } });
+    if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
+    const { issue } = await res.json();
+    const historyText = (issue.journals || [])
+      .filter(j => j.notes && j.notes.trim())
+      .map(j => `[${fmtDateTime(j.created_on)}] ${j.user?.name || 'ไม่ระบุ'}: ${j.notes.trim()}`)
+      .join('\n\n');
+    const trField = (issue.custom_fields || []).find(f => f.name === 'Test Results');
+    return {
+      ok: true,
+      historyText,
+      testResults: trField ? { fieldId: trField.id, value: trField.value || '' } : null,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+// renderer asks to close a Resolved issue (Resolved -> Closed), optionally writing a custom field first
+ipcMain.handle('close-issue', async (_e, issueId, customField) => {
   if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return { ok: false, error: 'ยังไม่ได้ตั้งค่า .env' };
   try {
     const closedId = await getStatusId('Closed');
     if (!closedId) return { ok: false, error: 'ไม่พบสถานะ "Closed" ใน Redmine' };
+    const issuePayload = { status_id: closedId };
+    if (customField) issuePayload.custom_fields = [{ id: customField.id, value: customField.value }];
     const res = await fetch(`${ENV.REDMINE_URL}/issues/${issueId}.json`, {
       method: 'PUT',
       headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ issue: { status_id: closedId } }),
+      body: JSON.stringify({ issue: issuePayload }),
     });
     if (!res.ok) {
       let msg = `Redmine HTTP ${res.status}`;

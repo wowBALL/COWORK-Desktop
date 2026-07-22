@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld('cowork', {
   onWorkspace: (cb) => ipcRenderer.on('workspace-update', (_e, payload) => cb(payload)),
   openFile: (p) => ipcRenderer.send('open-file', p),
   refreshWorkspace: () => ipcRenderer.send('workspace-refresh'),
-  closeIssue: (id) => ipcRenderer.invoke('close-issue', id)
+  getIssuePreview: (id) => ipcRenderer.invoke('get-issue-preview', id),
+  closeIssue: (id, customField) => ipcRenderer.invoke('close-issue', id, customField)
 });

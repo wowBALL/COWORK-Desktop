@@ -100,6 +100,26 @@
   .closeBtn.armed{background:var(--amber);color:#161821;border-color:var(--amber)}
   .closeBtn.pending{opacity:.5;pointer-events:none}
   .closeBtn.err{background:var(--rose);color:#161821;border-color:var(--rose)}
+  /* close-issue preview panel: existing Test Results vs. compiled history */
+  .testPreview{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+    padding:12px;margin:0 0 10px}
+  .testPreview .tp-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+    font-weight:700;margin-bottom:5px}
+  .testPreview .tp-label:not(:first-child){margin-top:12px}
+  .testPreview .tp-block{font-size:12px;line-height:1.5;white-space:pre-wrap;color:var(--ink);
+    max-height:160px;overflow-y:auto;background:var(--panel);border:1px solid var(--line-soft);
+    border-radius:7px;padding:8px 10px}
+  .testPreview .tp-block.empty{color:var(--dim);font-style:italic}
+  .testPreview .tp-warn{font-size:12px;color:var(--rose);line-height:1.5}
+  .testPreview .tp-err{font-size:11.5px;color:var(--rose);margin-top:8px}
+  .testPreview .tp-actions{display:flex;gap:8px;margin-top:12px}
+  .testPreview .tp-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
+    border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);
+    color:var(--muted);transition:.15s}
+  .testPreview .tp-actions button:hover{color:var(--ink);border-color:var(--accent)}
+  .testPreview .tp-actions button.confirm{background:var(--accent);color:#161821;border-color:var(--accent)}
+  .testPreview .tp-actions button.confirm:disabled{opacity:.4;cursor:not-allowed;background:var(--panel);color:var(--dim)}
+  .testPreview .tp-actions button.pending{opacity:.6;pointer-events:none}
   /* project pill palette (muted, curated) */
   .pc0{background:rgba(122,162,247,.16);color:#9bbcff}
   .pc1{background:rgba(143,207,122,.16);color:#a6dd93}
@@ -334,34 +354,89 @@
         <span class="who ${whoColor(issue.assignee)}" title="${esc(issue.assignee)}">${esc(issue.assignee)}</span>
         <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>`;
       row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
-      if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id));
-      el.appendChild(row);
+      if(issue.status==='Resolved'){
+        const slot=document.createElement('div');
+        row.appendChild(makeCloseBtn(issue.id, slot));
+        el.appendChild(row);
+        el.appendChild(slot);
+      } else {
+        el.appendChild(row);
+      }
     });
   }
-  // small icon button: click 1 arms a 3s confirm window, click 2 fires the close request
-  function makeCloseBtn(issueId){
+  function fmtDateTime(iso){
+    const d=new Date(iso), p=x=>String(x).padStart(2,'0');
+    return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  // icon button: click fetches the issue's history + Test Results field and opens a preview
+  // panel in `slot` (a sibling element right after the row) for review before closing
+  function makeCloseBtn(issueId, slot){
     const btn=document.createElement('button');
     btn.className='closeBtn'; btn.textContent='✓'; btn.title='ปิดงาน (Resolved → Closed)';
-    let armed=false, timer=null;
     btn.onclick=(e)=>{
       e.stopPropagation();
-      if(!armed){
-        armed=true; btn.classList.add('armed'); btn.title='คลิกอีกครั้งเพื่อยืนยัน';
-        timer=setTimeout(()=>{ armed=false; btn.classList.remove('armed'); btn.title='ปิดงาน (Resolved → Closed)'; },3000);
-        return;
-      }
-      clearTimeout(timer);
-      btn.classList.remove('armed'); btn.classList.add('pending'); btn.title='กำลังปิดงาน...';
-      api.closeIssue(issueId).then(result=>{
+      if(slot.childElementCount){ slot.innerHTML=''; return; } // toggle closed if already open
+      document.querySelectorAll('.testPreview').forEach(p=>p.remove()); // only one open at a time
+      btn.classList.add('pending'); btn.title='กำลังโหลดประวัติ...';
+      api.getIssuePreview(issueId).then(result=>{
+        btn.classList.remove('pending'); btn.title='ปิดงาน (Resolved → Closed)';
         if(!result || !result.ok){
-          btn.classList.remove('pending'); btn.classList.add('err');
-          btn.title='ปิดงานไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ');
-          setTimeout(()=>{ armed=false; btn.classList.remove('err'); btn.title='ปิดงาน (Resolved → Closed)'; },2000);
+          btn.classList.add('err');
+          btn.title='โหลดประวัติไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ');
+          setTimeout(()=>btn.classList.remove('err'),2000);
+          return;
         }
-        // success: main process refetches tasks; this row disappears once the new payload renders
+        renderTestPreview(slot, issueId, result);
       });
     };
     return btn;
+  }
+  function renderTestPreview(slot, issueId, {historyText, testResults}){
+    const panel=document.createElement('div');
+    panel.className='testPreview';
+    const historyBlock=historyText
+      ? `<div class="tp-block">${esc(historyText)}</div>`
+      : `<div class="tp-block empty">ไม่มี comment ในประวัติ</div>`;
+    if(!testResults){
+      panel.innerHTML=`
+        <div class="tp-warn">งานนี้ไม่มี field "Test Results" ในโปรเจกต์/tracker นี้ จึงปิดงานจากตรงนี้ไม่ได้</div>
+        <div class="tp-label">ประวัติที่รวบรวมได้</div>
+        ${historyBlock}
+        <div class="tp-actions"><button class="cancel">ปิด</button></div>`;
+      panel.querySelector('.cancel').onclick=(e)=>{ e.stopPropagation(); slot.innerHTML=''; };
+      slot.appendChild(panel);
+      return;
+    }
+    panel.innerHTML=`
+      <div class="tp-label">Test Results เดิม</div>
+      <div class="tp-block${testResults.value?'':' empty'}">${testResults.value?esc(testResults.value):'ยังไม่มีข้อมูล'}</div>
+      <div class="tp-label">ประวัติที่รวบรวมได้</div>
+      ${historyBlock}
+      <div class="tp-actions">
+        <button class="confirm">ยืนยันและปิดงาน</button>
+        <button class="cancel">ยกเลิก</button>
+      </div>`;
+    panel.querySelector('.cancel').onclick=(e)=>{ e.stopPropagation(); slot.innerHTML=''; };
+    const confirmBtn=panel.querySelector('.confirm');
+    confirmBtn.onclick=(e)=>{
+      e.stopPropagation();
+      confirmBtn.disabled=true; confirmBtn.classList.add('pending'); confirmBtn.textContent='กำลังปิดงาน...';
+      const stamp=fmtDateTime(new Date().toISOString());
+      const appended=testResults.value
+        ? `${testResults.value}\n\n---\n[สรุปจาก history อัตโนมัติ เมื่อ ${stamp}]\n${historyText}`
+        : `[สรุปจาก history อัตโนมัติ เมื่อ ${stamp}]\n${historyText}`;
+      api.closeIssue(issueId, { id: testResults.fieldId, value: appended }).then(result=>{
+        if(!result || !result.ok){
+          confirmBtn.disabled=false; confirmBtn.classList.remove('pending'); confirmBtn.textContent='ยืนยันและปิดงาน';
+          let err=panel.querySelector('.tp-err');
+          if(!err){ err=document.createElement('div'); err.className='tp-err'; panel.appendChild(err); }
+          err.textContent='ปิดงานไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ');
+          return;
+        }
+        // success: main process refetches tasks; this row + panel disappear once the new payload renders
+      });
+    };
+    slot.appendChild(panel);
   }
   function renderTabs(){
     const tabsEl=document.getElementById('tabs');

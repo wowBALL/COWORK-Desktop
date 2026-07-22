@@ -400,14 +400,19 @@
         const n=ps.filter(p=>p.status===k).length;
         return `<div class="chip${wsStatSel.has(k)?' active':''}" data-stat="${k}"><span class="dot" style="--cc:${ST_META[k].c}"></span>${ST_META[k].label}<span class="n">${n}</span></div>`;
       }).join('');
+    // single-select: pick one, or click the active one again to reset to "ทั้งหมด"
     visEl.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{
-      if(ch.dataset.all!==undefined) wsVisSel.clear();
-      else { const v=ch.dataset.vis; wsVisSel.has(v)?wsVisSel.delete(v):wsVisSel.add(v); }
+      const v=ch.dataset.vis;
+      const only=v!==undefined && wsVisSel.size===1 && wsVisSel.has(v);
+      wsVisSel.clear();
+      if(v!==undefined && !only) wsVisSel.add(v);
       renderWsFilters(); renderWsProjects();
     });
     stEl.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{
-      if(ch.dataset.all!==undefined) wsStatSel.clear();
-      else { const k=ch.dataset.stat; wsStatSel.has(k)?wsStatSel.delete(k):wsStatSel.add(k); }
+      const k=ch.dataset.stat;
+      const only=k!==undefined && wsStatSel.size===1 && wsStatSel.has(k);
+      wsStatSel.clear();
+      if(k!==undefined && !only) wsStatSel.add(k);
       renderWsFilters(); renderWsProjects();
     });
   }

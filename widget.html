@@ -92,6 +92,14 @@
   .rk2{background:rgba(224,175,104,.16);color:#e8bd76}   /* Moderate */
   .rk3{background:rgba(240,150,90,.18);color:#f0a35f}    /* Medium */
   .rk4{background:rgba(233,90,110,.20);color:#f56b82}    /* High */
+  /* close-issue button (Resolved -> Closed) */
+  .closeBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
+    background:var(--panel);color:var(--muted);cursor:pointer;font-size:12px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;transition:.15s}
+  .closeBtn:hover{color:var(--ink);border-color:var(--accent)}
+  .closeBtn.armed{background:var(--amber);color:#161821;border-color:var(--amber)}
+  .closeBtn.pending{opacity:.5;pointer-events:none}
+  .closeBtn.err{background:var(--rose);color:#161821;border-color:var(--rose)}
   /* project pill palette (muted, curated) */
   .pc0{background:rgba(122,162,247,.16);color:#9bbcff}
   .pc1{background:rgba(143,207,122,.16);color:#a6dd93}
@@ -326,8 +334,34 @@
         <span class="who ${whoColor(issue.assignee)}" title="${esc(issue.assignee)}">${esc(issue.assignee)}</span>
         <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>`;
       row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
+      if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id));
       el.appendChild(row);
     });
+  }
+  // small icon button: click 1 arms a 3s confirm window, click 2 fires the close request
+  function makeCloseBtn(issueId){
+    const btn=document.createElement('button');
+    btn.className='closeBtn'; btn.textContent='✓'; btn.title='ปิดงาน (Resolved → Closed)';
+    let armed=false, timer=null;
+    btn.onclick=(e)=>{
+      e.stopPropagation();
+      if(!armed){
+        armed=true; btn.classList.add('armed'); btn.title='คลิกอีกครั้งเพื่อยืนยัน';
+        timer=setTimeout(()=>{ armed=false; btn.classList.remove('armed'); btn.title='ปิดงาน (Resolved → Closed)'; },3000);
+        return;
+      }
+      clearTimeout(timer);
+      btn.classList.remove('armed'); btn.classList.add('pending'); btn.title='กำลังปิดงาน...';
+      api.closeIssue(issueId).then(result=>{
+        if(!result || !result.ok){
+          btn.classList.remove('pending'); btn.classList.add('err');
+          btn.title='ปิดงานไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ');
+          setTimeout(()=>{ armed=false; btn.classList.remove('err'); btn.title='ปิดงาน (Resolved → Closed)'; },2000);
+        }
+        // success: main process refetches tasks; this row disappears once the new payload renders
+      });
+    };
+    return btn;
   }
   function renderTabs(){
     const tabsEl=document.getElementById('tabs');

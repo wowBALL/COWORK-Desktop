@@ -64,6 +64,18 @@ function topRisk(issue) {
   return best;
 }
 
+let statusIdCache = null;
+async function getStatusId(name) {
+  if (!statusIdCache) {
+    const res = await fetch(`${ENV.REDMINE_URL}/issue_statuses.json`, { headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY } });
+    if (!res.ok) throw new Error(`โหลดสถานะไม่สำเร็จ (HTTP ${res.status})`);
+    const data = await res.json();
+    statusIdCache = {};
+    for (const s of data.issue_statuses || []) statusIdCache[s.name] = s.id;
+  }
+  return statusIdCache[name];
+}
+
 async function fetchRedmineTasks() {
   if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return { groups: [], error: 'ยังไม่ได้ตั้งค่า .env' };
   try {
@@ -81,6 +93,7 @@ async function fetchRedmineTasks() {
         project: issue.project?.name || '',
         projectId: issue.project?.identifier || issue.project?.id || '',
         assignee: issue.assigned_to?.name || 'ไม่ระบุ',
+        status,
         risk: topRisk(issue),
         createdOn: issue.created_on,
         updatedOn: issue.updated_on,
@@ -178,6 +191,28 @@ ipcMain.on('open-link', (_e, url) => shell.openExternal(url));
 ipcMain.on('open-file', (_e, p) => { if (p) shell.openPath(p); });
 // renderer asks to re-read the workspace vault (manual refresh button)
 ipcMain.on('workspace-refresh', () => pushWorkspace());
+// renderer asks to close a Resolved issue (Resolved -> Closed)
+ipcMain.handle('close-issue', async (_e, issueId) => {
+  if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return { ok: false, error: 'ยังไม่ได้ตั้งค่า .env' };
+  try {
+    const closedId = await getStatusId('Closed');
+    if (!closedId) return { ok: false, error: 'ไม่พบสถานะ "Closed" ใน Redmine' };
+    const res = await fetch(`${ENV.REDMINE_URL}/issues/${issueId}.json`, {
+      method: 'PUT',
+      headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issue: { status_id: closedId } }),
+    });
+    if (!res.ok) {
+      let msg = `Redmine HTTP ${res.status}`;
+      try { const body = await res.json(); if (body.errors) msg = body.errors.join(', '); } catch {}
+      return { ok: false, error: msg };
+    }
+    pushTasks();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 app.whenReady().then(() => {
   MODE === 'screensaver' ? createScreensaver() : createWidget();

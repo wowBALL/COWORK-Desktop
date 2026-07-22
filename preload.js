@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('cowork', {
   openLink: (url) => ipcRenderer.send('open-link', url),
   onWorkspace: (cb) => ipcRenderer.on('workspace-update', (_e, payload) => cb(payload)),
   openFile: (p) => ipcRenderer.send('open-file', p),
-  refreshWorkspace: () => ipcRenderer.send('workspace-refresh')
+  refreshWorkspace: () => ipcRenderer.send('workspace-refresh'),
+  closeIssue: (id) => ipcRenderer.invoke('close-issue', id)
 });

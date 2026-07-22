@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { readWorkspace } = require('./workspace');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -72,6 +73,16 @@ function pushTasks() {
   fetchRedmineTasks().then(payload => win && win.webContents.send('tasks-update', payload));
 }
 
+// A_Workspace markdown vault — default to the sibling folder of this project
+const WORKSPACE_DIR = ENV.WORKSPACE_DIR || path.join(__dirname, '..', 'A_Workspace');
+function pushWorkspace() {
+  if (!win) return;
+  let payload;
+  try { payload = readWorkspace(WORKSPACE_DIR); }
+  catch (e) { payload = { error: e.message }; }
+  win.webContents.send('workspace-update', payload);
+}
+
 function createWidget() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   const W = 420, H = 640;
@@ -92,8 +103,9 @@ function createWidget() {
     webPreferences: { preload: path.join(__dirname, 'preload.js') }
   });
   win.loadFile('widget.html');
-  win.webContents.on('did-finish-load', pushTasks);
+  win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); });
   setInterval(pushTasks, 5 * 60 * 1000);
+  setInterval(pushWorkspace, 5 * 60 * 1000);
 }
 
 function createScreensaver() {
@@ -129,6 +141,10 @@ ipcMain.on('win-max', () => {
   }
 });
 ipcMain.on('open-link', (_e, url) => shell.openExternal(url));
+// open a local file/folder (project .md, daily note, project directory) in its default app
+ipcMain.on('open-file', (_e, p) => { if (p) shell.openPath(p); });
+// renderer asks to re-read the workspace vault (manual refresh button)
+ipcMain.on('workspace-refresh', () => pushWorkspace());
 
 app.whenReady().then(() => {
   MODE === 'screensaver' ? createScreensaver() : createWidget();

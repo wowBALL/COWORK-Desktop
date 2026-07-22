@@ -6,5 +6,8 @@ contextBridge.exposeInMainWorld('cowork', {
   pin: (v) => ipcRenderer.send('win-pin', v),
   maximize: () => ipcRenderer.send('win-max'),
   onTasks: (cb) => ipcRenderer.on('tasks-update', (_e, payload) => cb(payload)),
-  openLink: (url) => ipcRenderer.send('open-link', url)
+  openLink: (url) => ipcRenderer.send('open-link', url),
+  onWorkspace: (cb) => ipcRenderer.on('workspace-update', (_e, payload) => cb(payload)),
+  openFile: (p) => ipcRenderer.send('open-file', p),
+  refreshWorkspace: () => ipcRenderer.send('workspace-refresh')
 });

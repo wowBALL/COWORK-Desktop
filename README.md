@@ -20,6 +20,19 @@ cd cowork-desktop
 npm install        # โหลด electron (~ครั้งเดียว)
 ```
 
+### ตั้งค่า Redmine (จำเป็นสำหรับ widget)
+Widget ดึงงานจริงจาก Redmine ต้องมีไฟล์ `.env` ในโฟลเดอร์นี้ (ไฟล์นี้ถูก gitignore ไว้ ไม่ขึ้น repo)
+
+1. คัดลอกไฟล์ตัวอย่าง: `cp .env.example .env`  (Windows: `copy .env.example .env`)
+2. เปิด `.env` แล้วใส่ค่า:
+   ```
+   REDMINE_URL=https://redmine.example.com
+   REDMINE_API_KEY=<API key ของคุณ>
+   ```
+   หา API key ได้ที่ Redmine → คลิกชื่อมุมขวาบน → **My account** → ขวามือ **API access key** → **Show**
+
+> ถ้าไม่ตั้งค่า `.env` widget จะยังเปิดได้แต่ส่วนงาน Redmine จะขึ้นข้อความว่าโหลดไม่สำเร็จ
+
 ## รัน
 - **Widget:**  ดับเบิลคลิก `start-widget.bat`  (หรือ `npm run widget`)
 - **Screensaver:**  ดับเบิลคลิก `start-screensaver.bat`  (หรือ `npm run screensaver`)
@@ -29,9 +42,18 @@ npm install        # โหลด electron (~ครั้งเดียว)
 ## Widget
 - หน้าต่างลอย **โปร่งใส ไม่มีขอบ** — ลากย้ายได้ที่แถบบน (◈ COWORK)
 - ปุ่ม 📌 = ปักหมุดให้อยู่บนสุดตลอด (always-on-top)
+- ปุ่ม ⛶ = ขยายเต็มจอ / กดอีกครั้งคืนขนาดเดิม
 - ปุ่ม ✕ = ปิด
 - ปรับขนาดได้ที่ขอบหน้าต่าง · เริ่มต้นวางมุมขวาบน
 - **ไม่โดนไอคอน desktop บัง** เพราะเป็นหน้าต่างจริง ไม่ใช่ wallpaper
+
+### งาน Redmine (ดึงข้อมูลจริง)
+- ดึง open issue ของ **ทุกโปรเจกต์** จาก Redmine API (key อยู่ใน `.env` ฝั่ง main process — renderer ไม่เห็น key)
+- แยกตามสถานะเป็น tab: Backlog → New → In Progress → Test → Resolved (มีจุดสีบอกสถานะ)
+- **ฟิลเตอร์โปรเจกต์ + ผู้รับผิดชอบ** เลือกได้หลายอันพร้อมกัน (ทำงานร่วมกันแบบ AND)
+- แต่ละงานแสดง `#id · ชื่องาน · โปรเจกต์ · ผู้รับผิดชอบ · Risk Level` — คลิกที่งานเพื่อเปิดใน Redmine
+- Risk Level ดึงจาก custom field แบ่งสีตามระดับ (Low → Fairly Low → Moderate → Medium → High)
+- refresh อัตโนมัติทุก 5 นาที · ดูอย่างเดียว (คลิกไม่แก้ไขข้อมูลใน Redmine)
 
 เปิดพร้อม Windows: กด `Win+R` → `shell:startup` → วาง shortcut ของ `start-widget.bat` ลงไป
 
@@ -60,5 +82,5 @@ npx electron-builder --win
 ได้ installer ใน `dist/` แจกลงเครื่องอื่นได้
 
 ## หมายเหตุ
-ข้อมูล (task / stats) ยัง hardcode ใน html ถ้าอยากให้ดึงจาก vault จริง
-ทำ endpoint เล็กๆ แล้ว fetch มาแสดง (เข้าทาง SvelteKit ที่ถนัด) — บอกได้เดี๋ยวต่อให้
+- ส่วนงาน Redmine ของ widget = ข้อมูลจริงจาก API แล้ว (ตั้งค่าใน `.env`)
+- ส่วน "ภาพรวม vault" (proj / node / edge / todo) ยัง hardcode ใน html — ไว้ ver.2 ค่อยต่อจาก vault จริง

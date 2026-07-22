@@ -26,7 +26,7 @@ Widget ดึงงานจริงจาก Redmine ต้องมีไฟ�
 1. คัดลอกไฟล์ตัวอย่าง: `cp .env.example .env`  (Windows: `copy .env.example .env`)
 2. เปิด `.env` แล้วใส่ค่า:
    ```
-   REDMINE_URL=https://redmine.example.com
+   REDMINE_URL=<URL redmine ของคุณ>
    REDMINE_API_KEY=<API key ของคุณ>
    ```
    หา API key ได้ที่ Redmine → คลิกชื่อมุมขวาบน → **My account** → ขวามือ **API access key** → **Show**

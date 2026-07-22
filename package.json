@@ -8,8 +8,7 @@
     "screensaver": "electron . --screensaver",
     "start": "electron . --widget",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --win",
-    "release": "electron-builder --win --publish always"
+    "dist": "electron-builder --win"
   },
   "author": "Ball",
   "license": "MIT",
@@ -34,14 +33,6 @@
         "to": ".env"
       }
     ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "wowBALL",
-        "repo": "myjobs",
-        "private": false
-      }
-    ],
     "win": {
       "target": [
         "nsis"
@@ -56,8 +47,5 @@
       "createStartMenuShortcut": true,
       "shortcutName": "COWORK Desktop"
     }
-  },
-  "dependencies": {
-    "electron-updater": "^6.8.9"
   }
 }

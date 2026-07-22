@@ -1,5 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, dialog } = require('electron');
-const { autoUpdater } = require('electron-updater');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { readWorkspace } = require('./workspace');
@@ -26,27 +25,6 @@ function loadEnv() {
   return env;
 }
 const ENV = loadEnv();
-// electron-updater reads this env var itself when checking a private GitHub repo
-if (ENV.GH_TOKEN) process.env.GH_TOKEN = ENV.GH_TOKEN;
-
-function setupAutoUpdate() {
-  if (!app.isPackaged) return; // updater only makes sense for installed builds
-  autoUpdater.autoDownload = true;
-  autoUpdater.on('error', (err) => console.error('[autoUpdater]', err.message));
-  autoUpdater.on('update-downloaded', (info) => {
-    dialog.showMessageBox({
-      type: 'info',
-      title: 'COWORK Desktop',
-      message: `มีเวอร์ชันใหม่ (${info.version}) พร้อมติดตั้ง`,
-      detail: 'รีสตาร์ทตอนนี้เพื่ออัปเดต หรือจะอัปเดตครั้งถัดไปที่เปิดโปรแกรมก็ได้',
-      buttons: ['รีสตาร์ทตอนนี้', 'ไว้ทีหลัง'],
-      defaultId: 0,
-      cancelId: 1,
-    }).then(({ response }) => { if (response === 0) autoUpdater.quitAndInstall(); });
-  });
-  autoUpdater.checkForUpdates().catch(err => console.error('[autoUpdater]', err.message));
-  setInterval(() => autoUpdater.checkForUpdates().catch(err => console.error('[autoUpdater]', err.message)), 60 * 60 * 1000);
-}
 
 const STATUS_ORDER = ['Backlog', 'New', 'In Progress', 'Test', 'Resolved'];
 // low → high severity; index used to pick the worst when an issue has several
@@ -248,7 +226,6 @@ ipcMain.handle('close-issue', async (_e, issueId, customField) => {
 
 app.whenReady().then(() => {
   MODE === 'screensaver' ? createScreensaver() : createWidget();
-  if (MODE === 'widget') setupAutoUpdate();
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());

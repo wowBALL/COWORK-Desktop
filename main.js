@@ -7,8 +7,13 @@ const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
 
 function loadEnv() {
-  const envPath = path.join(__dirname, '.env');
-  if (!fs.existsSync(envPath)) return {};
+  // dev: .env next to the source; packaged: .env shipped as an extraResource
+  const candidates = [
+    path.join(__dirname, '.env'),
+    process.resourcesPath && path.join(process.resourcesPath, '.env'),
+  ].filter(Boolean);
+  const envPath = candidates.find(p => { try { return fs.existsSync(p); } catch { return false; } });
+  if (!envPath) return {};
   const env = {};
   for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
     const t = line.trim();
@@ -102,6 +107,10 @@ function createWidget() {
     icon: path.join(__dirname, 'icons', process.platform === 'win32' ? 'icon.ico' : 'icon-512.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js') }
   });
+  // launch the widget automatically at Windows login (installed build only)
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
+  }
   win.loadFile('widget.html');
   win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); });
   setInterval(pushTasks, 5 * 60 * 1000);

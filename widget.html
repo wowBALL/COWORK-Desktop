@@ -110,6 +110,11 @@
     max-height:160px;overflow-y:auto;background:var(--panel);border:1px solid var(--line-soft);
     border-radius:7px;padding:8px 10px}
   .testPreview .tp-block.empty{color:var(--dim);font-style:italic}
+  .testPreview .tp-edit{width:100%;min-height:90px;resize:vertical;font-family:inherit;font-size:12px;
+    line-height:1.5;color:var(--ink);background:var(--panel);border:1px solid var(--line-soft);
+    border-radius:7px;padding:8px 10px;outline:none}
+  .testPreview .tp-edit:focus{border-color:var(--accent)}
+  .testPreview .tp-edit::placeholder{color:var(--dim);font-style:italic}
   .testPreview .tp-warn{font-size:12px;color:var(--rose);line-height:1.5}
   .testPreview .tp-err{font-size:11.5px;color:var(--rose);margin-top:8px}
   .testPreview .tp-actions{display:flex;gap:8px;margin-top:12px}
@@ -364,10 +369,6 @@
       }
     });
   }
-  function fmtDateTime(iso){
-    const d=new Date(iso), p=x=>String(x).padStart(2,'0');
-    return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
-  }
   // icon button: click fetches the issue's history + Test Results field and opens a preview
   // panel in `slot` (a sibling element right after the row) for review before closing
   function makeCloseBtn(issueId, slot){
@@ -408,8 +409,8 @@
       return;
     }
     panel.innerHTML=`
-      <div class="tp-label">Test Results เดิม</div>
-      <div class="tp-block${testResults.value?'':' empty'}">${testResults.value?esc(testResults.value):'ยังไม่มีข้อมูล'}</div>
+      <div class="tp-label">Test Results (แก้ไขได้)</div>
+      <textarea class="tp-edit" placeholder="ยังไม่มีข้อมูล — ดูประวัติด้านล่างแล้วเขียน/แก้ไขผล test ที่นี่">${esc(testResults.value||'')}</textarea>
       <div class="tp-label">ประวัติที่รวบรวมได้</div>
       ${historyBlock}
       <div class="tp-actions">
@@ -420,12 +421,9 @@
     const confirmBtn=panel.querySelector('.confirm');
     confirmBtn.onclick=(e)=>{
       e.stopPropagation();
+      const newValue=panel.querySelector('.tp-edit').value;
       confirmBtn.disabled=true; confirmBtn.classList.add('pending'); confirmBtn.textContent='กำลังปิดงาน...';
-      const stamp=fmtDateTime(new Date().toISOString());
-      const appended=testResults.value
-        ? `${testResults.value}\n\n---\n[สรุปจาก history อัตโนมัติ เมื่อ ${stamp}]\n${historyText}`
-        : `[สรุปจาก history อัตโนมัติ เมื่อ ${stamp}]\n${historyText}`;
-      api.closeIssue(issueId, { id: testResults.fieldId, value: appended }).then(result=>{
+      api.closeIssue(issueId, { id: testResults.fieldId, value: newValue }).then(result=>{
         if(!result || !result.ok){
           confirmBtn.disabled=false; confirmBtn.classList.remove('pending'); confirmBtn.textContent='ยืนยันและปิดงาน';
           let err=panel.querySelector('.tp-err');

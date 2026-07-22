@@ -192,6 +192,8 @@ ipcMain.on('win-max', () => {
   }
 });
 ipcMain.on('open-link', (_e, url) => shell.openExternal(url));
+// renderer asks which version is running, to show in the title bar
+ipcMain.handle('get-app-version', () => app.getVersion());
 // open a local file/folder (project .md, daily note, project directory) in its default app
 ipcMain.on('open-file', (_e, p) => { if (p) shell.openPath(p); });
 // renderer asks to re-read the workspace vault (manual refresh button)

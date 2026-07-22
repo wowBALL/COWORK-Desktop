@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.0
+
+**เพิ่ม**
+- ตัวกรองงานตาม **ระดับความเสี่ยง** (Low / Fairly Low / Moderate / Medium / High / ไม่ระบุ) ในแถบ Redmine
+- ปุ่ม **ปิดงาน** สำหรับ issue ที่สถานะ Resolved — กดยืนยัน 2 ครั้งเพื่อเปลี่ยนสถานะเป็น Closed ใน Redmine โดยตรงจาก widget
+
 ## v1.2.1
 
 **เพิ่ม**

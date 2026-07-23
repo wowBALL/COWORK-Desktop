@@ -15,5 +15,7 @@ contextBridge.exposeInMainWorld('cowork', {
   closeIssue: (id, customField) => ipcRenderer.invoke('close-issue', id, customField),
   getRedmineConfig: () => ipcRenderer.invoke('get-redmine-config'),
   testRedmineConnection: (cfg) => ipcRenderer.invoke('test-redmine-connection', cfg),
-  saveRedmineConfig: (cfg) => ipcRenderer.invoke('save-redmine-config', cfg)
+  saveRedmineConfig: (cfg) => ipcRenderer.invoke('save-redmine-config', cfg),
+  getWorkspaceDir: () => ipcRenderer.invoke('get-workspace-dir'),
+  saveWorkspaceDir: (dir) => ipcRenderer.invoke('save-workspace-dir', dir)
 });

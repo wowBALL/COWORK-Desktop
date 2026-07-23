@@ -21,17 +21,15 @@ npm install        # โหลด electron (~ครั้งเดียว)
 ```
 
 ### ตั้งค่า Redmine (จำเป็นสำหรับ widget)
-Widget ดึงงานจริงจาก Redmine ต้องมีไฟล์ `.env` ในโฟลเดอร์นี้ (ไฟล์นี้ถูก gitignore ไว้ ไม่ขึ้น repo)
+ตั้งค่าได้ในตัวแอปเลย — กดปุ่มเฟือง ⚙ ที่แถบหัว widget แล้วกรอก Redmine URL + API key (หาได้ที่ Redmine → คลิกชื่อมุมขวาบน → **My account** → ขวามือ **API access key** → **Show**) มีปุ่มทดสอบการเชื่อมต่อก่อนบันทึกให้ด้วย
 
-1. คัดลอกไฟล์ตัวอย่าง: `cp .env.example .env`  (Windows: `copy .env.example .env`)
-2. เปิด `.env` แล้วใส่ค่า:
-   ```
-   REDMINE_URL=<URL redmine ของคุณ>
-   REDMINE_API_KEY=<API key ของคุณ>
-   ```
-   หา API key ได้ที่ Redmine → คลิกชื่อมุมขวาบน → **My account** → ขวามือ **API access key** → **Show**
+ค่าที่กรอกเก็บแยกต่อเครื่อง/ต่อคนที่ `%APPDATA%\COWORK Desktop\config.json` (ไม่ได้ฝังอยู่ในตัวติดตั้ง) — ถ้ายังไม่ตั้งค่า widget จะยังเปิดได้ปกติ แค่ส่วนงาน Redmine จะขึ้นแบนเนอร์ "ยังไม่ได้ตั้งค่า" พร้อมปุ่มพาไปตั้งค่า
 
-> ถ้าไม่ตั้งค่า `.env` widget จะยังเปิดได้แต่ส่วนงาน Redmine จะขึ้นข้อความว่าโหลดไม่สำเร็จ
+**สำหรับ dev เท่านั้น:** รันแบบ `npm start` (ไม่ได้แพ็กเป็น .exe) จะ fallback ไปอ่านไฟล์ `.env` ในโฟลเดอร์นี้แทนถ้ายังไม่เคยตั้งค่าผ่านหน้าตั้งค่า — สร้างไฟล์ `.env` เอง (gitignore ไว้แล้ว ไม่ขึ้น repo):
+```
+REDMINE_URL=<URL redmine ของคุณ>
+REDMINE_API_KEY=<API key ของคุณ>
+```
 
 ## รัน
 - **Widget:**  ดับเบิลคลิก `start-widget.bat`  (หรือ `npm run widget`)
@@ -48,7 +46,7 @@ Widget ดึงงานจริงจาก Redmine ต้องมีไฟ�
 - **ไม่โดนไอคอน desktop บัง** เพราะเป็นหน้าต่างจริง ไม่ใช่ wallpaper
 
 ### งาน Redmine (ดึงข้อมูลจริง)
-- ดึง open issue ของ **ทุกโปรเจกต์** จาก Redmine API (key อยู่ใน `.env` ฝั่ง main process — renderer ไม่เห็น key)
+- ดึง open + closed issue ของ **ทุกโปรเจกต์** จาก Redmine API (URL/key ตั้งค่าผ่านหน้าตั้งค่าในแอป ฝั่ง main process — renderer ไม่เห็น key)
 - แยกตามสถานะเป็น tab: Backlog → New → In Progress → Test → Resolved (มีจุดสีบอกสถานะ)
 - **ฟิลเตอร์โปรเจกต์ + ผู้รับผิดชอบ** เลือกได้หลายอันพร้อมกัน (ทำงานร่วมกันแบบ AND)
 - แต่ละงานแสดง `#id · ชื่องาน · โปรเจกต์ · ผู้รับผิดชอบ · Risk Level` — คลิกที่งานเพื่อเปิดใน Redmine
@@ -91,5 +89,6 @@ Widget ที่ติดตั้งแล้วเช็คเวอร์ช�
 2. อัปโหลด `.exe` จาก `dist/` ขึ้นเป็น GitHub Release (เช่น `gh release create vX.X.X "dist/COWORK Desktop Setup X.X.X.exe" --repo wowBALL/COWORK-Desktop`) — widget ของทุกคนที่ติดตั้งไว้แล้วจะเห็นอัปเดตในเช็ครอบถัดไปโดยไม่ต้องแจกไฟล์เอง
 
 ## หมายเหตุ
-- ส่วนงาน Redmine ของ widget = ข้อมูลจริงจาก API แล้ว (ตั้งค่าใน `.env`)
-- ส่วน "ภาพรวม vault" (proj / node / edge / todo) ยัง hardcode ใน html — ไว้ ver.2 ค่อยต่อจาก vault จริง
+- ส่วนงาน Redmine ของ widget = ข้อมูลจริงจาก API แล้ว (ตั้งค่าผ่านปุ่มเฟือง ⚙ ในแอป)
+- "ภาพรวม Redmine" (open / high risk / overdue / closed) = ข้อมูลจริงจาก API แล้วเช่นกัน
+- Workspace tab ต้องตั้งค่า path ของ vault เอง (โชว์ให้กรอกในแท็บนั้นถ้ายังไม่ได้ตั้งค่า) ไม่ได้ฝัง path ไว้อีกต่อไป

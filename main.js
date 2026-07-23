@@ -27,18 +27,29 @@ function loadEnv() {
 }
 const ENV = loadEnv();
 
-// ---- Redmine settings (URL + API key), per-user, not baked into the installer ----
+// ---- app settings (Redmine URL/key, workspace vault path), per-user, not baked into the installer ----
 // See docs/superpowers/specs/2026-07-23-redmine-settings-ui-design.md
 function configPath() { return path.join(app.getPath('userData'), 'config.json'); }
+function writeConfigMerge(patch) {
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch {}
+  Object.assign(saved, patch);
+  fs.mkdirSync(path.dirname(configPath()), { recursive: true });
+  fs.writeFileSync(configPath(), JSON.stringify(saved, null, 2));
+}
 let redmineConfig = { url: '', apiKey: '' };
-function loadRedmineConfig() {
-  try {
-    const saved = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
-    redmineConfig = { url: saved.redmineUrl || '', apiKey: saved.redmineApiKey || '' };
-    return;
-  } catch {}
+let workspaceDir = '';
+function loadAppConfig() {
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch {}
+  redmineConfig = { url: saved.redmineUrl || '', apiKey: saved.redmineApiKey || '' };
+  workspaceDir = saved.workspaceDir || '';
   // dev convenience only: unpackaged runs may still use a local .env; never packaged
-  if (!app.isPackaged) redmineConfig = { url: ENV.REDMINE_URL || '', apiKey: ENV.REDMINE_API_KEY || '' };
+  if (!app.isPackaged) {
+    if (!redmineConfig.url) redmineConfig.url = ENV.REDMINE_URL || '';
+    if (!redmineConfig.apiKey) redmineConfig.apiKey = ENV.REDMINE_API_KEY || '';
+    if (!workspaceDir) workspaceDir = ENV.WORKSPACE_DIR || path.join(__dirname, '..', 'A_Workspace');
+  }
 }
 
 // ---- custom auto-update (path-aware) ----
@@ -228,12 +239,11 @@ function pushTasks() {
     win && win.webContents.send('tasks-update', { ...payload, currentUser }));
 }
 
-// A_Workspace markdown vault — default to the sibling folder of this project
-const WORKSPACE_DIR = ENV.WORKSPACE_DIR || path.join(__dirname, '..', 'A_Workspace');
+// A_Workspace markdown vault — path comes from settings (workspaceDir, loaded in loadAppConfig)
 function pushWorkspace() {
   if (!win) return;
   let payload;
-  try { payload = readWorkspace(WORKSPACE_DIR); }
+  try { payload = readWorkspace(workspaceDir); }
   catch (e) { payload = { error: e.message }; }
   win.webContents.send('workspace-update', payload);
 }
@@ -367,15 +377,22 @@ ipcMain.handle('test-redmine-connection', async (_e, { url, apiKey }) => {
 });
 ipcMain.handle('save-redmine-config', (_e, { url, apiKey }) => {
   redmineConfig = { url, apiKey };
-  fs.mkdirSync(path.dirname(configPath()), { recursive: true });
-  fs.writeFileSync(configPath(), JSON.stringify({ redmineUrl: url, redmineApiKey: apiKey }, null, 2));
+  writeConfigMerge({ redmineUrl: url, redmineApiKey: apiKey });
   currentUserCache = null; statusIdCache = null; // tied to the old credentials
   pushTasks();
   return { ok: true };
 });
+// renderer's Workspace tab: read/save the vault path the same way
+ipcMain.handle('get-workspace-dir', () => workspaceDir);
+ipcMain.handle('save-workspace-dir', (_e, dir) => {
+  workspaceDir = dir;
+  writeConfigMerge({ workspaceDir: dir });
+  pushWorkspace();
+  return { ok: true };
+});
 
 app.whenReady().then(() => {
-  loadRedmineConfig();
+  loadAppConfig();
   MODE === 'screensaver' ? createScreensaver() : createWidget();
   if (MODE === 'widget') setupAutoUpdate();
 });

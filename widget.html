@@ -738,9 +738,20 @@
     const proj=document.getElementById('wsProjects');
     if(!payload || payload.error){
       const notSetUp=payload && payload.error && payload.error.startsWith('ไม่พบโฟลเดอร์ A_Workspace');
-      proj.innerHTML=notSetUp
-        ? `<div class="empty">Coming soon — ฟีเจอร์นี้ยังไม่พร้อมใช้งานสำหรับการติดตั้งนี้</div>`
-        : `<div class="empty">โหลด Workspace ไม่สำเร็จ: ${esc((payload&&payload.error)||'ไม่ทราบสาเหตุ')}</div>`;
+      if(notSetUp){
+        proj.innerHTML=`<div class="not-configured">
+          <p>ยังไม่ได้ตั้งค่าตำแหน่ง Workspace vault</p>
+          <input id="wsDirInput" class="search" type="text" placeholder="เช่น D:\\COWORK\\A_Workspace" style="margin-bottom:0">
+          <button id="wsDirSave">บันทึก</button>
+        </div>`;
+        document.getElementById('wsDirSave').onclick=()=>{
+          const dir=document.getElementById('wsDirInput').value.trim();
+          if(!dir || !(api&&api.saveWorkspaceDir)) return;
+          api.saveWorkspaceDir(dir);
+        };
+      } else {
+        proj.innerHTML=`<div class="empty">โหลด Workspace ไม่สำเร็จ: ${esc((payload&&payload.error)||'ไม่ทราบสาเหตุ')}</div>`;
+      }
       document.getElementById('wsStats').innerHTML='';
       document.getElementById('wsVis').innerHTML='';
       document.getElementById('wsStatus').innerHTML='';

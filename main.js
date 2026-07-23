@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, dialog } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { readWorkspace } = require('./workspace');
@@ -25,6 +26,77 @@ function loadEnv() {
   return env;
 }
 const ENV = loadEnv();
+
+// ---- custom auto-update (path-aware) ----
+// electron-updater's NSIS silent install ignores custom install directories
+// (confirmed unfixed upstream bug) — this replaces it with an explicit
+// /S /D=<install dir> silent install derived from process.execPath.
+// See docs/superpowers/specs/2026-07-22-custom-auto-update-design.md
+const UPDATE_REPO = 'wowBALL/myjobs';
+
+function isNewerVersion(a, b) {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0); }
+  return false;
+}
+
+async function checkForUpdate() {
+  const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`,
+    { headers: { 'User-Agent': 'COWORK-Desktop-Updater', Accept: 'application/vnd.github+json' } });
+  if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
+  const release = await res.json();
+  const latest = release.tag_name.replace(/^v/, '');
+  if (!isNewerVersion(latest, app.getVersion())) return null;
+  const asset = (release.assets || []).find(a => a.name.endsWith('.exe') && !a.name.endsWith('.blockmap'));
+  if (!asset) throw new Error('ไม่พบไฟล์ .exe ใน release ล่าสุด');
+  return { version: latest, url: asset.browser_download_url, name: asset.name };
+}
+
+async function downloadUpdate(update) {
+  const dir = path.join(app.getPath('temp'), 'cowork-desktop-update');
+  fs.mkdirSync(dir, { recursive: true });
+  const dest = path.join(dir, update.name);
+  console.log('[updater] downloading', update.url);
+  const res = await fetch(update.url);
+  if (!res.ok) throw new Error(`ดาวน์โหลดไม่สำเร็จ HTTP ${res.status}`);
+  fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+  console.log('[updater] downloaded to', dest);
+  return dest;
+}
+
+function installUpdate(installerPath) {
+  const installDir = path.dirname(process.execPath);
+  console.log('[updater] installing to', installDir);
+  const child = spawn(installerPath, ['/S', '/D=' + installDir], { detached: true, stdio: 'ignore' });
+  child.unref();
+  setTimeout(() => app.quit(), 400); // let the detached installer fully launch before we release file locks
+}
+
+async function runUpdateCheck() {
+  if (!app.isPackaged) return; // only meaningful for installed builds
+  try {
+    const update = await checkForUpdate();
+    if (!update) { console.log('[updater] up to date'); return; }
+    console.log('[updater] found version', update.version);
+    const installerPath = await downloadUpdate(update);
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'COWORK Desktop',
+      message: `มีเวอร์ชันใหม่ (${update.version}) พร้อมติดตั้ง`,
+      detail: 'รีสตาร์ทตอนนี้เพื่ออัปเดต หรือจะอัปเดตครั้งถัดไปที่เปิดโปรแกรมก็ได้',
+      buttons: ['รีสตาร์ทตอนนี้', 'ไว้ทีหลัง'],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => { if (response === 0) installUpdate(installerPath); });
+  } catch (e) {
+    console.error('[updater]', e.message);
+  }
+}
+
+function setupAutoUpdate() {
+  runUpdateCheck();
+  setInterval(runUpdateCheck, 60 * 60 * 1000);
+}
 
 const STATUS_ORDER = ['Backlog', 'New', 'In Progress', 'Test', 'Resolved'];
 // low → high severity; index used to pick the worst when an issue has several
@@ -226,6 +298,7 @@ ipcMain.handle('close-issue', async (_e, issueId, customField) => {
 
 app.whenReady().then(() => {
   MODE === 'screensaver' ? createScreensaver() : createWidget();
+  if (MODE === 'widget') setupAutoUpdate();
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());

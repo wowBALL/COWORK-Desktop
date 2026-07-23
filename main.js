@@ -171,7 +171,7 @@ async function fetchRedmineTasks() {
     const stats = { open: openIssues.length, highRisk: 0, overdue: 0, closed: closedIssues.length };
 
     const byStatus = new Map();
-    const pushIssue = (issue, risk) => {
+    const pushIssue = (issue, risk, overdue) => {
       const status = issue.status?.name || 'อื่นๆ';
       if (!byStatus.has(status)) byStatus.set(status, []);
       byStatus.get(status).push({
@@ -182,6 +182,7 @@ async function fetchRedmineTasks() {
         assignee: issue.assigned_to?.name || 'ไม่ระบุ',
         status,
         risk,
+        overdue: !!overdue,
         createdOn: issue.created_on,
         updatedOn: issue.updated_on,
         url: `${ENV.REDMINE_URL}/issues/${issue.id}`,
@@ -189,11 +190,13 @@ async function fetchRedmineTasks() {
     };
     for (const issue of openIssues) {
       const risk = topRisk(issue);
-      pushIssue(issue, risk);
+      const overdue = !!(issue.due_date && issue.due_date < today);
+      pushIssue(issue, risk, overdue);
       if (risk === 'High') stats.highRisk++;
-      if (issue.due_date && issue.due_date < today) stats.overdue++;
+      if (overdue) stats.overdue++;
     }
-    for (const issue of closedIssues) pushIssue(issue, topRisk(issue));
+    // closed issues are never "overdue" - they're done
+    for (const issue of closedIssues) pushIssue(issue, topRisk(issue), false);
 
     const orderedNames = [...STATUS_ORDER, ...[...byStatus.keys()].filter(s => !STATUS_ORDER.includes(s))];
     const groups = orderedNames

@@ -71,6 +71,8 @@
     border-bottom:1px solid var(--line-soft)}
   .task:last-child{border-bottom:none}
   .task:hover{background:var(--panel);border-radius:8px;border-bottom-color:transparent}
+  .task.overdue{background:rgba(224,175,104,.12);border-radius:8px;border-bottom-color:transparent}
+  .task.overdue:hover{background:rgba(224,175,104,.22)}
   .idnum{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);flex-shrink:0;width:36px}
   .tmain{flex:1;min-width:0;position:relative}
   .t{font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -344,7 +346,7 @@
     el.innerHTML='';
     issues.forEach(issue=>{
       const row=document.createElement('div');
-      row.className='task';
+      row.className='task'+(issue.overdue?' overdue':'');
       const rank=RISK_ORDER.indexOf(issue.risk);
       const riskCls=rank>=0?`rk${rank}`:'rk-none';
       const riskTxt=issue.risk||'–';

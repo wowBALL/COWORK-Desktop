@@ -143,12 +143,19 @@
   .wc0{color:#9bbcff}.wc1{color:#a6dd93}.wc2{color:#e8c184}
   .wc3{color:#f096a4}.wc4{color:#87d6e6}.wc5{color:#bda6f5}
 
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px;align-items:start}
   .stats.w5{grid-template-columns:repeat(5,1fr)}
   .stat{background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:11px 6px;text-align:center;position:relative;overflow:hidden}
   .stat::before{content:"";position:absolute;inset:0 auto auto 0;width:100%;height:2px;background:var(--sc,var(--accent));opacity:.5}
   .stat .n{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--sc,var(--accent))}
   .stat .l{font-size:9px;color:var(--muted);margin-top:2px;text-transform:uppercase}
+  .stat.expandable{cursor:pointer}
+  .stat .chev2{display:inline-block;margin-left:2px;font-size:8px;color:var(--dim);font-style:normal;transition:transform .15s}
+  .stat.open .chev2{transform:rotate(90deg)}
+  .stat .years{display:none;margin-top:8px;padding-top:6px;border-top:1px solid var(--line-soft);text-align:left}
+  .stat.open .years{display:block}
+  .stat .years .yr{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);padding:1px 1px}
+  .stat .years .yr b{color:var(--ink);font-weight:600}
 
   /* ---- Workspace tab ---- */
   .navrow{-webkit-app-region:no-drag;display:flex;align-items:center;gap:6px;
@@ -571,6 +578,7 @@
     renderChipFilter('assigneeFilter', i=>i.assignee, selectedAssignees);
     renderRiskFilter();
   }
+  let closedYearsOpen=false;
   function renderRmStats(stats){
     const el=document.getElementById('rmStats');
     if(!stats){ el.innerHTML=''; return; }
@@ -578,10 +586,20 @@
       ['open',stats.open,'var(--accent)'],
       ['high risk',stats.highRisk,'var(--rose)'],
       ['overdue',stats.overdue,'var(--amber)'],
-      ['closed',stats.closed,'var(--dim)'],
     ];
+    const closedYears=stats.closedByYear||[];
+    const yearsHtml=closedYears.map(y=>
+      `<div class="yr"><span>${esc(y.label)}</span><b>${y.count}</b></div>`).join('');
     el.innerHTML=cells.map(([l,n,c])=>
-      `<div class="stat" style="--sc:${c}"><div class="n">${n}</div><div class="l">${esc(l)}</div></div>`).join('');
+      `<div class="stat" style="--sc:${c}"><div class="n">${n}</div><div class="l">${esc(l)}</div></div>`).join('')
+      + `<div class="stat${closedYears.length?' expandable':''}${closedYears.length&&closedYearsOpen?' open':''}" style="--sc:var(--dim)" id="closedStat">
+           <div class="n">${stats.closed}</div><div class="l">closed${closedYears.length?'<i class="chev2">›</i>':''}</div>
+           <div class="years">${yearsHtml}</div>
+         </div>`;
+    const closedEl=document.getElementById('closedStat');
+    if(closedEl && closedYears.length){
+      closedEl.onclick=()=>{ closedYearsOpen=!closedYearsOpen; renderRmStats(stats); };
+    }
   }
   function renderTasks(payload){
     const el=document.getElementById('tasks');

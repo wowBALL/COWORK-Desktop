@@ -206,6 +206,7 @@ async function fetchRedmineTasks() {
     const allIssuesRaw = await fetchAllIssues();
     const today = new Date().toISOString().slice(0, 10);
     const stats = { open: 0, highRisk: 0, overdue: 0, closed: 0 };
+    const closedByYear = new Map();
 
     const byStatus = new Map();
     for (const issue of allIssuesRaw) {
@@ -213,8 +214,11 @@ async function fetchRedmineTasks() {
       const closed = isClosedStatusName(status);
       const risk = topRisk(issue);
       const overdue = !closed && !!(issue.due_date && issue.due_date < today);
-      if (closed) stats.closed++;
-      else {
+      if (closed) {
+        stats.closed++;
+        const year = (issue.closed_on || issue.updated_on || '').slice(0, 4);
+        if (year) closedByYear.set(year, (closedByYear.get(year) || 0) + 1);
+      } else {
         stats.open++;
         if (risk === 'High') stats.highRisk++;
         if (overdue) stats.overdue++;
@@ -234,6 +238,13 @@ async function fetchRedmineTasks() {
         url: `${redmineConfig.url}/issues/${issue.id}`,
       });
     }
+
+    const sortedYears = [...closedByYear.keys()].sort((a, b) => b.localeCompare(a));
+    const recentYears = sortedYears.slice(0, 3).map(y => ({ label: y, count: closedByYear.get(y) }));
+    const olderCount = sortedYears.slice(3).reduce((sum, y) => sum + closedByYear.get(y), 0);
+    stats.closedByYear = olderCount > 0
+      ? [...recentYears, { label: 'ก่อนหน้า', count: olderCount }]
+      : recentYears;
 
     const orderedNames = [...STATUS_ORDER, ...[...byStatus.keys()].filter(s => !STATUS_ORDER.includes(s))];
     const groups = orderedNames

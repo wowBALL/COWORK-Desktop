@@ -163,6 +163,24 @@
     border:1px solid var(--line);border-radius:9px;padding:8px 12px;margin-bottom:12px;outline:none;transition:.14s}
   .search::placeholder{color:var(--dim)}
   .search:focus{border-color:var(--accent);background:var(--panel-2)}
+
+  /* Settings view */
+  .set-status{font-size:11px;line-height:1.5;margin:-4px 0 14px;min-height:15px}
+  .set-status.ok{color:var(--green)}
+  .set-status.err{color:var(--rose)}
+  .set-actions{display:flex;gap:8px}
+  .set-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
+    border-radius:8px;padding:8px;cursor:pointer;border:1px solid var(--line);background:var(--panel);
+    color:var(--muted);transition:.15s}
+  .set-actions button:hover{color:var(--ink);border-color:var(--accent)}
+  .set-save{flex:1;background:var(--accent);color:#161821;border-color:var(--accent)}
+  .set-save:hover{color:#161821}
+  .set-save:disabled{opacity:.5;cursor:not-allowed}
+  .not-configured{border:1px dashed var(--line);border-radius:10px;padding:14px;margin-bottom:12px;
+    display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+  .not-configured p{font-size:12px;color:var(--muted);line-height:1.5}
+  .not-configured button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
+    border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#161821}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
   .card{background:var(--panel);border:1px solid var(--line-soft);border-radius:12px;padding:13px 14px;
     cursor:pointer;transition:.14s;position:relative;overflow:hidden}
@@ -221,6 +239,7 @@
     <div class="bar">
       <span class="title">◈ COWORK<span id="appVer" class="ver"></span></span>
       <div class="ctrls">
+        <button id="settingsBtn" title="ตั้งค่า Redmine">⚙</button>
         <button id="pin" title="ปักหมุดบนสุด">📌</button>
         <button id="max" title="ขยายเต็มจอ / คืนขนาด">⛶</button>
         <button id="close" title="ปิด">✕</button>
@@ -274,6 +293,21 @@
 
         <h3>บทเรียน &amp; แผนรับมือ</h3>
         <div id="wsKnow" class="lgrid"></div>
+      </div>
+
+      <!-- ===== Settings view ===== -->
+      <div id="settingsView" class="hidden">
+        <h3>ตั้งค่า Redmine</h3>
+        <div class="row-label">Redmine URL</div>
+        <input id="setUrl" class="search" type="text" placeholder="https://proj.example.com" autocomplete="off">
+        <div class="row-label">API key</div>
+        <input id="setKey" class="search" type="password" placeholder="API access key" autocomplete="off">
+        <div class="hint" style="margin:-4px 0 12px">หาได้ที่ Redmine → มุมขวาบน → My account → API access key</div>
+        <div id="setStatus" class="set-status"></div>
+        <div class="set-actions">
+          <button id="setSave" class="set-save">บันทึก</button>
+          <button id="setCancel" class="set-cancel">ยกเลิก</button>
+        </div>
       </div>
     </div>
   </div>
@@ -520,7 +554,18 @@
     document.getElementById('riskFilter').innerHTML='';
     currentUserName=payload.currentUser||currentUserName;
     renderRmStats(payload.stats);
-    if(payload.error){ el.innerHTML=`<div class="hint">โหลด Redmine ไม่สำเร็จ: ${esc(payload.error)}</div>`; return; }
+    if(payload.error){
+      if(payload.error==='ยังไม่ได้ตั้งค่า Redmine'){
+        el.innerHTML=`<div class="not-configured">
+          <p>ยังไม่ได้ตั้งค่า Redmine URL และ API key — ตั้งค่าก่อนถึงจะดึงงานได้</p>
+          <button id="notConfiguredBtn">ตั้งค่าเลย</button>
+        </div>`;
+        document.getElementById('notConfiguredBtn').onclick=openSettings;
+      } else {
+        el.innerHTML=`<div class="hint">โหลด Redmine ไม่สำเร็จ: ${esc(payload.error)}</div>`;
+      }
+      return;
+    }
     if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; return; }
     lastPayload=payload;
     // drop selections that no longer exist
@@ -692,7 +737,10 @@
     wsData=payload;
     const proj=document.getElementById('wsProjects');
     if(!payload || payload.error){
-      proj.innerHTML=`<div class="empty">โหลด Workspace ไม่สำเร็จ: ${esc((payload&&payload.error)||'ไม่ทราบสาเหตุ')}</div>`;
+      const notSetUp=payload && payload.error && payload.error.startsWith('ไม่พบโฟลเดอร์ A_Workspace');
+      proj.innerHTML=notSetUp
+        ? `<div class="empty">Coming soon — ฟีเจอร์นี้ยังไม่พร้อมใช้งานสำหรับการติดตั้งนี้</div>`
+        : `<div class="empty">โหลด Workspace ไม่สำเร็จ: ${esc((payload&&payload.error)||'ไม่ทราบสาเหตุ')}</div>`;
       document.getElementById('wsStats').innerHTML='';
       document.getElementById('wsVis').innerHTML='';
       document.getElementById('wsStatus').innerHTML='';
@@ -713,7 +761,9 @@
   const navR=document.getElementById('navRedmine'), navW=document.getElementById('navWorkspace'),
         viewR=document.getElementById('redmineView'), viewW=document.getElementById('workspaceView'),
         wsRefresh=document.getElementById('wsRefresh');
+  let lastTab='rm';
   function showTab(which){
+    lastTab=which;
     const ws=which==='ws';
     viewW.classList.toggle('hidden',!ws); viewR.classList.toggle('hidden',ws);
     navW.classList.toggle('on',ws); navR.classList.toggle('on',!ws);
@@ -722,6 +772,44 @@
   navR.onclick=()=>showTab('rm');
   navW.onclick=()=>showTab('ws');
   wsRefresh.onclick=()=>api&&api.refreshWorkspace&&api.refreshWorkspace();
+
+  // settings view
+  const viewS=document.getElementById('settingsView'), navRow=document.querySelector('.navrow');
+  const setUrl=document.getElementById('setUrl'), setKey=document.getElementById('setKey'),
+        setStatus=document.getElementById('setStatus'), setSave=document.getElementById('setSave');
+  function openSettings(){
+    viewR.classList.add('hidden'); viewW.classList.add('hidden'); viewS.classList.remove('hidden');
+    navRow.classList.add('hidden');
+    setStatus.textContent=''; setStatus.className='set-status';
+    api && api.getRedmineConfig && api.getRedmineConfig().then(cfg=>{
+      setUrl.value=(cfg&&cfg.url)||''; setKey.value=(cfg&&cfg.apiKey)||'';
+    });
+  }
+  function closeSettings(){
+    viewS.classList.add('hidden'); navRow.classList.remove('hidden');
+    showTab(lastTab);
+  }
+  document.getElementById('settingsBtn').onclick=openSettings;
+  document.getElementById('setCancel').onclick=closeSettings;
+  setSave.onclick=()=>{
+    const url=setUrl.value.trim(), apiKey=setKey.value.trim();
+    if(!url || !apiKey){ setStatus.className='set-status err'; setStatus.textContent='กรอก URL และ API key ให้ครบ'; return; }
+    setSave.disabled=true; setStatus.className='set-status'; setStatus.textContent='กำลังทดสอบการเชื่อมต่อ...';
+    api.testRedmineConnection({url,apiKey}).then(result=>{
+      if(!result || !result.ok){
+        setSave.disabled=false;
+        setStatus.className='set-status err';
+        setStatus.textContent='เชื่อมต่อไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ');
+        return;
+      }
+      api.saveRedmineConfig({url,apiKey}).then(()=>{
+        setSave.disabled=false;
+        setStatus.className='set-status ok';
+        setStatus.textContent='บันทึกแล้ว · สวัสดี '+result.userName;
+        setTimeout(closeSettings,900);
+      });
+    });
+  };
 
   // project search
   const wsSearch=document.getElementById('wsSearch');

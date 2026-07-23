@@ -27,6 +27,20 @@ function loadEnv() {
 }
 const ENV = loadEnv();
 
+// ---- Redmine settings (URL + API key), per-user, not baked into the installer ----
+// See docs/superpowers/specs/2026-07-23-redmine-settings-ui-design.md
+function configPath() { return path.join(app.getPath('userData'), 'config.json'); }
+let redmineConfig = { url: '', apiKey: '' };
+function loadRedmineConfig() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
+    redmineConfig = { url: saved.redmineUrl || '', apiKey: saved.redmineApiKey || '' };
+    return;
+  } catch {}
+  // dev convenience only: unpackaged runs may still use a local .env; never packaged
+  if (!app.isPackaged) redmineConfig = { url: ENV.REDMINE_URL || '', apiKey: ENV.REDMINE_API_KEY || '' };
+}
+
 // ---- custom auto-update (path-aware) ----
 // electron-updater's NSIS silent install ignores custom install directories
 // (confirmed unfixed upstream bug) — this replaces it with an explicit
@@ -128,9 +142,9 @@ function topRisk(issue) {
 let currentUserCache = null;
 async function getCurrentUserName() {
   if (currentUserCache) return currentUserCache;
-  if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return null;
+  if (!redmineConfig.url || !redmineConfig.apiKey) return null;
   try {
-    const res = await fetch(`${ENV.REDMINE_URL}/users/current.json`, { headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY } });
+    const res = await fetch(`${redmineConfig.url}/users/current.json`, { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
     if (!res.ok) return null;
     const { user } = await res.json();
     currentUserCache = `${user.firstname} ${user.lastname}`.trim();
@@ -143,7 +157,7 @@ async function getCurrentUserName() {
 let statusIdCache = null;
 async function getStatusId(name) {
   if (!statusIdCache) {
-    const res = await fetch(`${ENV.REDMINE_URL}/issue_statuses.json`, { headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY } });
+    const res = await fetch(`${redmineConfig.url}/issue_statuses.json`, { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
     if (!res.ok) throw new Error(`โหลดสถานะไม่สำเร็จ (HTTP ${res.status})`);
     const data = await res.json();
     statusIdCache = {};
@@ -153,15 +167,15 @@ async function getStatusId(name) {
 }
 
 async function fetchRedmineTasks() {
-  if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return { groups: [], stats: null, error: 'ยังไม่ได้ตั้งค่า .env' };
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { groups: [], stats: null, error: 'ยังไม่ได้ตั้งค่า Redmine' };
   try {
-    const headers = { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY };
+    const headers = { 'X-Redmine-API-Key': redmineConfig.apiKey };
     // closed issues are fetched separately, with their own bounded limit sorted by
     // most-recently-closed — merging into one status_id=* request with a shared limit
     // would let an old closed backlog crowd out open (more important) issues
     const [openRes, closedRes] = await Promise.all([
-      fetch(`${ENV.REDMINE_URL}/issues.json?status_id=open&limit=100&include=custom_fields&sort=project:asc,priority:desc`, { headers }),
-      fetch(`${ENV.REDMINE_URL}/issues.json?status_id=closed&limit=50&include=custom_fields&sort=updated_on:desc`, { headers }),
+      fetch(`${redmineConfig.url}/issues.json?status_id=open&limit=100&include=custom_fields&sort=project:asc,priority:desc`, { headers }),
+      fetch(`${redmineConfig.url}/issues.json?status_id=closed&limit=50&include=custom_fields&sort=updated_on:desc`, { headers }),
     ]);
     if (!openRes.ok) return { groups: [], stats: null, error: `Redmine HTTP ${openRes.status}` };
     const openIssues = (await openRes.json()).issues || [];
@@ -185,7 +199,7 @@ async function fetchRedmineTasks() {
         overdue: !!overdue,
         createdOn: issue.created_on,
         updatedOn: issue.updated_on,
-        url: `${ENV.REDMINE_URL}/issues/${issue.id}`,
+        url: `${redmineConfig.url}/issues/${issue.id}`,
       });
     };
     for (const issue of openIssues) {
@@ -295,10 +309,10 @@ ipcMain.on('workspace-refresh', () => pushWorkspace());
 // renderer asks for an issue's journal history + current "Test Results" field,
 // to preview before closing (see docs/superpowers/specs/2026-07-22-close-issue-test-results-design.md)
 ipcMain.handle('get-issue-preview', async (_e, issueId) => {
-  if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return { ok: false, error: 'ยังไม่ได้ตั้งค่า .env' };
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
   try {
-    const res = await fetch(`${ENV.REDMINE_URL}/issues/${issueId}.json?include=journals,custom_fields`,
-      { headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY } });
+    const res = await fetch(`${redmineConfig.url}/issues/${issueId}.json?include=journals,custom_fields`,
+      { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
     if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
     const { issue } = await res.json();
     const historyText = (issue.journals || [])
@@ -317,15 +331,15 @@ ipcMain.handle('get-issue-preview', async (_e, issueId) => {
 });
 // renderer asks to close a Resolved issue (Resolved -> Closed), optionally writing a custom field first
 ipcMain.handle('close-issue', async (_e, issueId, customField) => {
-  if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return { ok: false, error: 'ยังไม่ได้ตั้งค่า .env' };
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
   try {
     const closedId = await getStatusId('Closed');
     if (!closedId) return { ok: false, error: 'ไม่พบสถานะ "Closed" ใน Redmine' };
     const issuePayload = { status_id: closedId };
     if (customField) issuePayload.custom_fields = [{ id: customField.id, value: customField.value }];
-    const res = await fetch(`${ENV.REDMINE_URL}/issues/${issueId}.json`, {
+    const res = await fetch(`${redmineConfig.url}/issues/${issueId}.json`, {
       method: 'PUT',
-      headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY, 'Content-Type': 'application/json' },
+      headers: { 'X-Redmine-API-Key': redmineConfig.apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ issue: issuePayload }),
     });
     if (!res.ok) {
@@ -339,8 +353,29 @@ ipcMain.handle('close-issue', async (_e, issueId, customField) => {
     return { ok: false, error: e.message };
   }
 });
+// renderer's Settings panel: read current values, test before saving, then save
+ipcMain.handle('get-redmine-config', () => ({ url: redmineConfig.url, apiKey: redmineConfig.apiKey }));
+ipcMain.handle('test-redmine-connection', async (_e, { url, apiKey }) => {
+  try {
+    const res = await fetch(`${url}/users/current.json`, { headers: { 'X-Redmine-API-Key': apiKey } });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const { user } = await res.json();
+    return { ok: true, userName: `${user.firstname} ${user.lastname}`.trim() };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+ipcMain.handle('save-redmine-config', (_e, { url, apiKey }) => {
+  redmineConfig = { url, apiKey };
+  fs.mkdirSync(path.dirname(configPath()), { recursive: true });
+  fs.writeFileSync(configPath(), JSON.stringify({ redmineUrl: url, redmineApiKey: apiKey }, null, 2));
+  currentUserCache = null; statusIdCache = null; // tied to the old credentials
+  pushTasks();
+  return { ok: true };
+});
 
 app.whenReady().then(() => {
+  loadRedmineConfig();
   MODE === 'screensaver' ? createScreensaver() : createWidget();
   if (MODE === 'widget') setupAutoUpdate();
 });

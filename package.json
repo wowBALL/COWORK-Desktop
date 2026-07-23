@@ -27,12 +27,6 @@
       "screensaver.html",
       "icons/**/*"
     ],
-    "extraResources": [
-      {
-        "from": ".env",
-        "to": ".env"
-      }
-    ],
     "publish": null,
     "win": {
       "target": [

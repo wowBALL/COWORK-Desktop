@@ -104,7 +104,7 @@ function setupAutoUpdate() {
   setInterval(runUpdateCheck, 60 * 60 * 1000);
 }
 
-const STATUS_ORDER = ['Backlog', 'New', 'In Progress', 'Test', 'Resolved'];
+const STATUS_ORDER = ['Backlog', 'New', 'In Progress', 'Test', 'Resolved', 'Closed'];
 // low → high severity; index used to pick the worst when an issue has several
 const RISK_ORDER = ['Low', 'Fairly Low', 'Moderate', 'Medium', 'High'];
 
@@ -125,6 +125,21 @@ function topRisk(issue) {
   return best;
 }
 
+let currentUserCache = null;
+async function getCurrentUserName() {
+  if (currentUserCache) return currentUserCache;
+  if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return null;
+  try {
+    const res = await fetch(`${ENV.REDMINE_URL}/users/current.json`, { headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY } });
+    if (!res.ok) return null;
+    const { user } = await res.json();
+    currentUserCache = `${user.firstname} ${user.lastname}`.trim();
+    return currentUserCache;
+  } catch {
+    return null;
+  }
+}
+
 let statusIdCache = null;
 async function getStatusId(name) {
   if (!statusIdCache) {
@@ -138,14 +153,25 @@ async function getStatusId(name) {
 }
 
 async function fetchRedmineTasks() {
-  if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return { groups: [], error: 'ยังไม่ได้ตั้งค่า .env' };
+  if (!ENV.REDMINE_URL || !ENV.REDMINE_API_KEY) return { groups: [], stats: null, error: 'ยังไม่ได้ตั้งค่า .env' };
   try {
-    const url = `${ENV.REDMINE_URL}/issues.json?status_id=open&limit=100&include=custom_fields&sort=project:asc,priority:desc`;
-    const res = await fetch(url, { headers: { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY } });
-    if (!res.ok) return { groups: [], error: `Redmine HTTP ${res.status}` };
-    const data = await res.json();
+    const headers = { 'X-Redmine-API-Key': ENV.REDMINE_API_KEY };
+    // closed issues are fetched separately, with their own bounded limit sorted by
+    // most-recently-closed — merging into one status_id=* request with a shared limit
+    // would let an old closed backlog crowd out open (more important) issues
+    const [openRes, closedRes] = await Promise.all([
+      fetch(`${ENV.REDMINE_URL}/issues.json?status_id=open&limit=100&include=custom_fields&sort=project:asc,priority:desc`, { headers }),
+      fetch(`${ENV.REDMINE_URL}/issues.json?status_id=closed&limit=50&include=custom_fields&sort=updated_on:desc`, { headers }),
+    ]);
+    if (!openRes.ok) return { groups: [], stats: null, error: `Redmine HTTP ${openRes.status}` };
+    const openIssues = (await openRes.json()).issues || [];
+    const closedIssues = closedRes.ok ? ((await closedRes.json()).issues || []) : [];
+
+    const today = new Date().toISOString().slice(0, 10);
+    const stats = { open: openIssues.length, highRisk: 0, overdue: 0, closed: closedIssues.length };
+
     const byStatus = new Map();
-    for (const issue of data.issues || []) {
+    const pushIssue = (issue, risk) => {
       const status = issue.status?.name || 'อื่นๆ';
       if (!byStatus.has(status)) byStatus.set(status, []);
       byStatus.get(status).push({
@@ -155,25 +181,34 @@ async function fetchRedmineTasks() {
         projectId: issue.project?.identifier || issue.project?.id || '',
         assignee: issue.assigned_to?.name || 'ไม่ระบุ',
         status,
-        risk: topRisk(issue),
+        risk,
         createdOn: issue.created_on,
         updatedOn: issue.updated_on,
         url: `${ENV.REDMINE_URL}/issues/${issue.id}`,
       });
+    };
+    for (const issue of openIssues) {
+      const risk = topRisk(issue);
+      pushIssue(issue, risk);
+      if (risk === 'High') stats.highRisk++;
+      if (issue.due_date && issue.due_date < today) stats.overdue++;
     }
+    for (const issue of closedIssues) pushIssue(issue, topRisk(issue));
+
     const orderedNames = [...STATUS_ORDER, ...[...byStatus.keys()].filter(s => !STATUS_ORDER.includes(s))];
     const groups = orderedNames
       .filter(s => byStatus.has(s))
       .map(s => ({ status: s, issues: byStatus.get(s) }));
-    return { groups, error: null };
+    return { groups, stats, error: null };
   } catch (e) {
-    return { groups: [], error: e.message };
+    return { groups: [], stats: null, error: e.message };
   }
 }
 
 function pushTasks() {
   if (!win) return;
-  fetchRedmineTasks().then(payload => win && win.webContents.send('tasks-update', payload));
+  Promise.all([fetchRedmineTasks(), getCurrentUserName()]).then(([payload, currentUser]) =>
+    win && win.webContents.send('tasks-update', { ...payload, currentUser }));
 }
 
 // A_Workspace markdown vault — default to the sibling folder of this project

@@ -251,13 +251,8 @@
         <div id="tabs" class="tabs"></div>
         <div id="tasks"><div class="hint">กำลังโหลด...</div></div>
 
-        <h3>ภาพรวม vault</h3>
-        <div class="stats">
-          <div class="stat"><div class="n">7</div><div class="l">proj</div></div>
-          <div class="stat"><div class="n">398</div><div class="l">node</div></div>
-          <div class="stat"><div class="n">575</div><div class="l">edge</div></div>
-          <div class="stat"><div class="n">12</div><div class="l">todo</div></div>
-        </div>
+        <h3>ภาพรวม Redmine</h3>
+        <div id="rmStats" class="stats"></div>
       </div>
 
       <!-- ===== Workspace view ===== -->
@@ -285,10 +280,11 @@
 <script>
   const D=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
   const M=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  let currentUserName='';
   function tick(){
     const n=new Date(),p=x=>String(x).padStart(2,'0'),h=n.getHours();
     hm.textContent=`${p(h)}:${p(n.getMinutes())}`; s.textContent=p(n.getSeconds());
-    greet.textContent=(h<12?'Good morning':h<18?'Good afternoon':'Good evening')+', Ball';
+    greet.textContent=(h<12?'Good morning':h<18?'Good afternoon':'Good evening')+(currentUserName?', '+currentUserName:'');
     date.textContent=`${D[n.getDay()]} ${n.getDate()} ${M[n.getMonth()]} ${n.getFullYear()+543}`;
   }
   const hm=document.getElementById('hm'),s=document.getElementById('s'),
@@ -502,12 +498,26 @@
     renderChipFilter('assigneeFilter', i=>i.assignee, selectedAssignees);
     renderRiskFilter();
   }
+  function renderRmStats(stats){
+    const el=document.getElementById('rmStats');
+    if(!stats){ el.innerHTML=''; return; }
+    const cells=[
+      ['open',stats.open,'var(--accent)'],
+      ['high risk',stats.highRisk,'var(--rose)'],
+      ['overdue',stats.overdue,'var(--amber)'],
+      ['closed',stats.closed,'var(--dim)'],
+    ];
+    el.innerHTML=cells.map(([l,n,c])=>
+      `<div class="stat" style="--sc:${c}"><div class="n">${n}</div><div class="l">${esc(l)}</div></div>`).join('');
+  }
   function renderTasks(payload){
     const el=document.getElementById('tasks');
     document.getElementById('tabs').innerHTML='';
     document.getElementById('projectFilter').innerHTML='';
     document.getElementById('assigneeFilter').innerHTML='';
     document.getElementById('riskFilter').innerHTML='';
+    currentUserName=payload.currentUser||currentUserName;
+    renderRmStats(payload.stats);
     if(payload.error){ el.innerHTML=`<div class="hint">โหลด Redmine ไม่สำเร็จ: ${esc(payload.error)}</div>`; return; }
     if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; return; }
     lastPayload=payload;

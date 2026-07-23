@@ -165,39 +165,60 @@ async function getCurrentUserName() {
   }
 }
 
-let statusIdCache = null;
-async function getStatusId(name) {
-  if (!statusIdCache) {
-    const res = await fetch(`${redmineConfig.url}/issue_statuses.json`, { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
-    if (!res.ok) throw new Error(`โหลดสถานะไม่สำเร็จ (HTTP ${res.status})`);
-    const data = await res.json();
-    statusIdCache = {};
-    for (const s of data.issue_statuses || []) statusIdCache[s.name] = s.id;
+// name -> id and name -> is_closed for every status, from the one shared /issue_statuses.json fetch
+let statusIdCache = null, statusClosedCache = null;
+async function loadStatusMeta() {
+  if (statusIdCache) return;
+  const res = await fetch(`${redmineConfig.url}/issue_statuses.json`, { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
+  if (!res.ok) throw new Error(`โหลดสถานะไม่สำเร็จ (HTTP ${res.status})`);
+  const data = await res.json();
+  statusIdCache = {}; statusClosedCache = {};
+  for (const s of data.issue_statuses || []) { statusIdCache[s.name] = s.id; statusClosedCache[s.name] = !!s.is_closed; }
+}
+async function getStatusId(name) { await loadStatusMeta(); return statusIdCache[name]; }
+function isClosedStatusName(name) { return !!(statusClosedCache && statusClosedCache[name]); }
+
+// fetches every issue regardless of status, paginating through Redmine's offset/limit
+// until total_count is satisfied (first page determines total, rest fetch in parallel)
+async function fetchAllIssues() {
+  const headers = { 'X-Redmine-API-Key': redmineConfig.apiKey };
+  const pageSize = 100;
+  const base = `${redmineConfig.url}/issues.json?status_id=*&limit=${pageSize}&include=custom_fields&sort=project:asc,priority:desc`;
+  const first = await fetch(`${base}&offset=0`, { headers });
+  if (!first.ok) throw new Error(`Redmine HTTP ${first.status}`);
+  const firstData = await first.json();
+  const all = [...(firstData.issues || [])];
+  const total = firstData.total_count || all.length;
+  const offsets = [];
+  for (let o = pageSize; o < total; o += pageSize) offsets.push(o);
+  if (offsets.length) {
+    const pages = await Promise.all(offsets.map(o =>
+      fetch(`${base}&offset=${o}`, { headers }).then(r => r.ok ? r.json() : { issues: [] })));
+    for (const p of pages) all.push(...(p.issues || []));
   }
-  return statusIdCache[name];
+  return all;
 }
 
 async function fetchRedmineTasks() {
   if (!redmineConfig.url || !redmineConfig.apiKey) return { groups: [], stats: null, error: 'ยังไม่ได้ตั้งค่า Redmine' };
   try {
-    const headers = { 'X-Redmine-API-Key': redmineConfig.apiKey };
-    // closed issues are fetched separately, with their own bounded limit sorted by
-    // most-recently-closed — merging into one status_id=* request with a shared limit
-    // would let an old closed backlog crowd out open (more important) issues
-    const [openRes, closedRes] = await Promise.all([
-      fetch(`${redmineConfig.url}/issues.json?status_id=open&limit=100&include=custom_fields&sort=project:asc,priority:desc`, { headers }),
-      fetch(`${redmineConfig.url}/issues.json?status_id=closed&limit=50&include=custom_fields&sort=updated_on:desc`, { headers }),
-    ]);
-    if (!openRes.ok) return { groups: [], stats: null, error: `Redmine HTTP ${openRes.status}` };
-    const openIssues = (await openRes.json()).issues || [];
-    const closedIssues = closedRes.ok ? ((await closedRes.json()).issues || []) : [];
-
+    await loadStatusMeta();
+    const allIssuesRaw = await fetchAllIssues();
     const today = new Date().toISOString().slice(0, 10);
-    const stats = { open: openIssues.length, highRisk: 0, overdue: 0, closed: closedIssues.length };
+    const stats = { open: 0, highRisk: 0, overdue: 0, closed: 0 };
 
     const byStatus = new Map();
-    const pushIssue = (issue, risk, overdue) => {
+    for (const issue of allIssuesRaw) {
       const status = issue.status?.name || 'อื่นๆ';
+      const closed = isClosedStatusName(status);
+      const risk = topRisk(issue);
+      const overdue = !closed && !!(issue.due_date && issue.due_date < today);
+      if (closed) stats.closed++;
+      else {
+        stats.open++;
+        if (risk === 'High') stats.highRisk++;
+        if (overdue) stats.overdue++;
+      }
       if (!byStatus.has(status)) byStatus.set(status, []);
       byStatus.get(status).push({
         id: issue.id,
@@ -207,21 +228,12 @@ async function fetchRedmineTasks() {
         assignee: issue.assigned_to?.name || 'ไม่ระบุ',
         status,
         risk,
-        overdue: !!overdue,
+        overdue,
         createdOn: issue.created_on,
         updatedOn: issue.updated_on,
         url: `${redmineConfig.url}/issues/${issue.id}`,
       });
-    };
-    for (const issue of openIssues) {
-      const risk = topRisk(issue);
-      const overdue = !!(issue.due_date && issue.due_date < today);
-      pushIssue(issue, risk, overdue);
-      if (risk === 'High') stats.highRisk++;
-      if (overdue) stats.overdue++;
     }
-    // closed issues are never "overdue" - they're done
-    for (const issue of closedIssues) pushIssue(issue, topRisk(issue), false);
 
     const orderedNames = [...STATUS_ORDER, ...[...byStatus.keys()].filter(s => !STATUS_ORDER.includes(s))];
     const groups = orderedNames

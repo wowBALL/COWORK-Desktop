@@ -303,7 +303,7 @@
   // Redmine tasks, grouped by status, filtered by a multi-select project set
   function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
   const STATUS_COLOR={'In Progress':'var(--accent)','New':'var(--cyan)','Test':'var(--amber)',
-    'Backlog':'var(--dim)','Resolved':'var(--green)'};
+    'Backlog':'var(--dim)','Resolved':'var(--green)','Closed':'var(--dim)'};
   function hashN(key,n){ let h=0; for(const c of String(key)) h=(h*31+c.charCodeAt(0))>>>0; return h%n; }
   function timeAgo(iso){
     if(!iso) return 'ไม่ระบุ';
@@ -348,8 +348,9 @@
       const rank=RISK_ORDER.indexOf(issue.risk);
       const riskCls=rank>=0?`rk${rank}`:'rk-none';
       const riskTxt=issue.risk||'–';
+      const idColor=STATUS_COLOR[issue.status]||'var(--dim)';
       row.innerHTML=`
-        <span class="idnum">#${issue.id}</span>
+        <span class="idnum" style="color:${idColor}" title="${esc(issue.status)}">#${issue.id}</span>
         <div class="tmain">
           <div class="t">${esc(issue.subject)}</div>
           <div class="tip">สร้าง <b>${timeAgo(issue.createdOn)}</b> · แก้ไข <b>${timeAgo(issue.updatedOn)}</b></div>

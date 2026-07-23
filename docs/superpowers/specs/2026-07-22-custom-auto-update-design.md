@@ -37,14 +37,19 @@ Fetch the asset URL, stream to a cache file (e.g. `app.getPath('temp')/cowork-de
 ```js
 function installUpdate(installerPath) {
   const installDir = path.dirname(process.execPath);
-  const child = spawn(installerPath, ['/S', '/D=' + installDir], { detached: true, stdio: 'ignore' });
+  const child = spawn(installerPath, ['/S', '/D="' + installDir + '"'],
+    { detached: true, stdio: 'ignore', windowsVerbatimArguments: true });
   child.unref();
   setTimeout(() => app.quit(), 400); // give the detached child time to fully launch before we release file locks
 }
 ```
+
+**Tested and confirmed empirically** (2026-07-23) against this project's actual electron-builder-generated installer, on a real custom install path containing a space (`D:\Program\COWORK Desktop`):
+- Generic NSIS documentation says `/D=` must be **unquoted**, even with spaces in the path. That's wrong for this installer — unquoted, the space truncates the directory: `D:\Program\COWORK Desktop` silently became `D:\Program\COWORK` (a second, empty `D:\Program\COWORK Desktop` folder was also created alongside it). Reproduced identically via `.NET ProcessStartInfo.Arguments` (the most literal possible invocation, no Node/PowerShell escaping involved at all), so this isn't a scripting-layer quoting bug — it's how this installer's own argument handling behaves.
+- **Quoting** the value (`/D="D:\Program\COWORK Desktop"`) is what actually works — confirmed via raw `ProcessStartInfo` and then reproduced through Node's `spawn()` with `windowsVerbatimArguments: true` (needed so Node doesn't add a second layer of escaping around the already-quoted string).
 Key details:
 - `installDir` comes from `process.execPath` of the **currently running** process — always correct, no guessing, no registry lookups.
-- `/D=` is standard NSIS silent-install syntax for overriding `$INSTDIR`; it must be the **last** argument and must **not** be quoted — passing it as a `spawn()` array element (not a shell string) already avoids adding surrounding quotes, so this falls out naturally as long as we don't switch to `shell: true` or string concatenation.
+- `/D=` overrides `$INSTDIR` for the silent install; it must be the **last** argument. Unlike generic NSIS guidance, this installer needs the value **quoted** when it contains spaces (see tested finding above) — passed via `spawn()` with `windowsVerbatimArguments: true` so Node doesn't mangle the quotes we've deliberately included.
 - `/S` runs the installer fully silently (no NSIS UI at all, so the directory-picker page is skipped entirely — `/D=` supplies that value instead).
 - Spawn detached + unref before quitting, so the installer isn't killed when our process exits and isn't blocked waiting on us.
 

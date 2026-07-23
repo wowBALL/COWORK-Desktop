@@ -67,7 +67,13 @@ async function downloadUpdate(update) {
 function installUpdate(installerPath) {
   const installDir = path.dirname(process.execPath);
   console.log('[updater] installing to', installDir);
-  const child = spawn(installerPath, ['/S', '/D=' + installDir], { detached: true, stdio: 'ignore' });
+  // Generic NSIS docs say /D= must be unquoted even with spaces in the path — tested against
+  // this actual electron-builder-generated installer, that's wrong: unquoted truncates the
+  // path at the first space (confirmed: "D:\Program\COWORK Desktop" -> "D:\Program\COWORK").
+  // Quoting it, plus windowsVerbatimArguments so Node doesn't add its own escaping on top,
+  // is what actually works.
+  const child = spawn(installerPath, ['/S', '/D="' + installDir + '"'],
+    { detached: true, stdio: 'ignore', windowsVerbatimArguments: true });
   child.unref();
   setTimeout(() => app.quit(), 400); // let the detached installer fully launch before we release file locks
 }

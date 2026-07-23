@@ -32,7 +32,7 @@ const ENV = loadEnv();
 // (confirmed unfixed upstream bug) — this replaces it with an explicit
 // /S /D=<install dir> silent install derived from process.execPath.
 // See docs/superpowers/specs/2026-07-22-custom-auto-update-design.md
-const UPDATE_REPO = 'wowBALL/myjobs';
+const UPDATE_REPO = 'wowBALL/COWORK-Desktop';
 
 function isNewerVersion(a, b) {
   const pa = a.split('.').map(Number), pb = b.split('.').map(Number);

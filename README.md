@@ -82,15 +82,13 @@ npx electron-builder --win
 ได้ installer ใน `dist/` แจกลงเครื่องอื่นได้
 
 ## อัปเดตอัตโนมัติ
-Widget ที่ติดตั้งแล้วเช็คเวอร์ชันใหม่จาก GitHub Releases (`wowBALL/myjobs`) เองตอนเปิดโปรแกรม และเช็คซ้ำทุก 1 ชั่วโมง — ถ้ามีเวอร์ชันใหม่จะโหลดมาเงียบๆ แล้วถามว่าจะรีสตาร์ทติดตั้งเลยไหม
+Widget ที่ติดตั้งแล้วเช็คเวอร์ชันใหม่จาก GitHub Releases (`wowBALL/COWORK-Desktop`, public repo) เองตอนเปิดโปรแกรม และเช็คซ้ำทุก 1 ชั่วโมง — ถ้ามีเวอร์ชันใหม่จะโหลดมาเงียบๆ แล้วถามว่าจะรีสตาร์ทติดตั้งเลยไหม
 
-ต้องมี:
-- `.env` (ทั้งของตัวเองตอน dev และไฟล์ extraResource ที่แพ็กไปกับ installer) มีค่า `GH_TOKEN` เป็น GitHub personal access token (fine-grained, scope แค่ repo นี้, permission "Contents: read") — เพราะ repo เป็น private
-- ตอนจะออกเวอร์ชันใหม่ ให้ bump `version` ใน `package.json` แล้วรัน:
-  ```bash
-  GH_TOKEN=<token ที่มีสิทธิ์ write releases> npm run release
-  ```
-  คำสั่งนี้จะ build แล้วอัปโหลด installer + `latest.yml` ขึ้นเป็น GitHub Release ให้เอง — widget ของทุกคนที่ติดตั้งไว้แล้วจะเห็นอัปเดตในเช็ครอบถัดไปโดยไม่ต้องแจกไฟล์เอง
+กลไกนี้เขียนเอง (ไม่ใช้ `electron-updater`) เพราะ electron-updater มีบั๊กที่ไม่รักษา path ที่เลือกเองตอนติดตั้ง — รายละเอียดใน `docs/superpowers/specs/2026-07-22-custom-auto-update-design.md` ไม่ต้องใช้ token ใดๆ เพราะ repo เป็น public
+
+ตอนจะออกเวอร์ชันใหม่:
+1. bump `version` ใน `package.json` แล้ว `npm run dist`
+2. อัปโหลด `.exe` จาก `dist/` ขึ้นเป็น GitHub Release (เช่น `gh release create vX.X.X "dist/COWORK Desktop Setup X.X.X.exe" --repo wowBALL/COWORK-Desktop`) — widget ของทุกคนที่ติดตั้งไว้แล้วจะเห็นอัปเดตในเช็ครอบถัดไปโดยไม่ต้องแจกไฟล์เอง
 
 ## หมายเหตุ
 - ส่วนงาน Redmine ของ widget = ข้อมูลจริงจาก API แล้ว (ตั้งค่าใน `.env`)

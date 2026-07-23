@@ -13,7 +13,7 @@ Drop `electron-updater` as a dependency (already done) and write a small custom 
 ### 1. Check for updates
 ```js
 async function checkForUpdate() {
-  const res = await fetch('https://api.github.com/repos/wowBALL/myjobs/releases/latest');
+  const res = await fetch('https://api.github.com/repos/wowBALL/COWORK-Desktop/releases/latest');
   if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
   const release = await res.json();
   const latest = release.tag_name.replace(/^v/, '');

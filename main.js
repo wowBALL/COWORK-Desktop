@@ -233,6 +233,7 @@ async function fetchRedmineTasks() {
         status,
         risk,
         overdue,
+        closed,
         createdOn: issue.created_on,
         updatedOn: issue.updated_on,
         url: `${redmineConfig.url}/issues/${issue.id}`,

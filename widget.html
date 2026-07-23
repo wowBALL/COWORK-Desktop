@@ -58,6 +58,10 @@
   .chip .n{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:var(--ink);
     background:rgba(0,0,0,.28);border-radius:20px;padding:1px 6px}
   .chip.active .n{color:#161821;background:rgba(22,24,33,.22)}
+  .chip .n .o{color:var(--green)}
+  .chip .n .c{color:var(--muted)}
+  .chip .n .sep{color:var(--dim);margin:0 1px;opacity:.6}
+  .chip.active .n .o,.chip.active .n .c,.chip.active .n .sep{color:#161821;opacity:1}
 
   /* status tabs — single-select, color-coded */
   .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
@@ -66,6 +70,9 @@
   .tab .dot{width:7px;height:7px;border-radius:50%;background:var(--sc,var(--dim));flex-shrink:0}
   .tab .n{font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--ink);
     background:rgba(0,0,0,.28);border-radius:20px;padding:1px 6px}
+  .tab .n .o{color:var(--green)}
+  .tab .n .c{color:var(--muted)}
+  .tab .n .sep{color:var(--dim);margin:0 1px;opacity:.6}
   .tab:hover{color:var(--ink)}
   .tab.active{color:var(--ink);background:var(--panel-2);border-color:var(--sc,var(--accent))}
   .tab.active .n{color:var(--muted)}
@@ -534,15 +541,22 @@
       tabsEl.appendChild(tab);
     });
   }
+  const ocSpan=(o,c)=>`<span class="n"><span class="o">${o}</span><span class="sep">/</span><span class="c">${c}</span></span>`;
   function renderChipFilter(elId, keyFn, selected){
     const el=document.getElementById(elId);
     el.innerHTML='';
     const counts=new Map();
-    allIssues().forEach(i=>{ const k=keyFn(i); counts.set(k,(counts.get(k)||0)+1); });
+    allIssues().forEach(i=>{
+      const k=keyFn(i);
+      if(!counts.has(k)) counts.set(k,{open:0,closed:0});
+      const c=counts.get(k);
+      i.closed?c.closed++:c.open++;
+    });
     [...counts.keys()].sort().forEach(k=>{
       const chip=document.createElement('div');
       chip.className='chip'+(selected.has(k)?' active':'');
-      chip.innerHTML=`${esc(k)}<span class="n">${counts.get(k)}</span>`;
+      const c=counts.get(k);
+      chip.innerHTML=`${esc(k)}${ocSpan(c.open,c.closed)}`;
       chip.onclick=()=>{
         selected.has(k)?selected.delete(k):selected.add(k);
         visibleCount=15; renderFilters(); renderTabs(); renderPanel();
@@ -554,23 +568,25 @@
     const el=document.getElementById('riskFilter');
     el.innerHTML='';
     const issues=allIssues();
-    const mk=(cls,sc,label,count,onclick)=>{
+    const oc=list=>({open:list.filter(i=>!i.closed).length,closed:list.filter(i=>i.closed).length});
+    const mk=(cls,sc,label,list,onclick)=>{
       const tab=document.createElement('div');
       tab.className='tab'+cls;
       tab.style.setProperty('--sc',sc);
-      tab.innerHTML=`<span class="dot"></span>${esc(label)}<span class="n">${count}</span>`;
+      const c=oc(list);
+      tab.innerHTML=`<span class="dot"></span>${esc(label)}${ocSpan(c.open,c.closed)}`;
       tab.onclick=onclick;
       el.appendChild(tab);
     };
-    mk(selectedRisk===null?' active':'','var(--accent)','ทั้งหมด',issues.length,
+    mk(selectedRisk===null?' active':'','var(--accent)','ทั้งหมด',issues,
       ()=>{ selectedRisk=null; visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
     RISK_ORDER.forEach((r,idx)=>{
-      const n=issues.filter(i=>i.risk===r).length;
-      mk(selectedRisk===r?' active':'',RISK_COLORS[idx],r,n,
+      const list=issues.filter(i=>i.risk===r);
+      mk(selectedRisk===r?' active':'',RISK_COLORS[idx],r,list,
         ()=>{ selectedRisk=(selectedRisk===r?null:r); visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
     });
-    const noneN=issues.filter(i=>!i.risk).length;
-    mk(selectedRisk==='none'?' active':'','var(--dim)','ไม่ระบุ',noneN,
+    const noneList=issues.filter(i=>!i.risk);
+    mk(selectedRisk==='none'?' active':'','var(--dim)','ไม่ระบุ',noneList,
       ()=>{ selectedRisk=(selectedRisk==='none'?null:'none'); visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
   }
   function renderFilters(){

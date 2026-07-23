@@ -176,6 +176,18 @@
   .set-save{flex:1;background:var(--accent);color:#161821;border-color:var(--accent)}
   .set-save:hover{color:#161821}
   .set-save:disabled{opacity:.5;cursor:not-allowed}
+  .set-cancel{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
+    border-radius:8px;padding:9px;cursor:pointer;border:1px solid var(--line);background:var(--panel);
+    color:var(--muted);transition:.15s;margin-top:4px}
+  .set-cancel:hover{color:var(--ink);border-color:var(--accent)}
+  .set-card{border:1px solid var(--line);border-radius:11px;margin-bottom:10px;overflow:hidden}
+  .set-card-header{-webkit-app-region:no-drag;display:flex;align-items:center;gap:8px;padding:11px 13px;
+    cursor:pointer;font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;
+    color:var(--ink);background:var(--panel)}
+  .set-card-header .chev{margin-left:auto;color:var(--dim);transition:transform .15s;font-style:normal}
+  .set-card.open .set-card-header .chev{transform:rotate(90deg)}
+  .set-card-body{display:none;padding:12px 13px 13px}
+  .set-card.open .set-card-body{display:block}
   .not-configured{border:1px dashed var(--line);border-radius:10px;padding:14px;margin-bottom:12px;
     display:flex;flex-direction:column;gap:10px;align-items:flex-start}
   .not-configured p{font-size:12px;color:var(--muted);line-height:1.5}
@@ -297,17 +309,29 @@
 
       <!-- ===== Settings view ===== -->
       <div id="settingsView" class="hidden">
-        <h3>ตั้งค่า Redmine</h3>
-        <div class="row-label">Redmine URL</div>
-        <input id="setUrl" class="search" type="text" placeholder="https://proj.example.com" autocomplete="off">
-        <div class="row-label">API key</div>
-        <input id="setKey" class="search" type="password" placeholder="API access key" autocomplete="off">
-        <div class="hint" style="margin:-4px 0 12px">หาได้ที่ Redmine → มุมขวาบน → My account → API access key</div>
-        <div id="setStatus" class="set-status"></div>
-        <div class="set-actions">
-          <button id="setSave" class="set-save">บันทึก</button>
-          <button id="setCancel" class="set-cancel">ยกเลิก</button>
+        <h3>ตั้งค่า</h3>
+        <div class="set-card" id="cardRedmine">
+          <div class="set-card-header" data-card="cardRedmine"><span>◈ Redmine</span><span class="chev">›</span></div>
+          <div class="set-card-body">
+            <div class="row-label">Redmine URL</div>
+            <input id="setUrl" class="search" type="text" placeholder="https://proj.example.com" autocomplete="off">
+            <div class="row-label">API key</div>
+            <input id="setKey" class="search" type="password" placeholder="API access key" autocomplete="off">
+            <div class="hint" style="margin:-4px 0 12px">หาได้ที่ Redmine → มุมขวาบน → My account → API access key</div>
+            <div id="setStatus" class="set-status"></div>
+            <div class="set-actions"><button id="setSave" class="set-save">บันทึก</button></div>
+          </div>
         </div>
+        <div class="set-card" id="cardWorkspace">
+          <div class="set-card-header" data-card="cardWorkspace"><span>◈ Workspace</span><span class="chev">›</span></div>
+          <div class="set-card-body">
+            <div class="row-label">Vault path</div>
+            <input id="setWsDir" class="search" type="text" placeholder="เช่น D:\COWORK\A_Workspace" autocomplete="off">
+            <div id="setWsStatus" class="set-status"></div>
+            <div class="set-actions"><button id="setWsSave" class="set-save">บันทึก</button></div>
+          </div>
+        </div>
+        <button id="setCancel" class="set-cancel" style="width:100%">ปิด</button>
       </div>
     </div>
   </div>
@@ -560,7 +584,7 @@
           <p>ยังไม่ได้ตั้งค่า Redmine URL และ API key — ตั้งค่าก่อนถึงจะดึงงานได้</p>
           <button id="notConfiguredBtn">ตั้งค่าเลย</button>
         </div>`;
-        document.getElementById('notConfiguredBtn').onclick=openSettings;
+        document.getElementById('notConfiguredBtn').onclick=()=>openSettings('cardRedmine');
       } else {
         el.innerHTML=`<div class="hint">โหลด Redmine ไม่สำเร็จ: ${esc(payload.error)}</div>`;
       }
@@ -741,14 +765,9 @@
       if(notSetUp){
         proj.innerHTML=`<div class="not-configured">
           <p>ยังไม่ได้ตั้งค่าตำแหน่ง Workspace vault</p>
-          <input id="wsDirInput" class="search" type="text" placeholder="เช่น D:\\COWORK\\A_Workspace" style="margin-bottom:0">
-          <button id="wsDirSave">บันทึก</button>
+          <button id="wsNotConfiguredBtn">ตั้งค่าเลย</button>
         </div>`;
-        document.getElementById('wsDirSave').onclick=()=>{
-          const dir=document.getElementById('wsDirInput').value.trim();
-          if(!dir || !(api&&api.saveWorkspaceDir)) return;
-          api.saveWorkspaceDir(dir);
-        };
+        document.getElementById('wsNotConfiguredBtn').onclick=()=>openSettings('cardWorkspace');
       } else {
         proj.innerHTML=`<div class="empty">โหลด Workspace ไม่สำเร็จ: ${esc((payload&&payload.error)||'ไม่ทราบสาเหตุ')}</div>`;
       }
@@ -784,23 +803,33 @@
   navW.onclick=()=>showTab('ws');
   wsRefresh.onclick=()=>api&&api.refreshWorkspace&&api.refreshWorkspace();
 
-  // settings view
+  // settings view — collapsible per-tab cards (defaults to collapsed; more cards can be
+  // added later as more tabs need config, without touching the open/close plumbing)
   const viewS=document.getElementById('settingsView'), navRow=document.querySelector('.navrow');
   const setUrl=document.getElementById('setUrl'), setKey=document.getElementById('setKey'),
         setStatus=document.getElementById('setStatus'), setSave=document.getElementById('setSave');
-  function openSettings(){
+  const setWsDir=document.getElementById('setWsDir'), setWsStatus=document.getElementById('setWsStatus'),
+        setWsSave=document.getElementById('setWsSave');
+  document.querySelectorAll('.set-card-header').forEach(h=>{
+    h.onclick=()=>document.getElementById(h.dataset.card).classList.toggle('open');
+  });
+  function openSettings(autoOpenCard){
     viewR.classList.add('hidden'); viewW.classList.add('hidden'); viewS.classList.remove('hidden');
     navRow.classList.add('hidden');
+    document.querySelectorAll('.set-card').forEach(c=>c.classList.remove('open'));
+    if(autoOpenCard) document.getElementById(autoOpenCard).classList.add('open');
     setStatus.textContent=''; setStatus.className='set-status';
+    setWsStatus.textContent=''; setWsStatus.className='set-status';
     api && api.getRedmineConfig && api.getRedmineConfig().then(cfg=>{
       setUrl.value=(cfg&&cfg.url)||''; setKey.value=(cfg&&cfg.apiKey)||'';
     });
+    api && api.getWorkspaceDir && api.getWorkspaceDir().then(dir=>{ setWsDir.value=dir||''; });
   }
   function closeSettings(){
     viewS.classList.add('hidden'); navRow.classList.remove('hidden');
     showTab(lastTab);
   }
-  document.getElementById('settingsBtn').onclick=openSettings;
+  document.getElementById('settingsBtn').onclick=()=>openSettings();
   document.getElementById('setCancel').onclick=closeSettings;
   setSave.onclick=()=>{
     const url=setUrl.value.trim(), apiKey=setKey.value.trim();
@@ -817,8 +846,17 @@
         setSave.disabled=false;
         setStatus.className='set-status ok';
         setStatus.textContent='บันทึกแล้ว · สวัสดี '+result.userName;
-        setTimeout(closeSettings,900);
       });
+    });
+  };
+  setWsSave.onclick=()=>{
+    const dir=setWsDir.value.trim();
+    if(!dir){ setWsStatus.className='set-status err'; setWsStatus.textContent='กรอก path ก่อน'; return; }
+    setWsSave.disabled=true;
+    api.saveWorkspaceDir(dir).then(()=>{
+      setWsSave.disabled=false;
+      setWsStatus.className='set-status ok';
+      setWsStatus.textContent='บันทึกแล้ว';
     });
   };
 

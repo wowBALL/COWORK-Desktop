@@ -410,7 +410,7 @@
         && (selectedRisk===null || (selectedRisk==='none' ? !i.risk : i.risk===selectedRisk));
   }
   function allIssues(){ return lastPayload.groups.flatMap(g=>g.issues); }
-  function openIssues(){ return allIssues().filter(i=>!i.closed); } // ALL tab = only open work
+  function openIssues(){ return allIssues().filter(i=>!i.closed && i.status!=='Backlog'); } // ALL tab = only open work, excluding Backlog
   function statusIssues(status){
     const g=lastPayload.groups.find(g=>g.status===status);
     return (g?g.issues:[]).filter(issueMatch);

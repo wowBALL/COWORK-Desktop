@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.3.15
+
+**แก้ไข**
+- tab **ALL** ไม่รวมงานสถานะ **Backlog** แล้ว — นับและแสดงเฉพาะงานที่กำลังทำจริง (New / In Progress / Test / Resolved) งาน Backlog ยังดูได้ที่ tab Backlog ตามเดิม
+
 ## v1.3.14
 
 **แก้ไข**

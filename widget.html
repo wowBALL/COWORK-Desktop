@@ -410,6 +410,7 @@
         && (selectedRisk===null || (selectedRisk==='none' ? !i.risk : i.risk===selectedRisk));
   }
   function allIssues(){ return lastPayload.groups.flatMap(g=>g.issues); }
+  function openIssues(){ return allIssues().filter(i=>!i.closed); } // ALL tab = only open work
   function statusIssues(status){
     const g=lastPayload.groups.find(g=>g.status===status);
     return (g?g.issues:[]).filter(issueMatch);
@@ -417,7 +418,7 @@
   let visibleCount=15; // reset to 15 whenever the tab/filters change; "load more" just bumps this
   function renderPanel(){
     const el=document.getElementById('tasks');
-    const allMatching=activeStatus==='ALL'?allIssues().filter(issueMatch):statusIssues(activeStatus);
+    const allMatching=activeStatus==='ALL'?openIssues().filter(issueMatch):statusIssues(activeStatus);
     if(!allMatching.length){ el.innerHTML='<div class="hint">ไม่มีงานในสถานะนี้</div>'; return; }
     const issues=allMatching.slice(0,visibleCount);
     el.innerHTML='';
@@ -529,7 +530,7 @@
     const allTab=document.createElement('div');
     allTab.className='tab'+(activeStatus==='ALL'?' active':'');
     allTab.style.setProperty('--sc','var(--accent)');
-    allTab.innerHTML=`<span class="dot"></span>ALL<span class="n">${allIssues().filter(issueMatch).length}</span>`;
+    allTab.innerHTML=`<span class="dot"></span>ALL<span class="n">${openIssues().filter(issueMatch).length}</span>`;
     allTab.onclick=()=>{ activeStatus='ALL'; visibleCount=15; renderTabs(); renderPanel(); };
     tabsEl.appendChild(allTab);
     lastPayload.groups.forEach(g=>{

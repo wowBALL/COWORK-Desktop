@@ -287,7 +287,6 @@
     #mtBody.two-col .mt-outline::-webkit-scrollbar{width:5px}
     #mtBody.two-col .mt-outline::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
   }
-
   /* รายการ: จัดกลุ่มตามวัน แต่ละแถวคลิกเข้าไปอ่านเต็มหน้า */
   .mt-daybar{display:flex;align-items:center;gap:9px;margin:14px 0 8px}
   .mt-daybar .d{font-size:11.5px;font-weight:700;color:var(--ink)}
@@ -329,8 +328,11 @@
   .mt-seg button.on{background:var(--accent);color:#161821}
   .mt-outline{background:var(--panel);border:1px solid var(--line-soft);border-radius:11px;padding:12px 14px;margin-bottom:13px}
   .mt-outline .ot{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:10px}
+  /* transition ระบุ property ตรง ๆ (ไม่ใช่ shorthand เปล่า ๆ) เพราะ font-size เปลี่ยนตาม
+     container query ตอนขยาย/ย่อจอ — shorthand เปล่าจะ animate "all" ทำให้ตัวอักษรเด้งขนาดวูบ ๆ */
   .mt-outline a{display:block;font-size:12px;line-height:1.5;color:var(--muted);text-decoration:none;
-    padding:6px 0 6px 12px;border-left:2px solid var(--line);cursor:pointer;transition:.12s}
+    padding:6px 0 6px 12px;border-left:2px solid var(--line);cursor:pointer;
+    transition:color .12s,border-left-color .12s}
   .mt-outline a+a{margin-top:2px}
   .mt-outline a:hover{color:var(--accent);border-left-color:var(--accent)}
   .mt-outline a.l3{padding-left:22px;font-size:11.5px}
@@ -340,10 +342,17 @@
   /* กดสารบัญแล้วกระโดดมาที่นี่ — .mt-seg (แท็บ สรุป/ถอดเสียง/ไฟล์) ค้างอยู่บนสุดแบบ sticky
      ~43px สูง ถ้าไม่เผื่อระยะ หัวข้อจะเลื่อนมาซ้อนใต้แท็บพอดีจนอ่านไม่เห็น */
   .md h1,.md h2,.md h3{scroll-margin-top:54px}
+  /* ตัด text-transform/letter-spacing ของ h3 กลางไฟล์ (บรรทัด ~48, ใช้กับ h3 หัวข้อ section
+     ของทั้งแอปเช่น "งาน REDMINE") ที่หลุดมาโดนหัวข้อในสรุปประชุมด้วย — ทำให้ "POS App" กลาย
+     เป็น "POS APP" เว้นระยะห่างผิดปกติ ดูเหมือนป้ายกำกับมากกว่าหัวข้อเนื้อหา */
+  .md h3{text-transform:none;letter-spacing:normal}
   .md h1{font-size:15px;font-weight:700;margin:2px 0 10px}
   .md h2{font-size:12.5px;font-weight:700;color:var(--accent);margin:17px 0 7px;
     padding-bottom:5px;border-bottom:1px solid var(--line-soft)}
-  .md h3{font-size:12.5px;font-weight:700;color:var(--ink);margin:13px 0 5px}
+  /* หัวข้อย่อยมีสีของตัวเอง + แถบซ้าย ให้แยกจากตัวหนังสือรอบข้างได้ในสายตาแรก ไม่ต้องไล่อ่าน */
+  .md h3{font-size:12.5px;font-weight:700;color:var(--cyan);margin:16px 0 6px;
+    padding:5px 10px;background:rgba(103,201,220,.09);border-left:3px solid var(--cyan);
+    border-radius:0 7px 7px 0}
   .md ul{margin:4px 0 9px;padding-left:17px}
   .md li{margin:3px 0}
   .md li::marker{color:var(--dim)}
@@ -352,6 +361,18 @@
   .md strong{color:var(--ink);font-weight:700}
   .md code{font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--panel-2);
     border-radius:4px;padding:1px 5px;color:var(--cyan)}
+  /* จอกว้างพอ (ขยายเต็มจอ) ตัวอักษรใหญ่ขึ้นอีกนิด — เนื้อหา + สารบัญอ่านสบายขึ้นโดยไม่ต้อง
+     เพ่ง ที่ 420px (วิดเจ็ตปกติ) ไม่เปลี่ยน เพราะ container query ยังไม่ถึงเกณฑ์ · วางไว้หลังสุด
+     เพราะ specificity เท่ากับ .md h3 ด้านบน ต้องมาทีหลังใน source ถึงจะชนะตอน override */
+  @container (min-width:900px){
+    .md{font-size:14px}
+    .md h1{font-size:17px}
+    .md h2{font-size:14px}
+    .md h3{font-size:14px}
+    .mt-outline .ot{font-size:10px}
+    .mt-outline a{font-size:13.5px}
+    .mt-outline a.l3{font-size:12.5px}
+  }
 
   /* transcript — พื้นหลังคนละสีต่อผู้พูด อ่านแล้วแยกออกทันทีว่าใครพูด */
   .tr{display:flex;flex-direction:column;gap:9px;padding:2px 0}

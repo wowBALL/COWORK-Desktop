@@ -261,6 +261,98 @@
   .lcard .lname{font-size:13px;font-weight:600;line-height:1.35;margin-bottom:5px}
   .lcard .lmeta{font-size:11px;color:var(--muted);line-height:1.4}
   .empty{font-size:12px;color:var(--dim);padding:10px 2px;border:1px dashed var(--line);border-radius:10px;text-align:center}
+
+  /* ---- Meeting tab ---- */
+  /* รายการ: จัดกลุ่มตามวัน แต่ละแถวคลิกเข้าไปอ่านเต็มหน้า */
+  .mt-daybar{display:flex;align-items:center;gap:9px;margin:14px 0 8px}
+  .mt-daybar .d{font-size:11.5px;font-weight:700;color:var(--ink)}
+  .mt-daybar .ln{flex:1;height:1px;background:var(--line-soft)}
+  .mt-daybar .n{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;color:var(--dim)}
+  .mt-row{-webkit-app-region:no-drag;display:flex;gap:11px;padding:10px 12px;background:var(--panel);
+    border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;cursor:pointer;transition:.14s}
+  .mt-row:hover{border-color:var(--accent);background:var(--panel-2);transform:translateY(-1px)}
+  .mt-row.faded{opacity:.6}
+  .mt-row .rail{width:3px;border-radius:3px;background:var(--sc,var(--accent));flex-shrink:0}
+  .mt-row .mid{flex:1;min-width:0}
+  .mt-row .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .mt-row .nm{font-size:13px;font-weight:700;color:var(--ink);word-break:break-word}
+  .mt-row .tm{font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;color:var(--accent);flex-shrink:0}
+  .mt-row .snip{font-size:11.5px;color:var(--muted);line-height:1.55;margin:4px 0 7px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .mt-tags{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+  .mt-tag{font-size:10px;font-weight:600;color:var(--cyan);background:rgba(103,201,220,.1);
+    border:1px solid rgba(103,201,220,.25);border-radius:6px;padding:2px 7px;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mt-pills{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  .mt-pill{font-size:9.5px;font-weight:700;color:var(--dim);background:var(--panel-2);border-radius:20px;
+    padding:2px 8px;white-space:nowrap}
+  .mt-pill.mono{font-family:'JetBrains Mono',monospace}
+  .mt-pill.a{color:var(--amber)}.mt-pill.c{color:var(--cyan)}
+  .mt-pill.v{color:var(--violet)}.mt-pill.r{color:var(--rose)}
+
+  /* หน้าอ่าน */
+  .mt-back{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;color:var(--muted);
+    background:transparent;border:0;cursor:pointer;padding:2px 0;margin:2px 0 8px;display:flex;align-items:center;gap:6px}
+  .mt-back:hover{color:var(--accent)}
+  .mt-title{font-size:16.5px;font-weight:700;line-height:1.35;margin-bottom:4px}
+  .mt-sub{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);margin-bottom:9px}
+  .mt-seg{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;
+    position:sticky;top:-6px;z-index:4;margin:11px 0 11px}
+  .mt-seg button{-webkit-app-region:no-drag;flex:1;font-family:inherit;font-size:11.5px;font-weight:600;
+    color:var(--muted);background:transparent;border:0;border-radius:7px;padding:7px;cursor:pointer;transition:.14s}
+  .mt-seg button:hover{color:var(--ink)}
+  .mt-seg button.on{background:var(--accent);color:#161821}
+  .mt-outline{background:var(--panel);border:1px solid var(--line-soft);border-radius:11px;padding:10px 12px;margin-bottom:13px}
+  .mt-outline .ot{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:7px}
+  .mt-outline a{display:block;font-size:12px;color:var(--muted);text-decoration:none;padding:3px 0 3px 9px;
+    border-left:2px solid var(--line);cursor:pointer;transition:.12s}
+  .mt-outline a:hover{color:var(--accent);border-left-color:var(--accent)}
+  .mt-outline a.l3{padding-left:19px;font-size:11.5px}
+
+  /* markdown ของ summary.md */
+  .md{font-size:12.8px;line-height:1.85;color:var(--ink)}
+  .md h1{font-size:15px;font-weight:700;margin:2px 0 10px}
+  .md h2{font-size:12.5px;font-weight:700;color:var(--accent);margin:17px 0 7px;
+    padding-bottom:5px;border-bottom:1px solid var(--line-soft)}
+  .md h3{font-size:12.5px;font-weight:700;color:var(--ink);margin:13px 0 5px}
+  .md ul{margin:4px 0 9px;padding-left:17px}
+  .md li{margin:3px 0}
+  .md li::marker{color:var(--dim)}
+  .md li.sub{margin-left:12px;color:var(--muted)}
+  .md p{margin:6px 0;color:var(--muted)}
+  .md strong{color:var(--ink);font-weight:700}
+  .md code{font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--panel-2);
+    border-radius:4px;padding:1px 5px;color:var(--cyan)}
+
+  /* transcript — พื้นหลังคนละสีต่อผู้พูด อ่านแล้วแยกออกทันทีว่าใครพูด */
+  .tr{display:flex;flex-direction:column;gap:9px;padding:2px 0}
+  .utt{display:flex;gap:9px}
+  .utt .av{width:26px;height:26px;flex-shrink:0;border-radius:9px;display:flex;align-items:center;justify-content:center;
+    font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+    color:var(--sc);background:var(--sbg);box-shadow:inset 0 0 0 1px var(--sbd)}
+  .utt .bub{flex:1;min-width:0;background:var(--sbg);border:1px solid var(--sbd);border-radius:11px;padding:8px 11px}
+  .utt .who{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:4px}
+  .utt .who .nm{font-size:10px;font-weight:700;color:var(--sc)}
+  .utt .who .ts{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim)}
+  .utt .tx{font-size:12.4px;line-height:1.75;color:var(--ink);word-break:break-word}
+  .sp0{--sc:#9bbcff;--sbg:rgba(122,162,247,.11);--sbd:rgba(122,162,247,.32)}
+  .sp1{--sc:#a6dd93;--sbg:rgba(143,207,122,.11);--sbd:rgba(143,207,122,.32)}
+  .sp2{--sc:#e8c184;--sbg:rgba(224,175,104,.11);--sbd:rgba(224,175,104,.32)}
+  .sp3{--sc:#f096a4;--sbg:rgba(233,122,140,.11);--sbd:rgba(233,122,140,.32)}
+  .sp4{--sc:#87d6e6;--sbg:rgba(103,201,220,.11);--sbd:rgba(103,201,220,.32)}
+  .sp5{--sc:#bda6f5;--sbg:rgba(169,139,240,.12);--sbd:rgba(169,139,240,.32)}
+  .sp6{--sc:#f0b48a;--sbg:rgba(240,180,138,.11);--sbd:rgba(240,180,138,.32)}
+  .sp7{--sc:#8fd6b4;--sbg:rgba(143,214,180,.11);--sbd:rgba(143,214,180,.32)}
+  .chip.spk{color:var(--sc);border-color:var(--sbd);background:var(--sbg)}
+  .chip.spk.active{color:#161821;background:var(--sc);border-color:var(--sc)}
+  .mt-files{display:flex;flex-direction:column;gap:6px}
+  .mt-file{-webkit-app-region:no-drag;display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--panel);
+    border:1px solid var(--line-soft);border-radius:10px;cursor:pointer;transition:.13s}
+  .mt-file:hover{border-color:var(--accent);background:var(--panel-2)}
+  .mt-file .fn{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink);flex:1;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mt-file .fs{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);flex-shrink:0}
+  mark{background:rgba(224,175,104,.3);color:var(--amber);border-radius:3px;padding:0 2px}
   .hidden{display:none}
 </style>
 </head>
@@ -279,8 +371,10 @@
       <div class="seg">
         <button id="navRedmine" class="on">Redmine</button>
         <button id="navWorkspace">Workspace</button>
+        <button id="navMeeting">Meeting</button>
       </div>
       <button id="wsRefresh" class="refresh hidden" title="โหลด Workspace ใหม่">↻</button>
+      <button id="mtRefresh" class="refresh hidden" title="โหลดรายการประชุมใหม่">↻</button>
     </div>
 
     <div class="body">
@@ -325,6 +419,24 @@
         <div id="wsKnow" class="lgrid"></div>
       </div>
 
+      <!-- ===== Meeting view ===== -->
+      <!-- สองหน้าในตัวเอง: mtList (รายการ) ↔ mtReader (หน้าอ่านเต็ม) สลับด้วย .hidden -->
+      <div id="meetingView" class="hidden">
+        <div id="mtList">
+          <h3>ภาพรวม Meeting</h3>
+          <div id="mtStats" class="stats"></div>
+
+          <h3>รายการประชุม</h3>
+          <input id="mtSearch" class="search" type="text" placeholder="🔍 ค้นหา (ชื่อประชุม / เนื้อหาในสรุป)" autocomplete="off">
+          <div class="row-label">วันที่</div>
+          <div id="mtDays" class="chips"></div>
+          <div class="row-label">หมวดหัวข้อที่คุยกัน</div>
+          <div id="mtTopics" class="chips"></div>
+          <div id="mtRows"><div class="hint">กำลังโหลด...</div></div>
+        </div>
+        <div id="mtReader" class="hidden"></div>
+      </div>
+
       <!-- ===== Settings view ===== -->
       <div id="settingsView" class="hidden">
         <h3>ตั้งค่า</h3>
@@ -347,6 +459,16 @@
             <input id="setWsDir" class="search" type="text" placeholder="เช่น D:\COWORK\A_Workspace" autocomplete="off">
             <div id="setWsStatus" class="set-status"></div>
             <div class="set-actions"><button id="setWsSave" class="set-save">บันทึก</button></div>
+          </div>
+        </div>
+        <div class="set-card" id="cardMeetings">
+          <div class="set-card-header" data-card="cardMeetings"><span>◈ Meeting</span><span class="chev">›</span></div>
+          <div class="set-card-body">
+            <div class="row-label">โฟลเดอร์บันทึกประชุม</div>
+            <input id="setMtDir" class="search" type="text" placeholder="เช่น D:\COWORK\meeting-notes\meetings" autocomplete="off">
+            <div class="hint" style="margin:-4px 0 12px">โครงสร้างที่รองรับ: 1 โฟลเดอร์ = 1 ประชุม ชื่อ <code>YYYY-MM-DD_HH-MM-ชื่อประชุม</code> ข้างในมี summary.md / transcript.md</div>
+            <div id="setMtStatus" class="set-status"></div>
+            <div class="set-actions"><button id="setMtSave" class="set-save">บันทึก</button></div>
           </div>
         </div>
         <button id="setCancel" class="set-cancel" style="width:100%">ปิด</button>
@@ -835,21 +957,288 @@
   }
   api && api.onWorkspace && api.onWorkspace(renderWorkspace);
 
+  // ===== Meeting tab =====
+  // payload = { meetings:[{id,date,time,title,summary,topics,actions,...}], stats, error }
+  // summary มาพร้อมรายการเลย ส่วน transcript โหลดทีละประชุมตอนกดเข้าไปอ่าน
+  let mtData=null;
+  let mtQuery='', mtDay='all', mtTopic=null;
+  let mtOpen=null;                 // ประชุมที่กำลังอ่านอยู่ (null = อยู่หน้ารายการ)
+  let mtTab='s';                   // s=สรุป t=ถอดเสียง f=ไฟล์
+  let mtTq='', mtSpk=null;         // ค้นหา / กรองผู้พูด ในหน้าถอดเสียง
+  const mtCache=new Map();         // id → { speakers, utterances }
+
+  function mtDate(d){
+    const dt=new Date(d+'T00:00:00');
+    if(!d || isNaN(dt)) return d||'ไม่ระบุวัน';
+    return `${D[dt.getDay()]} ${dt.getDate()} ${M[dt.getMonth()]} ${dt.getFullYear()}`;
+  }
+  function mtSize(n){ return n>=1048576 ? (n/1048576).toFixed(1)+' MB' : Math.round(n/1024)+' KB'; }
+
+  // markdown เท่าที่ summary.md ใช้จริง: หัวข้อ 1-3 ระดับ, bullet (มีระดับย่อย), **ตัวหนา**, `code`
+  function mdInline(t){
+    return esc(t).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`(.+?)`/g,'<code>$1</code>');
+  }
+  function mdRender(src){
+    const out=[]; let ul=false, hn=0;
+    const closeUl=()=>{ if(ul){ out.push('</ul>'); ul=false; } };
+    for(const raw of String(src||'').replace(/\r/g,'').split('\n')){
+      const line=raw.replace(/\s+$/,'');
+      if(!line.trim()){ closeUl(); continue; }
+      let m;
+      if((m=/^(#{1,3})\s+(.*)$/.exec(line))){
+        closeUl(); hn++;
+        out.push(`<h${m[1].length} id="mth${hn}">${mdInline(m[2])}</h${m[1].length}>`); continue;
+      }
+      if((m=/^(\s*)[-*]\s+(.*)$/.exec(line))){
+        if(!ul){ out.push('<ul>'); ul=true; }
+        out.push(`<li${m[1].length>=2?' class="sub"':''}>${mdInline(m[2])}</li>`); continue;
+      }
+      closeUl(); out.push(`<p>${mdInline(line)}</p>`);
+    }
+    closeUl(); return out.join('');
+  }
+  // สารบัญ — ต้องนับหัวข้อแบบเดียวกับ mdRender เป๊ะ ๆ id จะได้ตรงกัน
+  function mdHeadings(src){
+    const hs=[]; let hn=0;
+    for(const raw of String(src||'').replace(/\r/g,'').split('\n')){
+      const m=/^(#{1,3})\s+(.*)$/.exec(raw.replace(/\s+$/,''));
+      if(m){ hn++; hs.push({lvl:m[1].length, txt:m[2].replace(/\*\*/g,''), id:'mth'+hn}); }
+    }
+    return hs;
+  }
+  // ตัวอย่างสรุป 2 บรรทัดในรายการ = bullet แรก
+  function mtSnippet(s){
+    const lines=String(s||'').replace(/\r/g,'').split('\n');
+    const b=lines.find(l=>/^\s*[-*]\s+\S/.test(l));
+    const t=b || lines.find(l=>l.trim() && !l.trim().startsWith('#')) || '';
+    return t.replace(/^\s*[-*]\s+/,'').replace(/\*\*/g,'').trim();
+  }
+  function mtRailColor(m){
+    if(!m.usable) return 'var(--dim)';
+    return m.actions ? 'var(--amber)' : 'var(--accent)';
+  }
+  function mtPills(m){
+    const p=[];
+    if(m.time) p.push(`<span class="mt-pill mono">🕘 ${m.time}</span>`);
+    if(m.speakers) p.push(`<span class="mt-pill c">👥 ${m.speakers} คน</span>`);
+    p.push(`<span class="mt-pill mono">💬 ${m.lines}${m.lastStamp?' · '+m.lastStamp:''}</span>`);
+    if(m.actions) p.push(`<span class="mt-pill a">✅ ${m.actions} action</span>`);
+    if(m.audio) p.push(`<span class="mt-pill v">🎙 ${mtSize(m.audio.size)}</span>`);
+    if(!m.usable) p.push(`<span class="mt-pill r">⚠ สรุปไม่ได้</span>`);
+    return `<div class="mt-pills">${p.join('')}</div>`;
+  }
+  function mtList(){
+    if(!mtData||!mtData.meetings) return [];
+    const terms=mtQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return mtData.meetings.filter(m=>{
+      const hay=(m.title+' '+m.summary+' '+m.topics.join(' ')).toLowerCase();
+      return (mtDay==='all'||m.date===mtDay) &&
+        (!mtTopic||m.topics.includes(mtTopic)) &&
+        terms.every(t=>hay.includes(t));
+    });
+  }
+  function renderMtStats(){
+    const s=(mtData&&mtData.stats)||{};
+    const cells=[['ประชุม',s.total,'var(--accent)'],['action',s.actions,'var(--amber)'],
+                 ['ประโยค',s.lines,'var(--cyan)'],['มีไฟล์เสียง',s.audio,'var(--violet)']];
+    document.getElementById('mtStats').innerHTML=cells.map(([l,n,c])=>
+      `<div class="stat" style="--sc:${c}"><div class="n">${n||0}</div><div class="l">${l}</div></div>`).join('');
+  }
+  function renderMtFilters(){
+    const ms=mtData.meetings||[];
+    const days=[...new Set(ms.map(m=>m.date))].sort().reverse();
+    document.getElementById('mtDays').innerHTML=
+      `<div class="chip${mtDay==='all'?' active':''}" data-d="all">ทั้งหมด<span class="n">${ms.length}</span></div>`+
+      days.map(d=>`<div class="chip${mtDay===d?' active':''}" data-d="${esc(d)}">${esc(mtDate(d).replace(/^\S+\s/,''))}<span class="n">${ms.filter(m=>m.date===d).length}</span></div>`).join('');
+    const counts={};
+    ms.forEach(m=>m.topics.forEach(t=>counts[t]=(counts[t]||0)+1));
+    const top=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,10);
+    const tEl=document.getElementById('mtTopics');
+    tEl.innerHTML=top.length
+      ? `<div class="chip${!mtTopic?' active':''}" data-g="">ทั้งหมด<span class="n">${ms.length}</span></div>`+
+        top.map(([t,n])=>`<div class="chip${mtTopic===t?' active':''}" data-g="${esc(t)}" title="${esc(t)}">${esc(t.length>24?t.slice(0,24)+'…':t)}<span class="n">${n}</span></div>`).join('')
+      : `<div class="hint" style="padding:0 0 6px">ยังไม่มีหัวข้อย่อยในสรุป</div>`;
+    document.querySelectorAll('#mtDays .chip').forEach(el=>
+      el.onclick=()=>{ mtDay=el.dataset.d; renderMtFilters(); renderMtRows(); });
+    tEl.querySelectorAll('.chip').forEach(el=>
+      el.onclick=()=>{ mtTopic=el.dataset.g||null; renderMtFilters(); renderMtRows(); });
+  }
+  function renderMtRows(){
+    const el=document.getElementById('mtRows');
+    const list=mtList();
+    if(!list.length){ el.innerHTML='<div class="empty">ไม่พบประชุมที่ตรงกับตัวกรอง</div>'; return; }
+    const byDay={};
+    list.forEach(m=>{ (byDay[m.date]=byDay[m.date]||[]).push(m); });
+    el.innerHTML=Object.keys(byDay).sort().reverse().map(d=>`
+      <div class="mt-daybar"><span class="d">${esc(mtDate(d))}</span><span class="ln"></span><span class="n">${byDay[d].length} ประชุม</span></div>
+      ${byDay[d].map(m=>`
+        <div class="mt-row${m.usable?'':' faded'}" data-id="${esc(m.id)}">
+          <div class="rail" style="--sc:${mtRailColor(m)}"></div>
+          <div class="mid">
+            <div class="top"><span class="nm">${esc(m.title)}</span><span class="tm">${esc(m.time||'')}</span></div>
+            <div class="snip">${esc(mtSnippet(m.summary))||'<span style="color:var(--dim)">ไม่มีสรุป</span>'}</div>
+            ${m.topics.length?`<div class="mt-tags">${m.topics.slice(0,3).map(t=>`<span class="mt-tag">${esc(t.length>28?t.slice(0,28)+'…':t)}</span>`).join('')}</div>`:''}
+            ${mtPills(m)}
+          </div>
+        </div>`).join('')}`).join('');
+    el.querySelectorAll('.mt-row').forEach(row=>row.onclick=()=>{
+      const m=mtData.meetings.find(x=>x.id===row.dataset.id);
+      if(m) mtOpenMeeting(m);
+    });
+  }
+  function mtOpenMeeting(m){
+    mtOpen=m; mtTab='s'; mtTq=''; mtSpk=null;
+    document.getElementById('mtList').classList.add('hidden');
+    document.getElementById('mtReader').classList.remove('hidden');
+    renderMtReader();
+    document.querySelector('.body').scrollTop=0;
+  }
+  function mtBackToList(){
+    mtOpen=null;
+    document.getElementById('mtReader').classList.add('hidden');
+    document.getElementById('mtList').classList.remove('hidden');
+  }
+  function renderTranscript(tr){
+    if(!tr) return '<div class="hint">กำลังโหลดบทถอดเสียง...</div>';
+    if(tr.error) return `<div class="empty">อ่าน transcript ไม่สำเร็จ: ${esc(tr.error)}</div>`;
+    if(!tr.utterances.length) return '<div class="empty">ไฟล์ transcript ว่าง</div>';
+    const q=mtTq.trim().toLowerCase();
+    const hl=t=>{
+      const s=esc(t);
+      if(!q) return s;
+      return s.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark>$1</mark>');
+    };
+    const rows=tr.utterances.filter(u=>
+      (mtSpk===null||u.speaker===mtSpk) && (!q||u.text.toLowerCase().includes(q)));
+    const chips=`<div class="chips">
+      <div class="chip${mtSpk===null?' active':''}" data-sp="">ทุกคน<span class="n">${tr.utterances.length}</span></div>
+      ${tr.speakers.map((nm,i)=>`<div class="chip spk sp${i%8}${mtSpk===i?' active':''}" data-sp="${i}">${esc(nm)}<span class="n">${tr.utterances.filter(u=>u.speaker===i).length}</span></div>`).join('')}
+    </div>`;
+    const body=rows.length
+      ? `<div class="tr">${rows.map(u=>`
+          <div class="utt sp${u.speaker%8}">
+            <div class="av">${esc(String(u.who).replace(/[^0-9]/g,'')||'•')}</div>
+            <div class="bub">
+              <div class="who"><span class="nm">${esc(u.who)}</span><span class="ts">${esc(u.ts)}</span></div>
+              <div class="tx">${hl(u.text)}</div>
+            </div>
+          </div>`).join('')}</div>`
+      : '<div class="empty">ไม่พบข้อความที่ค้นหา</div>';
+    return chips+body;
+  }
+  function renderMtReader(){
+    const m=mtOpen; if(!m) return;
+    const el=document.getElementById('mtReader');
+    el.innerHTML=`
+      <button class="mt-back" id="mtBack">← กลับไปรายการประชุม</button>
+      <div class="mt-title">${esc(m.title)}</div>
+      <div class="mt-sub">${esc(mtDate(m.date))}${m.time?' · '+esc(m.time):''} · ${esc(m.id)}</div>
+      ${mtPills(m)}
+      <div class="mt-seg">
+        <button data-tb="s" class="${mtTab==='s'?'on':''}">📄 สรุป</button>
+        <button data-tb="t" class="${mtTab==='t'?'on':''}">🗒 ถอดเสียง</button>
+        <button data-tb="f" class="${mtTab==='f'?'on':''}">📁 ไฟล์ (${m.files.length})</button>
+      </div>
+      ${mtTab==='t'?`<input id="mtTq" class="search" type="text" placeholder="🔍 ค้นในบทถอดเสียง" value="${esc(mtTq)}" autocomplete="off">`:''}
+      <div id="mtBody"></div>`;
+    const body=document.getElementById('mtBody');
+    if(mtTab==='s'){
+      const hs=mdHeadings(m.summary).filter(h=>h.lvl>=2);
+      body.innerHTML=(hs.length>1?`<div class="mt-outline"><div class="ot">สารบัญ · คลิกเพื่อกระโดด</div>
+          ${hs.map(h=>`<a data-go="${h.id}"${h.lvl===3?' class="l3"':''}>${esc(h.txt)}</a>`).join('')}</div>`:'')+
+        (m.summary.trim()?`<div class="md">${mdRender(m.summary)}</div>`:'<div class="empty">ไม่มีไฟล์ summary.md</div>');
+      body.querySelectorAll('[data-go]').forEach(a=>a.onclick=()=>{
+        const t=document.getElementById(a.dataset.go);
+        if(t) t.scrollIntoView({behavior:'smooth',block:'start'});
+      });
+    } else if(mtTab==='t'){
+      body.innerHTML=renderTranscript(mtCache.get(m.id));
+      if(!mtCache.has(m.id) && api && api.getMeetingTranscript){
+        api.getMeetingTranscript(m.id).then(tr=>{
+          mtCache.set(m.id,tr);
+          if(mtOpen===m && mtTab==='t') renderMtReader();
+        });
+      }
+      body.querySelectorAll('[data-sp]').forEach(c=>c.onclick=()=>{
+        mtSpk=c.dataset.sp===''?null:Number(c.dataset.sp); renderMtReader();
+      });
+      const tq=document.getElementById('mtTq');
+      if(tq) tq.oninput=()=>{
+        mtTq=tq.value; const pos=tq.selectionStart;
+        renderMtReader();
+        const n=document.getElementById('mtTq'); if(n){ n.focus(); n.setSelectionRange(pos,pos); }
+      };
+    } else {
+      body.innerHTML=`<div class="mt-files">${m.files.map(f=>`
+        <div class="mt-file" data-p="${esc(f.path)}">
+          <span>${/\.(ogg|mp3|wav|m4a|webm)$/i.test(f.name)?'🎙':'📄'}</span>
+          <span class="fn">${esc(f.name)}</span>
+          <span class="fs">${f.name===((m.audio&&m.audio.name)||'')?mtSize(m.audio.size):''}</span>
+        </div>`).join('')}</div>
+        <div class="hint">คลิกเพื่อเปิดด้วยโปรแกรมของเครื่อง</div>`;
+      body.querySelectorAll('.mt-file').forEach(f=>f.onclick=()=>openFile(f.dataset.p));
+    }
+    document.getElementById('mtBack').onclick=mtBackToList;
+    el.querySelectorAll('[data-tb]').forEach(b=>b.onclick=()=>{ mtTab=b.dataset.tb; renderMtReader(); });
+  }
+  function renderMeetings(payload){
+    const rows=document.getElementById('mtRows');
+    if(!payload || payload.error){
+      mtData=null; mtBackToList();
+      document.getElementById('mtStats').innerHTML='';
+      document.getElementById('mtDays').innerHTML='';
+      document.getElementById('mtTopics').innerHTML='';
+      const notSetUp=payload && payload.error && payload.error.startsWith('ไม่พบโฟลเดอร์ meetings');
+      if(notSetUp){
+        rows.innerHTML=`<div class="not-configured">
+          <p>ยังไม่ได้ตั้งค่าโฟลเดอร์บันทึกประชุม</p>
+          <button id="mtNotConfiguredBtn">ตั้งค่าเลย</button>
+        </div>`;
+        document.getElementById('mtNotConfiguredBtn').onclick=()=>openSettings('cardMeetings');
+      } else {
+        rows.innerHTML=`<div class="empty">โหลดรายการประชุมไม่สำเร็จ: ${esc((payload&&payload.error)||'ไม่ทราบสาเหตุ')}</div>`;
+      }
+      return;
+    }
+    mtData=payload;
+    mtCache.clear();                                   // ไฟล์อาจถูกเขียนใหม่ระหว่างรอบ refresh
+    const days=new Set(payload.meetings.map(m=>m.date));
+    if(mtDay!=='all' && !days.has(mtDay)) mtDay='all';
+    const tops=new Set(payload.meetings.flatMap(m=>m.topics));
+    if(mtTopic && !tops.has(mtTopic)) mtTopic=null;
+    if(mtOpen){                                        // ยังอ่านค้างอยู่ — เอาข้อมูลก้อนใหม่มาแทน
+      const fresh=payload.meetings.find(m=>m.id===mtOpen.id);
+      if(fresh){ mtOpen=fresh; renderMtReader(); } else mtBackToList();
+    }
+    renderMtStats(); renderMtFilters(); renderMtRows();
+  }
+  api && api.onMeetings && api.onMeetings(renderMeetings);
+  document.getElementById('mtSearch').oninput=e=>{
+    mtQuery=e.target.value; if(mtData) renderMtRows();
+  };
+
   // tab switching
   const navR=document.getElementById('navRedmine'), navW=document.getElementById('navWorkspace'),
+        navM=document.getElementById('navMeeting'),
         viewR=document.getElementById('redmineView'), viewW=document.getElementById('workspaceView'),
-        wsRefresh=document.getElementById('wsRefresh');
+        viewM=document.getElementById('meetingView'),
+        wsRefresh=document.getElementById('wsRefresh'), mtRefresh=document.getElementById('mtRefresh');
   let lastTab='rm';
   function showTab(which){
     lastTab=which;
-    const ws=which==='ws';
-    viewW.classList.toggle('hidden',!ws); viewR.classList.toggle('hidden',ws);
-    navW.classList.toggle('on',ws); navR.classList.toggle('on',!ws);
+    const ws=which==='ws', mt=which==='mt', rm=which==='rm';
+    viewR.classList.toggle('hidden',!rm);
+    viewW.classList.toggle('hidden',!ws);
+    viewM.classList.toggle('hidden',!mt);
+    navR.classList.toggle('on',rm); navW.classList.toggle('on',ws); navM.classList.toggle('on',mt);
     wsRefresh.classList.toggle('hidden',!ws);
+    mtRefresh.classList.toggle('hidden',!mt);
   }
   navR.onclick=()=>showTab('rm');
   navW.onclick=()=>showTab('ws');
+  navM.onclick=()=>showTab('mt');
   wsRefresh.onclick=()=>api&&api.refreshWorkspace&&api.refreshWorkspace();
+  mtRefresh.onclick=()=>api&&api.refreshMeetings&&api.refreshMeetings();
 
   // settings view — collapsible per-tab cards (defaults to collapsed; more cards can be
   // added later as more tabs need config, without touching the open/close plumbing)
@@ -858,20 +1247,25 @@
         setStatus=document.getElementById('setStatus'), setSave=document.getElementById('setSave');
   const setWsDir=document.getElementById('setWsDir'), setWsStatus=document.getElementById('setWsStatus'),
         setWsSave=document.getElementById('setWsSave');
+  const setMtDir=document.getElementById('setMtDir'), setMtStatus=document.getElementById('setMtStatus'),
+        setMtSave=document.getElementById('setMtSave');
   document.querySelectorAll('.set-card-header').forEach(h=>{
     h.onclick=()=>document.getElementById(h.dataset.card).classList.toggle('open');
   });
   function openSettings(autoOpenCard){
-    viewR.classList.add('hidden'); viewW.classList.add('hidden'); viewS.classList.remove('hidden');
+    viewR.classList.add('hidden'); viewW.classList.add('hidden'); viewM.classList.add('hidden');
+    viewS.classList.remove('hidden');
     navRow.classList.add('hidden');
     document.querySelectorAll('.set-card').forEach(c=>c.classList.remove('open'));
     if(autoOpenCard) document.getElementById(autoOpenCard).classList.add('open');
     setStatus.textContent=''; setStatus.className='set-status';
     setWsStatus.textContent=''; setWsStatus.className='set-status';
+    setMtStatus.textContent=''; setMtStatus.className='set-status';
     api && api.getRedmineConfig && api.getRedmineConfig().then(cfg=>{
       setUrl.value=(cfg&&cfg.url)||''; setKey.value=(cfg&&cfg.apiKey)||'';
     });
     api && api.getWorkspaceDir && api.getWorkspaceDir().then(dir=>{ setWsDir.value=dir||''; });
+    api && api.getMeetingsDir && api.getMeetingsDir().then(dir=>{ setMtDir.value=dir||''; });
   }
   function closeSettings(){
     viewS.classList.add('hidden'); navRow.classList.remove('hidden');
@@ -905,6 +1299,17 @@
       setWsSave.disabled=false;
       setWsStatus.className='set-status ok';
       setWsStatus.textContent='บันทึกแล้ว';
+    });
+  };
+
+  setMtSave.onclick=()=>{
+    const dir=setMtDir.value.trim();
+    if(!dir){ setMtStatus.className='set-status err'; setMtStatus.textContent='กรอก path ก่อน'; return; }
+    setMtSave.disabled=true;
+    api.saveMeetingsDir(dir).then(()=>{
+      setMtSave.disabled=false;
+      setMtStatus.className='set-status ok';
+      setMtStatus.textContent='บันทึกแล้ว';
     });
   };
 

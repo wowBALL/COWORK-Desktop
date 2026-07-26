@@ -6,6 +6,8 @@ Electron app เดียว รันได้ 2 โหมด ใช้โค�
 cowork-desktop/
 ├─ main.js            Electron main (เลือกโหมดจาก --widget / --screensaver)
 ├─ preload.js         bridge ปิดหน้าต่าง / pin / ออก screensaver
+├─ workspace.js       อ่าน A_Workspace vault (.md) ให้ tab Workspace
+├─ meetings.js        อ่านโฟลเดอร์บันทึกประชุม (summary/transcript) ให้ tab Meeting
 ├─ widget.html        หน้าต่างลอย โปร่งใส ลากได้
 ├─ screensaver.html   เต็มจอ ambient ออกเมื่อขยับเมาส์/กดปุ่ม
 ├─ icons/             ไอคอนแอป (.ico สำหรับ Windows)
@@ -29,6 +31,8 @@ npm install        # โหลด electron (~ครั้งเดียว)
 ```
 REDMINE_URL=<URL redmine ของคุณ>
 REDMINE_API_KEY=<API key ของคุณ>
+WORKSPACE_DIR=<path ของ A_Workspace vault>
+MEETINGS_DIR=<path ของโฟลเดอร์ meetings>
 ```
 
 ## รัน
@@ -52,6 +56,14 @@ REDMINE_API_KEY=<API key ของคุณ>
 - แต่ละงานแสดง `#id · ชื่องาน · โปรเจกต์ · ผู้รับผิดชอบ · Risk Level` — คลิกที่งานเพื่อเปิดใน Redmine
 - Risk Level ดึงจาก custom field แบ่งสีตามระดับ (Low → Fairly Low → Moderate → Medium → High)
 - refresh อัตโนมัติทุก 5 นาที · ดูอย่างเดียว (คลิกไม่แก้ไขข้อมูลใน Redmine)
+
+### Meeting (บันทึกประชุม)
+อ่านโฟลเดอร์บันทึกประชุมที่ตั้งค่าไว้ (⚙ → การ์ด **Meeting**) — 1 โฟลเดอร์ = 1 ประชุม ตั้งชื่อว่า `YYYY-MM-DD_HH-MM-ชื่อประชุม` ข้างในมี `summary.md` / `transcript.md` และไฟล์เสียง (ถ้ามี)
+- **รายการ:** จัดกลุ่มตามวัน แต่ละแถวโชว์เวลา ชื่อ ตัวอย่างสรุป 2 บรรทัด แท็กหัวข้อ และป้ายจำนวนผู้พูด/ประโยค/action/ขนาดไฟล์เสียง
+- **กรอง:** ค้นหา (ชื่อ + เนื้อหาสรุป) · ชิปวันที่ · **ชิปหมวดหัวข้อ** ที่ดึงจากหัวข้อย่อยในไฟล์สรุปอัตโนมัติ
+- **หน้าอ่าน:** แท็บ สรุป / ถอดเสียง / ไฟล์ — หน้าสรุปมี**สารบัญคลิกกระโดด**, หน้าถอดเสียงแยก**สีพื้นหลังต่อผู้พูด** กรองเฉพาะคนที่เลือกได้ และค้นหาในบทถอดเสียงพร้อมไฮไลต์
+- แท็บไฟล์คลิกเปิดด้วยโปรแกรมของเครื่อง (เช่น `.ogg` เปิดเครื่องเล่นเสียง) · refresh อัตโนมัติทุก 5 นาที มีปุ่ม ↻ กดเองได้
+- transcript โหลดเฉพาะตอนกดเข้าไปอ่าน (รายการส่งมาแค่ metadata + สรุป) จะได้ไม่อืดเวลาไฟล์เยอะ
 
 เปิดพร้อม Windows: กด `Win+R` → `shell:startup` → วาง shortcut ของ `start-widget.bat` ลงไป
 
@@ -92,3 +104,4 @@ Widget ที่ติดตั้งแล้วเช็คเวอร์ช�
 - ส่วนงาน Redmine ของ widget = ข้อมูลจริงจาก API แล้ว (ตั้งค่าผ่านปุ่มเฟือง ⚙ ในแอป)
 - "ภาพรวม Redmine" (open / high risk / overdue / closed) = ข้อมูลจริงจาก API แล้วเช่นกัน
 - Workspace tab ต้องตั้งค่า path ของ vault เอง (โชว์ให้กรอกในแท็บนั้นถ้ายังไม่ได้ตั้งค่า) ไม่ได้ฝัง path ไว้อีกต่อไป
+- Meeting tab เหมือนกัน — ตั้ง path โฟลเดอร์ประชุมเองผ่าน ⚙ (เก็บใน `config.json` เดียวกัน)

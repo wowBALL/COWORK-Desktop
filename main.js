@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { readWorkspace } = require('./workspace');
+const { readMeetings, readTranscript } = require('./meetings');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -27,7 +28,7 @@ function loadEnv() {
 }
 const ENV = loadEnv();
 
-// ---- app settings (Redmine URL/key, workspace vault path), per-user, not baked into the installer ----
+// ---- app settings (Redmine URL/key, workspace vault path, meetings path), per-user, not baked into the installer ----
 // See docs/superpowers/specs/2026-07-23-redmine-settings-ui-design.md
 function configPath() { return path.join(app.getPath('userData'), 'config.json'); }
 function writeConfigMerge(patch) {
@@ -39,16 +40,19 @@ function writeConfigMerge(patch) {
 }
 let redmineConfig = { url: '', apiKey: '' };
 let workspaceDir = '';
+let meetingsDir = '';
 function loadAppConfig() {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch {}
   redmineConfig = { url: saved.redmineUrl || '', apiKey: saved.redmineApiKey || '' };
   workspaceDir = saved.workspaceDir || '';
+  meetingsDir = saved.meetingsDir || '';
   // dev convenience only: unpackaged runs may still use a local .env; never packaged
   if (!app.isPackaged) {
     if (!redmineConfig.url) redmineConfig.url = ENV.REDMINE_URL || '';
     if (!redmineConfig.apiKey) redmineConfig.apiKey = ENV.REDMINE_API_KEY || '';
     if (!workspaceDir) workspaceDir = ENV.WORKSPACE_DIR || path.join(__dirname, '..', 'A_Workspace');
+    if (!meetingsDir) meetingsDir = ENV.MEETINGS_DIR || path.join(__dirname, '..', 'meeting-notes', 'meetings');
   }
 }
 
@@ -272,6 +276,16 @@ function pushWorkspace() {
   win.webContents.send('workspace-update', payload);
 }
 
+// meeting-notes vault — path comes from settings (meetingsDir, loaded in loadAppConfig).
+// รายการ + summary ส่งมาทั้งก้อน ส่วน transcript โหลดตอนกดเข้าไปอ่านทีละประชุม
+function pushMeetings() {
+  if (!win) return;
+  let payload;
+  try { payload = readMeetings(meetingsDir); }
+  catch (e) { payload = { meetings: [], stats: null, error: e.message }; }
+  win.webContents.send('meetings-update', payload);
+}
+
 function createWidget() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   const W = 420, H = 640;
@@ -296,9 +310,10 @@ function createWidget() {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
   }
   win.loadFile('widget.html');
-  win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); });
+  win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); pushMeetings(); });
   setInterval(pushTasks, 5 * 60 * 1000);
   setInterval(pushWorkspace, 5 * 60 * 1000);
+  setInterval(pushMeetings, 5 * 60 * 1000);
 }
 
 function createScreensaver() {
@@ -340,6 +355,13 @@ ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.on('open-file', (_e, p) => { if (p) shell.openPath(p); });
 // renderer asks to re-read the workspace vault (manual refresh button)
 ipcMain.on('workspace-refresh', () => pushWorkspace());
+// renderer asks to re-read the meetings folder (manual refresh button)
+ipcMain.on('meetings-refresh', () => pushMeetings());
+// transcript of one meeting, loaded on demand when the user opens it
+ipcMain.handle('get-meeting-transcript', (_e, id) => {
+  try { return readTranscript(meetingsDir, id); }
+  catch (e) { return { speakers: [], utterances: [], error: e.message }; }
+});
 // renderer asks for an issue's journal history + current "Test Results" field,
 // to preview before closing (see docs/superpowers/specs/2026-07-22-close-issue-test-results-design.md)
 ipcMain.handle('get-issue-preview', async (_e, issueId) => {
@@ -412,6 +434,14 @@ ipcMain.handle('save-workspace-dir', (_e, dir) => {
   workspaceDir = dir;
   writeConfigMerge({ workspaceDir: dir });
   pushWorkspace();
+  return { ok: true };
+});
+// renderer's Meeting tab: read/save the meetings folder path
+ipcMain.handle('get-meetings-dir', () => meetingsDir);
+ipcMain.handle('save-meetings-dir', (_e, dir) => {
+  meetingsDir = dir;
+  writeConfigMerge({ meetingsDir: dir });
+  pushMeetings();
   return { ok: true };
 });
 

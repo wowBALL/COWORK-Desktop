@@ -17,5 +17,10 @@ contextBridge.exposeInMainWorld('cowork', {
   testRedmineConnection: (cfg) => ipcRenderer.invoke('test-redmine-connection', cfg),
   saveRedmineConfig: (cfg) => ipcRenderer.invoke('save-redmine-config', cfg),
   getWorkspaceDir: () => ipcRenderer.invoke('get-workspace-dir'),
-  saveWorkspaceDir: (dir) => ipcRenderer.invoke('save-workspace-dir', dir)
+  saveWorkspaceDir: (dir) => ipcRenderer.invoke('save-workspace-dir', dir),
+  onMeetings: (cb) => ipcRenderer.on('meetings-update', (_e, payload) => cb(payload)),
+  refreshMeetings: () => ipcRenderer.send('meetings-refresh'),
+  getMeetingTranscript: (id) => ipcRenderer.invoke('get-meeting-transcript', id),
+  getMeetingsDir: () => ipcRenderer.invoke('get-meetings-dir'),
+  saveMeetingsDir: (dir) => ipcRenderer.invoke('save-meetings-dir', dir)
 });

@@ -280,10 +280,10 @@
   #mtReader .md,#mtReader .tr{max-width:820px}
   #meetingView .mt-seg{max-width:600px}
   @container (min-width:1040px){
-    #mtBody.two-col{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:26px;align-items:start}
-    #mtBody.two-col .md{grid-column:1;grid-row:1}
-    #mtBody.two-col .mt-outline{grid-column:2;grid-row:1;margin:0;position:sticky;top:-6px;
+    #mtBody.two-col{display:grid;grid-template-columns:264px minmax(0,1fr);gap:38px;align-items:start}
+    #mtBody.two-col .mt-outline{grid-column:1;grid-row:1;margin:0;position:sticky;top:-6px;
       max-height:calc(100vh - 210px);overflow-y:auto}
+    #mtBody.two-col .md{grid-column:2;grid-row:1}
     #mtBody.two-col .mt-outline::-webkit-scrollbar{width:5px}
     #mtBody.two-col .mt-outline::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
   }
@@ -327,12 +327,13 @@
     color:var(--muted);background:transparent;border:0;border-radius:7px;padding:7px;cursor:pointer;transition:.14s}
   .mt-seg button:hover{color:var(--ink)}
   .mt-seg button.on{background:var(--accent);color:#161821}
-  .mt-outline{background:var(--panel);border:1px solid var(--line-soft);border-radius:11px;padding:10px 12px;margin-bottom:13px}
-  .mt-outline .ot{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:7px}
-  .mt-outline a{display:block;font-size:12px;color:var(--muted);text-decoration:none;padding:3px 0 3px 9px;
-    border-left:2px solid var(--line);cursor:pointer;transition:.12s}
+  .mt-outline{background:var(--panel);border:1px solid var(--line-soft);border-radius:11px;padding:12px 14px;margin-bottom:13px}
+  .mt-outline .ot{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:10px}
+  .mt-outline a{display:block;font-size:12px;line-height:1.5;color:var(--muted);text-decoration:none;
+    padding:6px 0 6px 12px;border-left:2px solid var(--line);cursor:pointer;transition:.12s}
+  .mt-outline a+a{margin-top:2px}
   .mt-outline a:hover{color:var(--accent);border-left-color:var(--accent)}
-  .mt-outline a.l3{padding-left:19px;font-size:11.5px}
+  .mt-outline a.l3{padding-left:22px;font-size:11.5px}
 
   /* markdown ของ summary.md */
   .md{font-size:12.8px;line-height:1.85;color:var(--ink)}

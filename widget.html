@@ -263,6 +263,13 @@
   .empty{font-size:12px;color:var(--dim);padding:10px 2px;border:1px dashed var(--line);border-radius:10px;text-align:center}
 
   /* ---- Meeting tab ---- */
+  /* ตอนกดขยายเต็มจอหน้าต่างกว้างได้เป็นพันพิกเซล — คุมความกว้างคอลัมน์อ่านไว้
+     ไม่งั้นบรรทัดยาวจนอ่านไม่ไหวและเวลา/ตัวนับถูกดันไปติดขอบขวา */
+  #meetingView{max-width:880px;margin:0 auto}
+  /* ตัวหนังสือล้วน (สรุป + บทถอดเสียง) แคบกว่านั้นอีกนิดให้สายตากวาดสบาย */
+  #mtReader .md,#mtReader .tr,#mtReader .mt-outline{max-width:760px}
+  #meetingView .mt-seg{max-width:560px}
+
   /* รายการ: จัดกลุ่มตามวัน แต่ละแถวคลิกเข้าไปอ่านเต็มหน้า */
   .mt-daybar{display:flex;align-items:center;gap:9px;margin:14px 0 8px}
   .mt-daybar .d{font-size:11.5px;font-weight:700;color:var(--ink)}

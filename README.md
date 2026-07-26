@@ -1,33 +1,45 @@
-# COWORK Desktop — Widget + Screensaver
+# COWORK Desktop
 
-Electron app เดียว รันได้ 2 โหมด ใช้โค้ดชุดเดียวกัน
+Electron app เดียว รันได้ 2 โหมดด้วยโค้ดชุดเดียวกัน
 
-```
-cowork-desktop/
-├─ main.js            Electron main (เลือกโหมดจาก --widget / --screensaver)
-├─ preload.js         bridge ปิดหน้าต่าง / pin / ออก screensaver
-├─ workspace.js       อ่าน A_Workspace vault (.md) ให้ tab Workspace
-├─ meetings.js        อ่านโฟลเดอร์บันทึกประชุม (summary/transcript) ให้ tab Meeting
-├─ widget.html        หน้าต่างลอย โปร่งใส ลากได้
-├─ screensaver.html   เต็มจอ ambient ออกเมื่อขยับเมาส์/กดปุ่ม
-├─ icons/             ไอคอนแอป (.ico สำหรับ Windows)
-├─ start-widget.bat
-└─ start-screensaver.bat
-```
+- **Widget** — หน้าต่างลอยโปร่งใส ไม่มีขอบ รวม 3 แท็บ: งาน Redmine · Workspace vault · บันทึกประชุม
+- **Screensaver** — เต็มจอ นาฬิกาใหญ่ + ข้อมูลหมุนวน ออกเมื่อขยับเมาส์
 
-## ติดตั้งครั้งแรก
-ต้องมี Node.js ก่อน แล้ว:
+Windows only (แพ็กเป็น NSIS installer) · MIT
+
+---
+
+## เริ่มใช้งาน
+
+ต้องมี [Node.js](https://nodejs.org) ก่อน
+
 ```bash
-cd cowork-desktop
-npm install        # โหลด electron (~ครั้งเดียว)
+npm install
+npm start
 ```
 
-### ตั้งค่า Redmine (จำเป็นสำหรับ widget)
-ตั้งค่าได้ในตัวแอปเลย — กดปุ่มเฟือง ⚙ ที่แถบหัว widget แล้วกรอก Redmine URL + API key (หาได้ที่ Redmine → คลิกชื่อมุมขวาบน → **My account** → ขวามือ **API access key** → **Show**) มีปุ่มทดสอบการเชื่อมต่อก่อนบันทึกให้ด้วย
+- `npm start` / `npm run widget` → เปิด widget (หรือดับเบิลคลิก `start-widget.bat`)
+- `npm run screensaver` → เปิด screensaver (หรือ `start-screensaver.bat`)
 
-ค่าที่กรอกเก็บแยกต่อเครื่อง/ต่อคนที่ `%APPDATA%\COWORK Desktop\config.json` (ไม่ได้ฝังอยู่ในตัวติดตั้ง) — ถ้ายังไม่ตั้งค่า widget จะยังเปิดได้ปกติ แค่ส่วนงาน Redmine จะขึ้นแบนเนอร์ "ยังไม่ได้ตั้งค่า" พร้อมปุ่มพาไปตั้งค่า
+ให้ widget เปิดพร้อม Windows: `Win+R` → `shell:startup` → วาง shortcut ของ `start-widget.bat` ลงไป
+(ตัวที่ติดตั้งจาก installer ตั้ง auto-start ให้เองอยู่แล้ว)
 
-**สำหรับ dev เท่านั้น:** รันแบบ `npm start` (ไม่ได้แพ็กเป็น .exe) จะ fallback ไปอ่านไฟล์ `.env` ในโฟลเดอร์นี้แทนถ้ายังไม่เคยตั้งค่าผ่านหน้าตั้งค่า — สร้างไฟล์ `.env` เอง (gitignore ไว้แล้ว ไม่ขึ้น repo):
+---
+
+## ตั้งค่า
+
+กดปุ่มเฟือง ⚙ ที่แถบหัว widget — มี 3 การ์ด กรอกเฉพาะที่ใช้ก็ได้ แท็บที่ยังไม่ตั้งค่าจะขึ้นแบนเนอร์พร้อมปุ่มพาไปตั้งค่า ไม่พังทั้งแอป
+
+| การ์ด | กรอกอะไร | หาได้จากไหน |
+|---|---|---|
+| **Redmine** | URL + API key | Redmine → คลิกชื่อมุมขวาบน → My account → ขวามือ **API access key** → Show |
+| **Workspace** | path ของ A_Workspace vault | โฟลเดอร์ Obsidian vault ที่มี `Public/` `Private/` |
+| **Meeting** | path ของโฟลเดอร์บันทึกประชุม | โฟลเดอร์ที่มีโฟลเดอร์ย่อยชื่อ `YYYY-MM-DD_HH-MM-ชื่อประชุม` |
+
+ค่าทั้งหมดเก็บแยกต่อเครื่อง/ต่อคนที่ `%APPDATA%\COWORK Desktop\config.json` — **ไม่ได้ฝังอยู่ในตัวติดตั้ง** และ API key อยู่ฝั่ง main process เท่านั้น renderer มองไม่เห็น
+
+**สำหรับ dev:** ตอนรันแบบไม่ได้แพ็ก (`npm start`) ถ้ายังไม่เคยตั้งค่าผ่านหน้าตั้งค่า จะ fallback ไปอ่าน `.env` ในโฟลเดอร์นี้ (gitignore ไว้แล้ว) — ตัวที่แพ็กเป็น .exe ไม่อ่าน `.env`
+
 ```
 REDMINE_URL=<URL redmine ของคุณ>
 REDMINE_API_KEY=<API key ของคุณ>
@@ -35,73 +47,112 @@ WORKSPACE_DIR=<path ของ A_Workspace vault>
 MEETINGS_DIR=<path ของโฟลเดอร์ meetings>
 ```
 
-## รัน
-- **Widget:**  ดับเบิลคลิก `start-widget.bat`  (หรือ `npm run widget`)
-- **Screensaver:**  ดับเบิลคลิก `start-screensaver.bat`  (หรือ `npm run screensaver`)
-
 ---
 
 ## Widget
-- หน้าต่างลอย **โปร่งใส ไม่มีขอบ** — ลากย้ายได้ที่แถบบน (◈ COWORK)
-- ปุ่ม 📌 = ปักหมุดให้อยู่บนสุดตลอด (always-on-top)
-- ปุ่ม ⛶ = ขยายเต็มจอ / กดอีกครั้งคืนขนาดเดิม
-- ปุ่ม ✕ = ปิด
-- ปรับขนาดได้ที่ขอบหน้าต่าง · เริ่มต้นวางมุมขวาบน
-- **ไม่โดนไอคอน desktop บัง** เพราะเป็นหน้าต่างจริง ไม่ใช่ wallpaper
 
-### งาน Redmine (ดึงข้อมูลจริง)
-- ดึง open + closed issue ของ **ทุกโปรเจกต์** จาก Redmine API (URL/key ตั้งค่าผ่านหน้าตั้งค่าในแอป ฝั่ง main process — renderer ไม่เห็น key)
-- แยกตามสถานะเป็น tab: Backlog → New → In Progress → Test → Resolved (มีจุดสีบอกสถานะ)
-- **ฟิลเตอร์โปรเจกต์ + ผู้รับผิดชอบ** เลือกได้หลายอันพร้อมกัน (ทำงานร่วมกันแบบ AND)
-- แต่ละงานแสดง `#id · ชื่องาน · โปรเจกต์ · ผู้รับผิดชอบ · Risk Level` — คลิกที่งานเพื่อเปิดใน Redmine
-- Risk Level ดึงจาก custom field แบ่งสีตามระดับ (Low → Fairly Low → Moderate → Medium → High)
-- refresh อัตโนมัติทุก 5 นาที · ดูอย่างเดียว (คลิกไม่แก้ไขข้อมูลใน Redmine)
+หน้าต่างลอย **โปร่งใส ไม่มีขอบ** ลากย้ายได้ที่แถบบน (◈ COWORK) ปรับขนาดได้ที่ขอบ เริ่มต้นวางมุมขวาบน — เป็นหน้าต่างจริงไม่ใช่ wallpaper เลยไม่โดนไอคอน desktop บัง
 
-### Meeting (บันทึกประชุม)
-อ่านโฟลเดอร์บันทึกประชุมที่ตั้งค่าไว้ (⚙ → การ์ด **Meeting**) — 1 โฟลเดอร์ = 1 ประชุม ตั้งชื่อว่า `YYYY-MM-DD_HH-MM-ชื่อประชุม` ข้างในมี `summary.md` / `transcript.md` และไฟล์เสียง (ถ้ามี)
-- **รายการ:** จัดกลุ่มตามวัน แต่ละแถวโชว์เวลา ชื่อ ตัวอย่างสรุป 2 บรรทัด แท็กหัวข้อ และป้ายจำนวนผู้พูด/ประโยค/action/ขนาดไฟล์เสียง
-- **กรอง:** ค้นหา (ชื่อ + เนื้อหาสรุป) · ชิปวันที่ · **ชิปหมวดหัวข้อ** ที่ดึงจากหัวข้อย่อยในไฟล์สรุปอัตโนมัติ
-- **หน้าอ่าน:** แท็บ สรุป / ถอดเสียง / ไฟล์ — หน้าสรุปมี**สารบัญคลิกกระโดด**, หน้าถอดเสียงแยก**สีพื้นหลังต่อผู้พูด** กรองเฉพาะคนที่เลือกได้ และค้นหาในบทถอดเสียงพร้อมไฮไลต์
-- แท็บไฟล์คลิกเปิดด้วยโปรแกรมของเครื่อง (เช่น `.ogg` เปิดเครื่องเล่นเสียง) · refresh อัตโนมัติทุก 5 นาที มีปุ่ม ↻ กดเองได้
-- transcript โหลดเฉพาะตอนกดเข้าไปอ่าน (รายการส่งมาแค่ metadata + สรุป) จะได้ไม่อืดเวลาไฟล์เยอะ
+ปุ่มบนแถบหัว: 📌 ปักหมุดบนสุด · ⛶ ขยายเต็มจอ/คืนขนาด · ✕ ปิด · ⚙ ตั้งค่า
 
-เปิดพร้อม Windows: กด `Win+R` → `shell:startup` → วาง shortcut ของ `start-widget.bat` ลงไป
+### แท็บ Redmine
+- ดึง open + closed issue ของ **ทุกโปรเจกต์** จาก Redmine API (ไม่จำกัดจำนวน ตัวเลขทุก tab/stat เป็นค่าจริง)
+- แยกตามสถานะเป็น tab: ALL → Backlog → New → In Progress → Test → Resolved → Closed (มีจุดสีบอกสถานะ · tab ALL = งานที่เปิดอยู่จริง ไม่รวม Closed/Backlog)
+- **ฟิลเตอร์โปรเจกต์ + ผู้รับผิดชอบ** เลือกหลายอันพร้อมกันได้ (ทำงานร่วมกันแบบ AND) ตัวเลขบน chip แยกเป็น เปิด/ปิด
+- แต่ละงานแสดง `#id · ชื่องาน · โปรเจกต์ · ผู้รับผิดชอบ · Risk Level` — คลิกเปิดใน Redmine · โชว์ทีละ 15 มีปุ่มโหลดเพิ่ม
+- ปิดงานจากในแอปได้ (พรีวิว journal + ช่อง Test Results ก่อนยืนยัน)
+- "ภาพรวม Redmine" = open / high risk / overdue / closed (การ์ด CLOSED กดขยายดูแยกรายปีได้)
 
-## Screensaver
-- เต็มจอ นาฬิกาใหญ่ + ข้อมูลหมุนวน + graph node ลอยพื้นหลัง
-- มี drift เบาๆ กัน burn-in
-- **ออก:** ขยับเมาส์ / กดปุ่ม / คลิก / Esc
+### แท็บ Workspace
+อ่าน A_Workspace markdown vault (โปรเจกต์ / บันทึกรายวัน / บทเรียน / playbook)
+- การ์ดโปรเจกต์พร้อมสถานะ 🟢 กำลังทำ · 🟡 พัก · ✅ จบแล้ว แยก Public/Private
+- ค้นหาโปรเจกต์ (ชื่อ / path / คำอธิบาย) + ฟิลเตอร์การมองเห็นและสถานะ
+- ฟีดบันทึกรายวันล่าสุด และการ์ดบทเรียน/แผนรับมือ — คลิกเปิดไฟล์ .md ด้วยโปรแกรมของเครื่อง
 
-### ให้เด้งเองตอนเครื่องว่าง (idle) แบบ screensaver จริง
-Electron ไม่ใช่ `.scr` ของ Windows โดยตรง แต่ทำให้ทำงานเหมือนกันได้ด้วย Task Scheduler:
-1. เปิด **Task Scheduler** → Create Task
-2. Triggers → New → **On idle** (ตั้งเวลา idle เช่น 5 นาที)
-3. Conditions → เปิด "Start the task only if the computer is idle for..." ตั้งเวลา
-4. Actions → Start a program → เลือก `start-screensaver.bat`
-เมื่อขยับเมาส์ แอปจะปิดตัวเอง
+### แท็บ Meeting
+อ่านโฟลเดอร์บันทึกประชุม **1 โฟลเดอร์ = 1 ประชุม** ตั้งชื่อว่า `YYYY-MM-DD_HH-MM-ชื่อประชุม` ข้างในมี `summary.md` / `transcript.md` และไฟล์เสียง (ถ้ามี)
 
-> อยากได้ `.scr` แท้ๆ ที่ตั้งในหน้า Screen Saver Settings ของ Windows: เอา `screensaver.html` ไปใส่ **Wallpaper Engine** (Steam) ซึ่งมีโหมด screensaver ในตัว — ใช้ HTML เดิมได้เลย ไม่ต้องแก้
+```
+meetings/
+├─ 2026-07-24_19-01-Meet1900/
+│  ├─ summary.md          # สรุปโดย AI (markdown)
+│  ├─ transcript.md       # **ผู้พูด 1** [00:18]: ข้อความ...
+│  └─ Meet1900-19-01-45.ogg
+└─ 2026-07-24_14-35-MEET_7/
+   ├─ summary.md
+   └─ transcript.md
+```
+
+- **รายการ** จัดกลุ่มตามวัน แต่ละแถวโชว์เวลา ชื่อ ตัวอย่างสรุป 2 บรรทัด แท็กหัวข้อ และป้ายจำนวนผู้พูด / ประโยค / action / ขนาดไฟล์เสียง — ประชุมที่ AI สรุปไม่ได้จะจางลงพร้อมป้าย ⚠
+- **กรอง** ด้วยช่องค้นหา (ชื่อ + เนื้อหาสรุป) · ชิปวันที่ · **ชิปหมวดหัวข้อ** ที่ดึงจากหัวข้อย่อยในไฟล์สรุปมาให้อัตโนมัติ
+- **หน้าอ่าน** แท็บ สรุป / ถอดเสียง / ไฟล์
+  - สรุป — เรนเดอร์ markdown พร้อม **สารบัญคลิกกระโดด**
+  - ถอดเสียง — **สีพื้นหลังแยกตามผู้พูด** กรองเฉพาะคนที่เลือกได้ ค้นหาในบทพร้อมไฮไลต์
+  - ไฟล์ — คลิกเปิดด้วยโปรแกรมของเครื่อง (เช่น `.ogg` เปิดเครื่องเล่นเสียง)
+- transcript โหลดเฉพาะตอนกดเข้าไปอ่าน (รายการส่งมาแค่ metadata + สรุป) ไฟล์เยอะก็ไม่อืด
+
+ทุกแท็บ refresh อัตโนมัติทุก 5 นาที · Workspace/Meeting มีปุ่ม ↻ กดโหลดเองได้
 
 ---
 
-## แพ็กเป็น .exe (ถ้าอยากได้ไฟล์เดียว)
-```bash
-npm install --save-dev electron-builder
-npx electron-builder --win
+## Screensaver
+
+เต็มจอ นาฬิกาใหญ่ + ข้อมูลหมุนวน + graph node ลอยพื้นหลัง มี drift เบา ๆ กัน burn-in
+**ออก:** ขยับเมาส์ / กดปุ่ม / คลิก / Esc
+
+ให้เด้งเองตอนเครื่องว่างแบบ screensaver จริง (Electron ไม่ใช่ `.scr` ของ Windows แต่ทำให้เหมือนกันได้ด้วย Task Scheduler):
+
+1. เปิด **Task Scheduler** → Create Task
+2. Triggers → New → **On idle** (ตั้งเวลา idle เช่น 5 นาที)
+3. Conditions → เปิด "Start the task only if the computer is idle for..."
+4. Actions → Start a program → เลือก `start-screensaver.bat`
+
+> อยากได้ `.scr` แท้ ๆ ที่ตั้งในหน้า Screen Saver Settings ของ Windows: เอา `screensaver.html` ไปใส่ **Wallpaper Engine** (Steam) ซึ่งมีโหมด screensaver ในตัว ใช้ HTML เดิมได้เลย
+
+---
+
+## โครงสร้างโค้ด
+
 ```
-ได้ installer ใน `dist/` แจกลงเครื่องอื่นได้
+COWORK-Desktop/
+├─ main.js            Electron main — เลือกโหมดจาก --widget / --screensaver,
+│                     เรียก Redmine API, อ่าน vault, จัดการ config + auto-update
+├─ preload.js         contextBridge — ทางเดียวที่ renderer คุยกับ main ได้
+├─ workspace.js       parser ของ A_Workspace vault (.md) — รันเดี่ยวได้: node workspace.js <dir>
+├─ meetings.js        parser ของโฟลเดอร์ประชุม      — รันเดี่ยวได้: node meetings.js <dir>
+├─ widget.html        UI ของ widget ทั้งหมด (HTML + CSS + JS ในไฟล์เดียว)
+├─ screensaver.html   UI ของ screensaver
+├─ icons/             ไอคอนแอป (.ico สำหรับ Windows)
+└─ start-*.bat        ทางลัดสำหรับดับเบิลคลิก
+```
 
-## อัปเดตอัตโนมัติ
-Widget ที่ติดตั้งแล้วเช็คเวอร์ชันใหม่จาก GitHub Releases (`wowBALL/COWORK-Desktop`, public repo) เองตอนเปิดโปรแกรม และเช็คซ้ำทุก 1 ชั่วโมง — ถ้ามีเวอร์ชันใหม่จะโหลดมาเงียบๆ แล้วถามว่าจะรีสตาร์ทติดตั้งเลยไหม
+**หลักการ:** ไม่มี build step และไม่มี dependency ตอน runtime — มีแต่ Electron ตอน dev/แพ็ก · secret ทุกอย่างอยู่ฝั่ง main · parser แต่ละตัวเป็น pure fs/path เลยรันทดสอบนอก Electron ได้
 
-กลไกนี้เขียนเอง (ไม่ใช้ `electron-updater`) เพราะ electron-updater มีบั๊กที่ไม่รักษา path ที่เลือกเองตอนติดตั้ง — รายละเอียดใน `docs/superpowers/specs/2026-07-22-custom-auto-update-design.md` ไม่ต้องใช้ token ใดๆ เพราะ repo เป็น public
+`parser` สองตัวรับ markdown ที่เขียนมาแบบ CRLF — normalize `\r\n` → `\n` ตอนอ่านเสมอ ไม่งั้น regex ที่ปิดท้ายด้วย `$` จะไม่แมตช์อะไรเลยแบบเงียบ ๆ
 
-ตอนจะออกเวอร์ชันใหม่:
-1. bump `version` ใน `package.json` แล้ว `npm run dist`
-2. อัปโหลด `.exe` จาก `dist/` ขึ้นเป็น GitHub Release (เช่น `gh release create vX.X.X "dist/COWORK Desktop Setup X.X.X.exe" --repo wowBALL/COWORK-Desktop`) — widget ของทุกคนที่ติดตั้งไว้แล้วจะเห็นอัปเดตในเช็ครอบถัดไปโดยไม่ต้องแจกไฟล์เอง
+---
 
-## หมายเหตุ
-- ส่วนงาน Redmine ของ widget = ข้อมูลจริงจาก API แล้ว (ตั้งค่าผ่านปุ่มเฟือง ⚙ ในแอป)
-- "ภาพรวม Redmine" (open / high risk / overdue / closed) = ข้อมูลจริงจาก API แล้วเช่นกัน
-- Workspace tab ต้องตั้งค่า path ของ vault เอง (โชว์ให้กรอกในแท็บนั้นถ้ายังไม่ได้ตั้งค่า) ไม่ได้ฝัง path ไว้อีกต่อไป
-- Meeting tab เหมือนกัน — ตั้ง path โฟลเดอร์ประชุมเองผ่าน ⚙ (เก็บใน `config.json` เดียวกัน)
+## แพ็กและปล่อยเวอร์ชันใหม่
+
+```bash
+npm run dist          # ได้ installer ใน dist/
+```
+
+Widget ที่ติดตั้งแล้วเช็คเวอร์ชันใหม่จาก GitHub Releases ([`wowBALL/COWORK-Desktop`](https://github.com/wowBALL/COWORK-Desktop), public repo) เองตอนเปิดโปรแกรมและซ้ำทุก 1 ชั่วโมง เจอของใหม่จะโหลดเงียบ ๆ แล้วถามว่าจะรีสตาร์ทติดตั้งเลยไหม — ไม่ต้องใช้ token เพราะ repo เป็น public
+
+กลไกนี้เขียนเอง ไม่ใช้ `electron-updater` เพราะ electron-updater มีบั๊กที่ไม่รักษา path ที่ผู้ใช้เลือกเองตอนติดตั้ง
+
+**ขั้นตอนปล่อยเวอร์ชัน:**
+
+1. bump `version` ใน `package.json` + เขียน `CHANGELOG.md`
+2. `npm run dist`
+3. `gh release create vX.X.X "dist/COWORK Desktop Setup X.X.X.exe" --repo wowBALL/COWORK-Desktop`
+4. ลบ `dist/` ทิ้ง (ไฟล์ .exe ก้อนใหญ่ ไม่ต้องเก็บไว้ในเครื่อง)
+
+เครื่องที่ติดตั้งไว้แล้วจะเห็นอัปเดตในรอบเช็คถัดไป ไม่ต้องแจกไฟล์เอง
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 wowBALL

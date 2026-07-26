@@ -12,6 +12,14 @@
   },
   "author": "Ball",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wowBALL/COWORK-Desktop.git"
+  },
+  "homepage": "https://github.com/wowBALL/COWORK-Desktop#readme",
+  "bugs": {
+    "url": "https://github.com/wowBALL/COWORK-Desktop/issues"
+  },
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3"
@@ -26,7 +34,8 @@
       "meetings.js",
       "widget.html",
       "screensaver.html",
-      "icons/**/*"
+      "icons/**/*",
+      "LICENSE"
     ],
     "publish": null,
     "win": {

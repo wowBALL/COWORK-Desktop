@@ -22,5 +22,6 @@ contextBridge.exposeInMainWorld('cowork', {
   refreshMeetings: () => ipcRenderer.send('meetings-refresh'),
   getMeetingTranscript: (id) => ipcRenderer.invoke('get-meeting-transcript', id),
   getMeetingsDir: () => ipcRenderer.invoke('get-meetings-dir'),
-  saveMeetingsDir: (dir) => ipcRenderer.invoke('save-meetings-dir', dir)
+  saveMeetingsDir: (dir) => ipcRenderer.invoke('save-meetings-dir', dir),
+  saveNote: (issueId, text) => ipcRenderer.invoke('save-note', issueId, text)
 });

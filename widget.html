@@ -178,6 +178,38 @@
   .testPreview .tp-actions button.confirm{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
   .testPreview .tp-actions button.confirm:disabled{opacity:.4;cursor:not-allowed;background:var(--panel);color:var(--dim)}
   .testPreview .tp-actions button.pending{opacity:.6;pointer-events:none}
+  /* private note button/panel — local-only, never sent to Redmine */
+  .noteBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
+    background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;transition:.15s;position:relative}
+  .noteBtn:hover{color:var(--accent);border-color:var(--accent)}
+  .noteBtn.has{color:var(--violet);border-color:color-mix(in srgb,var(--violet) 45%,transparent);
+    background:color-mix(in srgb,var(--violet) 12%,transparent)}
+  .noteBtn.has::after{content:'';position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:50%;
+    background:var(--violet);border:1.5px solid var(--bg)}
+  .notePanel{background:var(--panel-2);border:1px solid color-mix(in srgb,var(--violet) 38%,var(--line));
+    border-left:3px solid var(--violet);border-radius:10px;padding:12px;margin:0 0 10px}
+  .notePanel .np-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--violet);
+    font-weight:700;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .notePanel .np-label .local{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:10px;font-weight:600}
+  .notePanel .np-edit{width:100%;min-height:74px;resize:vertical;font-family:inherit;font-size:12.5px;
+    line-height:1.6;color:var(--ink);background:var(--panel);border:1px solid var(--line-soft);
+    border-radius:7px;padding:8px 10px;outline:none}
+  .notePanel .np-edit:focus{border-color:var(--violet)}
+  .notePanel .np-edit::placeholder{color:var(--dim);font-style:italic}
+  .notePanel .np-actions{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .notePanel .np-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
+    border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);
+    color:var(--muted);transition:.15s}
+  .notePanel .np-actions button:hover{color:var(--ink);border-color:var(--violet)}
+  .notePanel .np-actions button.save{background:var(--violet);color:var(--on-accent);border-color:var(--violet)}
+  .notePanel .np-actions button.save:hover{color:var(--on-accent);opacity:.88}
+  .notePanel .np-actions button.save:disabled{opacity:.5;cursor:not-allowed}
+  .notePanel .np-actions button.del{margin-left:auto;color:var(--rose);border-color:transparent;background:transparent}
+  .notePanel .np-actions button.del:hover{border-color:var(--rose);color:var(--rose)}
+  .notePanel .np-actions button.del:disabled{opacity:.5;cursor:not-allowed}
+  .notePanel .np-stamp{font-size:10px;color:var(--dim)}
+  .notePanel .np-err{font-size:11.5px;color:var(--rose);margin-top:8px}
   /* project pill palette (muted, curated) */
   .pc0{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
   .pc1{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
@@ -616,6 +648,7 @@
   const RISK_ORDER=['Low','Fairly Low','Moderate','Medium','High'];
   const RISK_COLORS=['var(--green)','var(--cyan)','var(--amber)','var(--orange)','var(--rose)'];
   let lastPayload=null, activeStatus=null;
+  let notes={};   // set from payload.notes in renderTasks(), before renderPanel() runs — never fetched separately
   const selectedProjects=new Set();    // empty = show all projects
   const selectedAssignees=new Set();   // empty = show all assignees
   let selectedRisk=null;   // null = ทั้งหมด; 'none' = ไม่ระบุ; else exact risk string
@@ -654,14 +687,11 @@
         <span class="who ${whoColor(issue.assignee)}" title="${esc(issue.assignee)}">${esc(issue.assignee)}</span>
         <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>`;
       row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
-      if(issue.status==='Resolved'){
-        const slot=document.createElement('div');
-        row.appendChild(makeCloseBtn(issue.id, slot));
-        el.appendChild(row);
-        el.appendChild(slot);
-      } else {
-        el.appendChild(row);
-      }
+      const slot=document.createElement('div');
+      if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id, slot));
+      row.appendChild(makeNoteBtn(issue.id, slot));
+      el.appendChild(row);
+      el.appendChild(slot);
     });
     if(allMatching.length>visibleCount){
       const moreBtn=document.createElement('button');
@@ -671,15 +701,20 @@
       el.appendChild(moreBtn);
     }
   }
+  // both the close-issue preview and the private-note panel render into the same
+  // per-row `slot` (a sibling element right after the row) — only one panel of
+  // either kind is open at a time, tracked via slot.dataset.kind
+  function clearSlot(slot){ slot.innerHTML=''; delete slot.dataset.kind; delete slot._attemptClose; }
+  function closeAllPanels(){ document.querySelectorAll('[data-kind]').forEach(clearSlot); }
   // icon button: click fetches the issue's history + Test Results field and opens a preview
-  // panel in `slot` (a sibling element right after the row) for review before closing
+  // panel in `slot` for review before closing
   function makeCloseBtn(issueId, slot){
     const btn=document.createElement('button');
     btn.className='closeBtn'; btn.textContent='✓'; btn.title='ปิดงาน (Resolved → Closed)';
     btn.onclick=(e)=>{
       e.stopPropagation();
-      if(slot.childElementCount){ slot.innerHTML=''; return; } // toggle closed if already open
-      document.querySelectorAll('.testPreview').forEach(p=>p.remove()); // only one open at a time
+      if(slot.dataset.kind==='close'){ closeAllPanels(); return; } // toggle closed if already open
+      closeAllPanels(); // only one panel open at a time, across the whole list
       btn.classList.add('pending'); btn.title='กำลังโหลดประวัติ...';
       api.getIssuePreview(issueId).then(result=>{
         btn.classList.remove('pending'); btn.title='ปิดงาน (Resolved → Closed)';
@@ -689,10 +724,85 @@
           setTimeout(()=>btn.classList.remove('err'),2000);
           return;
         }
+        slot.dataset.kind='close';
         renderTestPreview(slot, issueId, result);
       });
     };
     return btn;
+  }
+  function notePreview(text){ return text.length>60 ? text.slice(0,60)+'…' : text; }
+  // icon button: opens/closes the private note panel for this issue in `slot`.
+  // Local-only — the note text never leaves this machine via any Redmine call.
+  function makeNoteBtn(issueId, slot){
+    const btn=document.createElement('button');
+    const existing=notes[String(issueId)];
+    btn.className='noteBtn'+(existing?' has':'');
+    btn.textContent='📝';
+    btn.title=existing?('โน้ต: '+notePreview(existing.text)):'เพิ่มโน้ตส่วนตัว';
+    btn.onclick=(e)=>{
+      e.stopPropagation();
+      if(slot.dataset.kind==='note'){ (slot._attemptClose||closeAllPanels)(); return; }
+      closeAllPanels();
+      slot.dataset.kind='note';
+      renderNotePanel(slot, issueId);
+    };
+    return btn;
+  }
+  function renderNotePanel(slot, issueId){
+    const existing=notes[String(issueId)];
+    const original=existing?existing.text:'';
+    const panel=document.createElement('div');
+    panel.className='notePanel';
+    panel.onclick=e=>e.stopPropagation();
+    panel.innerHTML=`
+      <div class="np-label"><span>📝 โน้ตส่วนตัว · #${issueId}</span><span class="local">เก็บบนเครื่องนี้ · ไม่ส่งไป Redmine</span></div>
+      <textarea class="np-edit" placeholder="จดอะไรก็ได้ที่ไม่อยากให้ใครเห็น…">${esc(original)}</textarea>
+      <div class="np-actions">
+        <button class="save">บันทึก</button>
+        <button class="cancel">ยกเลิก</button>
+        ${existing?`<span class="np-stamp">แก้ไขล่าสุด ${timeAgo(existing.updatedAt)}</span><button class="del">ลบโน้ต</button>`:''}
+      </div>
+      <div class="np-err" style="display:none"></div>`;
+    slot.appendChild(panel);
+    const textarea=panel.querySelector('.np-edit');
+    const saveBtn=panel.querySelector('.save');
+    const showErr=msg=>{ const err=panel.querySelector('.np-err'); err.style.display='block'; err.textContent=msg; };
+    function doSave(){
+      const val=textarea.value.trim();
+      saveBtn.disabled=true; saveBtn.textContent='กำลังบันทึก...';
+      api.saveNote(issueId, val).then(result=>{
+        saveBtn.disabled=false; saveBtn.textContent='บันทึก';
+        if(!result || !result.ok){ showErr('บันทึกไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ')); return; }
+        if(val) notes[String(issueId)]={text:val, updatedAt:new Date().toISOString()};
+        else delete notes[String(issueId)];
+        clearSlot(slot);
+        renderPanel();
+      });
+    }
+    function attemptClose(){
+      if(textarea.value.trim()!==original.trim() && !confirm('มีข้อความที่ยังไม่ได้บันทึก ปิดทิ้งเลยไหม?')) return;
+      clearSlot(slot);
+    }
+    slot._attemptClose=attemptClose;
+    panel.querySelector('.save').onclick=doSave;
+    panel.querySelector('.cancel').onclick=attemptClose;
+    const delBtn=panel.querySelector('.del');
+    if(delBtn) delBtn.onclick=()=>{
+      delBtn.disabled=true;
+      api.saveNote(issueId,'').then(result=>{
+        delBtn.disabled=false;
+        if(!result || !result.ok){ showErr('ลบไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ')); return; }
+        delete notes[String(issueId)];
+        clearSlot(slot);
+        renderPanel();
+      });
+    };
+    textarea.addEventListener('keydown',e=>{
+      if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); doSave(); }
+      else if(e.key==='Escape'){ e.preventDefault(); attemptClose(); }
+    });
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }
   function renderTestPreview(slot, issueId, {historyText, testResults}){
     const panel=document.createElement('div');
@@ -706,7 +816,7 @@
         <div class="tp-label">ประวัติที่รวบรวมได้</div>
         ${historyBlock}
         <div class="tp-actions"><button class="cancel">ปิด</button></div>`;
-      panel.querySelector('.cancel').onclick=(e)=>{ e.stopPropagation(); slot.innerHTML=''; };
+      panel.querySelector('.cancel').onclick=(e)=>{ e.stopPropagation(); clearSlot(slot); };
       slot.appendChild(panel);
       return;
     }
@@ -719,7 +829,7 @@
         <button class="confirm">ยืนยันและปิดงาน</button>
         <button class="cancel">ยกเลิก</button>
       </div>`;
-    panel.querySelector('.cancel').onclick=(e)=>{ e.stopPropagation(); slot.innerHTML=''; };
+    panel.querySelector('.cancel').onclick=(e)=>{ e.stopPropagation(); clearSlot(slot); };
     const confirmBtn=panel.querySelector('.confirm');
     confirmBtn.onclick=(e)=>{
       e.stopPropagation();
@@ -855,6 +965,7 @@
     }
     if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; return; }
     lastPayload=payload;
+    notes=payload.notes||{};
     // drop selections that no longer exist
     const projNames=new Set(allIssues().map(i=>i.project));
     const asgNames=new Set(allIssues().map(i=>i.assignee));

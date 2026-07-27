@@ -41,6 +41,33 @@ function writeConfigMerge(patch) {
 let redmineConfig = { url: '', apiKey: '' };
 let workspaceDir = '';
 let meetingsDir = '';
+
+// ---- private per-issue notes, local-only — never written back to Redmine ----
+// See docs/superpowers/specs/2026-07-27-private-issue-notes-design.md
+// Kept in its own file (not merged into config.json): notes grow over time and
+// shouldn't sit next to the Redmine API key, and can be wiped/backed up separately.
+function notesPath() { return path.join(app.getPath('userData'), 'notes.json'); }
+function readNotes() {
+  try { return JSON.parse(fs.readFileSync(notesPath(), 'utf8')); } catch { return {}; }
+}
+function writeNotes(notes) {
+  fs.mkdirSync(path.dirname(notesPath()), { recursive: true });
+  fs.writeFileSync(notesPath(), JSON.stringify(notes, null, 2));
+}
+// A note's lifetime is the issue's open lifetime — once an issue is closed its
+// note is deleted, silently, no confirmation (the user's use case is "ask back
+// when work has a problem"; once closed the question is moot).
+function pruneAndAttachNotes(payload) {
+  const notes = readNotes();
+  let changed = false;
+  for (const g of payload.groups || []) {
+    for (const issue of g.issues) {
+      if (issue.closed && notes[String(issue.id)]) { delete notes[String(issue.id)]; changed = true; }
+    }
+  }
+  if (changed) writeNotes(notes);
+  return { ...payload, notes };
+}
 function loadAppConfig() {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch {}
@@ -264,7 +291,7 @@ async function fetchRedmineTasks() {
 function pushTasks() {
   if (!win) return;
   Promise.all([fetchRedmineTasks(), getCurrentUserName()]).then(([payload, currentUser]) =>
-    win && win.webContents.send('tasks-update', { ...payload, currentUser }));
+    win && win.webContents.send('tasks-update', pruneAndAttachNotes({ ...payload, currentUser })));
 }
 
 // A_Workspace markdown vault — path comes from settings (workspaceDir, loaded in loadAppConfig)
@@ -427,6 +454,22 @@ ipcMain.handle('save-redmine-config', (_e, { url, apiKey }) => {
   currentUserCache = null; statusIdCache = null; // tied to the old credentials
   pushTasks();
   return { ok: true };
+});
+// private note for one issue — local-only, never touches the Redmine API.
+// Saving an empty/whitespace string deletes the note; that's also how the
+// renderer's "ลบโน้ต" button works, so there's a single delete path.
+ipcMain.handle('save-note', (_e, issueId, text) => {
+  try {
+    const notes = readNotes();
+    const key = String(issueId);
+    const trimmed = (text || '').trim();
+    if (trimmed) notes[key] = { text: trimmed, updatedAt: new Date().toISOString() };
+    else delete notes[key];
+    writeNotes(notes);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 // renderer's Workspace tab: read/save the vault path the same way
 ipcMain.handle('get-workspace-dir', () => workspaceDir);

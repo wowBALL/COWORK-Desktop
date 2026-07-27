@@ -23,5 +23,10 @@ contextBridge.exposeInMainWorld('cowork', {
   getMeetingTranscript: (id) => ipcRenderer.invoke('get-meeting-transcript', id),
   getMeetingsDir: () => ipcRenderer.invoke('get-meetings-dir'),
   saveMeetingsDir: (dir) => ipcRenderer.invoke('save-meetings-dir', dir),
-  saveNote: (issueId, text) => ipcRenderer.invoke('save-note', issueId, text)
+  saveNote: (issueId, text) => ipcRenderer.invoke('save-note', issueId, text),
+  onQaTests: (cb) => ipcRenderer.on('qatest-update', (_e, payload) => cb(payload)),
+  refreshQaTests: () => ipcRenderer.send('qatest-refresh'),
+  getQaFailureXml: (runDir) => ipcRenderer.invoke('get-qa-failure-xml', runDir),
+  getQaSources: () => ipcRenderer.invoke('get-qa-sources'),
+  saveQaSources: (sources) => ipcRenderer.invoke('save-qa-sources', sources)
 });

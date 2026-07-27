@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { readWorkspace } = require('./workspace');
 const { readMeetings, readTranscript } = require('./meetings');
+const { readQaResults } = require('./qatest');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -41,6 +42,10 @@ function writeConfigMerge(patch) {
 let redmineConfig = { url: '', apiKey: '' };
 let workspaceDir = '';
 let meetingsDir = '';
+// QA test results — { label, path }[], array from day one: more sources
+// (other jobs' QA results) are a confirmed near-term need, not a maybe.
+// See docs/superpowers/specs/2026-07-27-qa-test-tab-design.md
+let qaSources = [];
 
 // ---- private per-issue notes, local-only — never written back to Redmine ----
 // See docs/superpowers/specs/2026-07-27-private-issue-notes-design.md
@@ -74,12 +79,19 @@ function loadAppConfig() {
   redmineConfig = { url: saved.redmineUrl || '', apiKey: saved.redmineApiKey || '' };
   workspaceDir = saved.workspaceDir || '';
   meetingsDir = saved.meetingsDir || '';
+  qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
   // dev convenience only: unpackaged runs may still use a local .env; never packaged
   if (!app.isPackaged) {
     if (!redmineConfig.url) redmineConfig.url = ENV.REDMINE_URL || '';
     if (!redmineConfig.apiKey) redmineConfig.apiKey = ENV.REDMINE_API_KEY || '';
     if (!workspaceDir) workspaceDir = ENV.WORKSPACE_DIR || path.join(__dirname, '..', 'A_Workspace');
     if (!meetingsDir) meetingsDir = ENV.MEETINGS_DIR || path.join(__dirname, '..', 'meeting-notes', 'meetings');
+    if (!qaSources.length) {
+      qaSources = [{
+        label: 'Zinga mobile (Appium)',
+        path: ENV.QA_RESULTS_DIR || 'D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\results',
+      }];
+    }
   }
 }
 
@@ -313,6 +325,17 @@ function pushMeetings() {
   win.webContents.send('meetings-update', payload);
 }
 
+// QA test results — path(s) come from settings (qaSources, loaded in loadAppConfig).
+// Each run's full log ships in the list payload (small text files); failure.xml
+// is read lazily on demand via get-qa-failure-xml, not bundled here.
+function pushQaTests() {
+  if (!win) return;
+  let payload;
+  try { payload = readQaResults(qaSources); }
+  catch (e) { payload = { runs: [], sources: [], error: e.message }; }
+  win.webContents.send('qatest-update', payload);
+}
+
 function createWidget() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   const W = 420, H = 640;
@@ -337,10 +360,11 @@ function createWidget() {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
   }
   win.loadFile('widget.html');
-  win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); pushMeetings(); });
+  win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); pushMeetings(); pushQaTests(); });
   setInterval(pushTasks, 5 * 60 * 1000);
   setInterval(pushWorkspace, 5 * 60 * 1000);
   setInterval(pushMeetings, 5 * 60 * 1000);
+  setInterval(pushQaTests, 5 * 60 * 1000);
 }
 
 function createScreensaver() {
@@ -384,6 +408,8 @@ ipcMain.on('open-file', (_e, p) => { if (p) shell.openPath(p); });
 ipcMain.on('workspace-refresh', () => pushWorkspace());
 // renderer asks to re-read the meetings folder (manual refresh button)
 ipcMain.on('meetings-refresh', () => pushMeetings());
+// renderer asks to re-read the QA results folder(s) (manual refresh button)
+ipcMain.on('qatest-refresh', () => pushQaTests());
 // transcript of one meeting, loaded on demand when the user opens it
 ipcMain.handle('get-meeting-transcript', (_e, id) => {
   try { return readTranscript(meetingsDir, id); }
@@ -486,6 +512,19 @@ ipcMain.handle('save-meetings-dir', (_e, dir) => {
   writeConfigMerge({ meetingsDir: dir });
   pushMeetings();
   return { ok: true };
+});
+// renderer's QA test tab: read/save the list of { label, path } sources
+ipcMain.handle('get-qa-sources', () => qaSources);
+ipcMain.handle('save-qa-sources', (_e, sources) => {
+  qaSources = (sources || []).filter(s => s && s.path);
+  writeConfigMerge({ qaSources });
+  pushQaTests();
+  return { ok: true };
+});
+// UI hierarchy dump for a failed run — lazy, can be tens of KB, only read on demand
+ipcMain.handle('get-qa-failure-xml', (_e, runDir) => {
+  try { return { xml: fs.readFileSync(path.join(runDir, 'failure.xml'), 'utf8') }; }
+  catch (e) { return { error: e.message }; }
 });
 
 app.whenReady().then(() => {

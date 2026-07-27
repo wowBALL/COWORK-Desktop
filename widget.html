@@ -69,7 +69,7 @@
   /* หน้าต่างขยายเต็มจอได้ (ปุ่ม ⛶) — ให้เนื้อหากินพื้นที่ได้เต็มที่ (ไม่งั้นเสียดายจอ)
      แต่ยังมีเพดานกันบรรทัดยาวเป็นเมตรบนจอ ultrawide
      ที่ 420px (ขนาดวิดเจ็ตปกติ) กฎนี้ไม่มีผล เพราะยังไม่ถึง max-width */
-  #redmineView,#workspaceView,#meetingView{max-width:1440px;margin:0 auto}
+  #redmineView,#workspaceView,#qaView,#meetingView{max-width:1440px;margin:0 auto}
   /* หน้าตั้งค่าเป็นฟอร์ม ยิ่งกว้างยิ่งกรอกยาก — คุมไว้แคบกว่าเพื่อน */
   #settingsView{max-width:720px;margin:0 auto}
 
@@ -465,6 +465,59 @@
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .mt-file .fs{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);flex-shrink:0}
   mark{background:color-mix(in srgb,var(--amber) 30%,transparent);color:var(--amber);border-radius:3px;padding:0 2px}
+
+  /* ---- QA test tab ---- */
+  /* จอแคบ: qaRows กับ qaReader ผลัดกันโชว์ (list ↔ reader แบบ Meeting)
+     จอกว้างพอ (maximize) มีที่ว่างพอโชว์คู่กันแบบ mock ที่เลือกไว้ — container query ตัดสินจากความกว้างจริง
+     container-type ต้องอยู่ที่ #qaView (พ่อ) ไม่ใช่ #qaStage เอง — @container สั่งได้เฉพาะ "ลูก" ของ container
+     ถ้าตั้งไว้ที่ #qaStage แล้วสั่ง #qaStage กฎจะไม่ทำงานเลย (เคยพลาดมาแล้ว) */
+  #qaView{container-type:inline-size}
+  @container (min-width:760px){
+    #qaStage{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,40%);gap:16px;align-items:start}
+    #qaRows.hidden,#qaReader.hidden{display:block}
+    #qaBack{display:none}
+    #qaReader{position:sticky;top:-6px;max-height:calc(100vh - 200px);overflow-y:auto}
+  }
+  .qa-row{-webkit-app-region:no-drag;display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--panel);
+    border:1px solid var(--line-soft);border-radius:10px;cursor:pointer;transition:.13s;margin-bottom:6px}
+  .qa-row:hover{border-color:var(--accent);background:var(--panel-2)}
+  .qa-row.sel{border-color:var(--accent);background:var(--panel-2)}
+  .qa-badge{font-size:9px;font-weight:700;letter-spacing:.04em;padding:3px 8px;border-radius:6px;flex-shrink:0;
+    width:44px;text-align:center;text-transform:uppercase}
+  .qa-b-pass{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+  .qa-b-fail{background:color-mix(in srgb,var(--rose) 18%,transparent);color:var(--rose)}
+  .qa-b-crash{background:color-mix(in srgb,var(--amber) 18%,transparent);color:var(--amber)}
+  /* แท็บสีต่อ source ยืมโทนเดียวกับ .sp0-7 ของหน้าถอดเสียง ไม่ต้องคิดชุดสีใหม่ */
+  .qa-src{--sbg:color-mix(in srgb,var(--sc) 16%,transparent);font-size:10px;font-weight:600;padding:2px 8px;
+    border-radius:6px;flex-shrink:0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    color:var(--sc);background:var(--sbg)}
+  .qa-row .qa-name{font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .qa-row .qa-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);flex-shrink:0}
+  .qa-reader-head{display:flex;align-items:center;gap:9px;margin-bottom:4px;flex-wrap:wrap}
+  .qa-reader-sub{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);margin-bottom:10px}
+  .qa-toggle{-webkit-app-region:no-drag;font-size:11px;font-weight:600;color:var(--accent);cursor:pointer;
+    display:inline-block;margin-bottom:8px}
+  .qa-log{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:var(--muted);
+    background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;
+    white-space:pre-wrap;word-break:break-word;max-height:min(52vh,420px);overflow:auto}
+  .qa-log .ok{color:var(--green)}
+  .qa-log .bad{color:var(--rose)}
+  .qa-log .info{color:var(--cyan)}
+  .qa-xmlbtn{-webkit-app-region:no-drag;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;
+    color:var(--rose);background:color-mix(in srgb,var(--rose) 10%,transparent);
+    border:1px solid color-mix(in srgb,var(--rose) 35%,transparent);border-radius:8px;padding:7px 12px;
+    cursor:pointer;margin-top:10px}
+  .qa-xmlbtn:hover{background:color-mix(in srgb,var(--rose) 18%,transparent)}
+  .qa-xml{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.6;color:var(--dim);
+    background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;
+    white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto;margin-top:8px}
+  /* การ์ดตั้งค่า: หนึ่งแถวต่อหนึ่ง source (label + path + ลบ) */
+  .qa-src-row{display:flex;gap:6px;margin-bottom:8px;align-items:center}
+  .qa-src-row input{flex:1;min-width:0}
+  .qa-src-row .qa-src-label{flex:0 0 34%}
+  .qa-src-row .qa-src-rm{-webkit-app-region:no-drag;flex-shrink:0;width:30px;height:30px;border-radius:8px;
+    border:1px solid var(--line);background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px}
+  .qa-src-row .qa-src-rm:hover{color:var(--rose);border-color:var(--rose)}
   .hidden{display:none}
 </style>
 </head>
@@ -484,9 +537,11 @@
       <div class="seg">
         <button id="navRedmine" class="on">Redmine</button>
         <button id="navWorkspace">Workspace</button>
+        <button id="navQa">QA test</button>
         <button id="navMeeting">Meeting</button>
       </div>
       <button id="wsRefresh" class="refresh hidden" title="โหลด Workspace ใหม่">↻</button>
+      <button id="qaRefresh" class="refresh hidden" title="โหลดผล QA test ใหม่">↻</button>
       <button id="mtRefresh" class="refresh hidden" title="โหลดรายการประชุมใหม่">↻</button>
     </div>
 
@@ -530,6 +585,25 @@
 
         <h3>บทเรียน &amp; แผนรับมือ</h3>
         <div id="wsKnow" class="lgrid"></div>
+      </div>
+
+      <!-- ===== QA test view ===== -->
+      <!-- สองหน้าในตัวเอง: qaList (รายการ) ↔ qaReader (หน้าอ่านเต็ม) สลับด้วย .hidden เหมือนแท็บ Meeting -->
+      <div id="qaView" class="hidden">
+        <h3>ภาพรวม QA test</h3>
+        <div id="qaStats" class="stats"></div>
+
+        <h3>รันทดสอบ</h3>
+        <div class="row-label">สถานะ</div>
+        <div id="qaChips" class="chips"></div>
+        <div class="row-label" id="qaSrcLabel" style="display:none">Source</div>
+        <div id="qaSrcChips" class="chips" style="display:none"></div>
+        <!-- จอแคบ (ค่าเริ่มต้นของวิดเจ็ต 420px): qaRows ↔ qaReader สลับกันแบบ Meeting
+             จอกว้าง (maximize/ต่อจอนอก): container query ด้านล่างบังคับให้โชว์คู่กันแทน -->
+        <div id="qaStage">
+          <div id="qaRows"><div class="hint">กำลังโหลด...</div></div>
+          <div id="qaReader" class="hidden"></div>
+        </div>
       </div>
 
       <!-- ===== Meeting view ===== -->
@@ -582,6 +656,16 @@
             <div class="hint" style="margin:-4px 0 12px">โครงสร้างที่รองรับ: 1 โฟลเดอร์ = 1 ประชุม ชื่อ <code>YYYY-MM-DD_HH-MM-ชื่อประชุม</code> ข้างในมี summary.md / transcript.md</div>
             <div id="setMtStatus" class="set-status"></div>
             <div class="set-actions"><button id="setMtSave" class="set-save">บันทึก</button></div>
+          </div>
+        </div>
+        <div class="set-card" id="cardQa">
+          <div class="set-card-header" data-card="cardQa"><span>◈ QA test</span><span class="chev">›</span></div>
+          <div class="set-card-body">
+            <div class="hint" style="margin:-2px 0 10px">แต่ละ source คือหนึ่งโฟลเดอร์ผลเทส (ข้างในมีโฟลเดอร์ย่อยชื่อ timestamp แต่ละอันคือหนึ่งรัน) — เพิ่มได้หลาย source เผื่อผล QA ของงานอื่น</div>
+            <div id="setQaRows"></div>
+            <button id="setQaAdd" type="button" class="set-cancel" style="width:100%;margin:2px 0 10px">➕ เพิ่ม source</button>
+            <div id="setQaStatus" class="set-status"></div>
+            <div class="set-actions"><button id="setQaSave" class="set-save">บันทึก</button></div>
           </div>
         </div>
         <button id="setCancel" class="set-cancel" style="width:100%">ปิด</button>
@@ -1423,27 +1507,195 @@
     mtQuery=e.target.value; if(mtData) renderMtRows();
   };
 
+  // ===== QA test tab =====
+  // payload = { runs:[{id,dir,sourceLabel,name,status,startedAt,endedAt,log,hasXml}], sources:[label,...], error }
+  // failure.xml is never in the payload (can be tens of KB) — loaded on demand via getQaFailureXml and cached.
+  let qaData=null, qaFilter='all', qaSrcFilter=null, qaOpen=null, qaXmlCache=new Map();
+
+  function qaSrcIdx(label){
+    let h=0; for(let i=0;i<label.length;i++) h=(h*31+label.charCodeAt(i))>>>0;
+    return h%8; // reuse the .sp0-7 speaker-color rotation from the transcript view
+  }
+  function qaBadge(status){
+    const cls={PASS:'qa-b-pass',FAIL:'qa-b-fail',CRASH:'qa-b-crash'}[status]||'qa-b-crash';
+    const label={PASS:'PASS',FAIL:'FAIL',CRASH:'ไม่จบ'}[status]||status;
+    return `<span class="qa-badge ${cls}">${label}</span>`;
+  }
+  function qaSrcTag(label){
+    return `<span class="qa-src sp${qaSrcIdx(label)}">${esc(label)}</span>`;
+  }
+  function qaDur(r){
+    if(!r.startedAt||!r.endedAt) return '';
+    const a=new Date(r.startedAt.replace(' ','T')), b=new Date(r.endedAt.replace(' ','T'));
+    const s=Math.max(0,Math.round((b-a)/1000));
+    return s<60?`${s}s`:`${Math.floor(s/60)}m ${s%60}s`;
+  }
+  function qaColorLog(t){
+    return esc(t).split('\n').map(l=>{
+      if(/RESULT:\s*PASS|🎉|DONE_OK/.test(l)) return `<span class="ok">${l}</span>`;
+      if(/RESULT:\s*FAIL|❌/.test(l)) return `<span class="bad">${l}</span>`;
+      if(/^📁|🔗|ℹ️|⏳/.test(l)) return `<span class="info">${l}</span>`;
+      return l;
+    }).join('\n');
+  }
+  function qaList(){
+    if(!qaData||!qaData.runs) return [];
+    return qaData.runs.filter(r=>
+      (qaFilter==='all'||r.status===qaFilter) &&
+      (qaSrcFilter===null||r.sourceLabel===qaSrcFilter));
+  }
+  function renderQaStats(){
+    const runs=(qaData&&qaData.runs)||[];
+    const cells=[['ทั้งหมด',runs.length,'var(--accent)'],
+                 ['PASS',runs.filter(r=>r.status==='PASS').length,'var(--green)'],
+                 ['FAIL',runs.filter(r=>r.status==='FAIL').length,'var(--rose)'],
+                 ['ไม่จบ',runs.filter(r=>r.status==='CRASH').length,'var(--amber)']];
+    document.getElementById('qaStats').innerHTML=cells.map(([l,n,c])=>
+      `<div class="stat" style="--sc:${c}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+  }
+  function renderQaChips(){
+    const runs=(qaData&&qaData.runs)||[];
+    const counts={all:runs.length,PASS:0,FAIL:0,CRASH:0};
+    runs.forEach(r=>counts[r.status]=(counts[r.status]||0)+1);
+    const defs=[['all','ทั้งหมด'],['PASS','PASS'],['FAIL','FAIL'],['CRASH','ไม่จบ']];
+    document.getElementById('qaChips').innerHTML=defs.map(([k,l])=>
+      `<div class="chip${qaFilter===k?' active':''}" data-k="${k}">${l}<span class="n">${counts[k]||0}</span></div>`).join('');
+    document.querySelectorAll('#qaChips .chip').forEach(c=>c.onclick=()=>{qaFilter=c.dataset.k;renderQaChips();renderQaRows()});
+
+    // ชิปกรอง source โผล่เฉพาะตอนมีมากกว่า 1 source — ตอนนี้ยังไม่โผล่จนกว่าจะเพิ่ม source ที่ 2
+    const sources=(qaData&&qaData.sources)||[];
+    const srcLabelEl=document.getElementById('qaSrcLabel'), srcEl=document.getElementById('qaSrcChips');
+    if(sources.length>1){
+      srcLabelEl.style.display=''; srcEl.style.display='';
+      srcEl.innerHTML=`<div class="chip${qaSrcFilter===null?' active':''}" data-s="">ทุก source<span class="n">${runs.length}</span></div>`+
+        sources.map(s=>`<div class="chip${qaSrcFilter===s?' active':''}" data-s="${esc(s)}">${esc(s)}<span class="n">${runs.filter(r=>r.sourceLabel===s).length}</span></div>`).join('');
+      srcEl.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{qaSrcFilter=c.dataset.s||null;renderQaChips();renderQaRows()});
+    } else {
+      srcLabelEl.style.display='none'; srcEl.style.display='none'; srcEl.innerHTML=''; qaSrcFilter=null;
+    }
+  }
+  function renderQaRows(){
+    const el=document.getElementById('qaRows');
+    if(qaData && qaData.error){
+      const notSetUp=qaData.error.startsWith('ไม่พบโฟลเดอร์ QA test');
+      el.innerHTML=`<div class="not-configured">
+        <p>${notSetUp?'ยังไม่ได้ตั้งค่าโฟลเดอร์ผล QA test':esc(qaData.error)}</p>
+        <button id="qaNotConfiguredBtn">ตั้งค่าเลย</button>
+      </div>`;
+      document.getElementById('qaNotConfiguredBtn').onclick=()=>openSettings('cardQa');
+      return;
+    }
+    const list=qaList();
+    if(!list.length){
+      el.innerHTML='<div class="empty">ไม่พบรันทดสอบที่ตรงกับตัวกรอง</div>';
+      qaOpen=null; renderQaReader();   // อย่าปล่อย reader ค้างโชว์รันที่ถูกกรองออกไปแล้ว
+      return;
+    }
+    // ตัวกรองอาจตัดรันที่เลือกอยู่ออกจากลิสต์ — เด้งไปเลือกอันแรกที่ยังเห็นแทน
+    // ไม่งั้นจอกว้างจะเหลือ reader โชว์รันที่ไม่มีในลิสต์ โดยไม่มีแถวไหนไฮไลต์เลย
+    if(!list.some(r=>r.id===qaOpen)){ qaOpen=list[0].id; renderQaReader(); }
+    // .sel ไฮไลต์แถวที่เลือกอยู่ — มีผลตอนจอกว้างที่ qaRows กับ qaReader โชว์คู่กัน (ดู container query ด้านบน)
+    el.innerHTML=list.map(r=>`
+      <div class="qa-row${r.id===qaOpen?' sel':''}" data-id="${esc(r.id)}">
+        ${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}
+        <span class="qa-name">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span>
+        <span class="qa-time">${esc(r.endedAt?r.endedAt.slice(11):r.id)}</span>
+      </div>`).join('');
+    el.querySelectorAll('.qa-row').forEach(row=>row.onclick=()=>{
+      const r=qaData.runs.find(x=>x.id===row.dataset.id);
+      if(r) qaOpenRun(r);
+    });
+  }
+  function qaOpenRun(r){
+    qaOpen=r.id;
+    document.getElementById('qaRows').classList.add('hidden');
+    document.getElementById('qaReader').classList.remove('hidden');
+    renderQaRows();   // รีเฟรชไฮไลต์ .sel (ไม่มีผลตอนจอแคบเพราะแถวถูกซ่อนไปแล้ว)
+    renderQaReader();
+    document.querySelector('.body').scrollTop=0;
+  }
+  function qaBackToList(){
+    // ไม่ล้าง qaOpen — ถ้าขยายจอกว้างขึ้นทีหลัง reader (ที่โชว์คู่กับ list) จะมีเนื้อหาให้ดูทันที ไม่ต้องเลือกใหม่
+    document.getElementById('qaReader').classList.add('hidden');
+    document.getElementById('qaRows').classList.remove('hidden');
+  }
+  function renderQaReader(){
+    const r=qaData && qaData.runs.find(x=>x.id===qaOpen); const el=document.getElementById('qaReader');
+    // ต้องล้าง innerHTML ด้วย ไม่ใช่แค่ .hidden — จอกว้าง container query สั่ง display:block ทับ .hidden อยู่
+    if(!r){ el.innerHTML=''; qaBackToList(); return; }
+    const collapsedDefault=r.status==='PASS'; // FAIL/ไม่จบ ขึ้นเต็มทันที เพราะเป็นอันที่ต้องอ่าน
+    const lines=r.log.split('\n');
+    el.innerHTML=`
+      <button class="mt-back" id="qaBack">← กลับไปรายการรัน</button>
+      <div class="qa-reader-head">${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}
+        <span class="mt-title" style="font-size:14.5px">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span></div>
+      <div class="qa-reader-sub">${esc(r.id)}${r.startedAt?' · '+esc(r.startedAt):''}${qaDur(r)?' · '+qaDur(r):''}</div>
+      <span class="qa-toggle" id="qaToggle">${collapsedDefault?'▸ ขยาย log เต็ม':'▾ ย่อ log'}</span>
+      <div class="qa-log" id="qaLog">${collapsedDefault?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(r.log)}</div>
+      ${r.hasXml?`<button class="qa-xmlbtn" id="qaXmlBtn">📄 ดู UI hierarchy (failure.xml)</button><div id="qaXmlBox"></div>`:''}`;
+    document.getElementById('qaBack').onclick=qaBackToList;
+    let collapsed=collapsedDefault;
+    document.getElementById('qaToggle').onclick=()=>{
+      collapsed=!collapsed;
+      document.getElementById('qaLog').innerHTML=collapsed?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(r.log);
+      document.getElementById('qaToggle').textContent=collapsed?'▸ ขยาย log เต็ม':'▾ ย่อ log';
+    };
+    const xb=document.getElementById('qaXmlBtn');
+    if(xb) xb.onclick=()=>{
+      const box=document.getElementById('qaXmlBox');
+      if(box.childElementCount){ box.innerHTML=''; return; } // toggle closed
+      if(qaXmlCache.has(r.dir)){ box.innerHTML=`<div class="qa-xml">${qaColorLog(qaXmlCache.get(r.dir))}</div>`; return; }
+      box.innerHTML='<div class="hint">กำลังโหลด...</div>';
+      api.getQaFailureXml(r.dir).then(res=>{
+        if(qaOpen!==r.id) return; // เปลี่ยนไปดูรันอื่นก่อนโหลดเสร็จ
+        if(res && res.xml!=null){
+          qaXmlCache.set(r.dir,res.xml);
+          box.innerHTML=`<div class="qa-xml">${qaColorLog(res.xml)}</div>`;
+        } else {
+          box.innerHTML=`<div class="empty">อ่าน failure.xml ไม่สำเร็จ: ${esc(res&&res.error||'unknown error')}</div>`;
+        }
+      });
+    };
+  }
+  function renderQaTests(payload){
+    qaData=payload;
+    const stillThere=qaOpen && payload && !payload.error && payload.runs.find(x=>x.id===qaOpen);
+    if(!stillThere){
+      // เลือกรันล่าสุดให้อัตโนมัติ เผื่อจอกว้างพอที่ reader โชว์คู่กับ list อยู่แล้วตั้งแต่แรก — ไม่ต้องรอคลิก
+      // ไม่กระทบจอแคบ เพราะที่นั่น reader ยังซ่อนด้วย .hidden จนกว่าจะมีคนคลิกแถวจริงๆ
+      qaOpen=(payload && payload.runs && payload.runs[0]) ? payload.runs[0].id : null;
+    }
+    renderQaStats(); renderQaChips(); renderQaRows(); renderQaReader();
+  }
+  api && api.onQaTests && api.onQaTests(renderQaTests);
+
   // tab switching
   const navR=document.getElementById('navRedmine'), navW=document.getElementById('navWorkspace'),
-        navM=document.getElementById('navMeeting'),
+        navQ=document.getElementById('navQa'), navM=document.getElementById('navMeeting'),
         viewR=document.getElementById('redmineView'), viewW=document.getElementById('workspaceView'),
-        viewM=document.getElementById('meetingView'),
-        wsRefresh=document.getElementById('wsRefresh'), mtRefresh=document.getElementById('mtRefresh');
+        viewQ=document.getElementById('qaView'), viewM=document.getElementById('meetingView'),
+        wsRefresh=document.getElementById('wsRefresh'), qaRefresh=document.getElementById('qaRefresh'),
+        mtRefresh=document.getElementById('mtRefresh');
   let lastTab='rm';
   function showTab(which){
     lastTab=which;
-    const ws=which==='ws', mt=which==='mt', rm=which==='rm';
+    const ws=which==='ws', qa=which==='qa', mt=which==='mt', rm=which==='rm';
     viewR.classList.toggle('hidden',!rm);
     viewW.classList.toggle('hidden',!ws);
+    viewQ.classList.toggle('hidden',!qa);
     viewM.classList.toggle('hidden',!mt);
-    navR.classList.toggle('on',rm); navW.classList.toggle('on',ws); navM.classList.toggle('on',mt);
+    navR.classList.toggle('on',rm); navW.classList.toggle('on',ws);
+    navQ.classList.toggle('on',qa); navM.classList.toggle('on',mt);
     wsRefresh.classList.toggle('hidden',!ws);
+    qaRefresh.classList.toggle('hidden',!qa);
     mtRefresh.classList.toggle('hidden',!mt);
   }
   navR.onclick=()=>showTab('rm');
   navW.onclick=()=>showTab('ws');
+  navQ.onclick=()=>showTab('qa');
   navM.onclick=()=>showTab('mt');
   wsRefresh.onclick=()=>api&&api.refreshWorkspace&&api.refreshWorkspace();
+  qaRefresh.onclick=()=>api&&api.refreshQaTests&&api.refreshQaTests();
   mtRefresh.onclick=()=>api&&api.refreshMeetings&&api.refreshMeetings();
 
   // settings view — collapsible per-tab cards (defaults to collapsed; more cards can be
@@ -1455,11 +1707,14 @@
         setWsSave=document.getElementById('setWsSave');
   const setMtDir=document.getElementById('setMtDir'), setMtStatus=document.getElementById('setMtStatus'),
         setMtSave=document.getElementById('setMtSave');
+  const setQaRowsEl=document.getElementById('setQaRows'), setQaAdd=document.getElementById('setQaAdd'),
+        setQaStatus=document.getElementById('setQaStatus'), setQaSave=document.getElementById('setQaSave');
   document.querySelectorAll('.set-card-header').forEach(h=>{
     h.onclick=()=>document.getElementById(h.dataset.card).classList.toggle('open');
   });
   function openSettings(autoOpenCard){
-    viewR.classList.add('hidden'); viewW.classList.add('hidden'); viewM.classList.add('hidden');
+    viewR.classList.add('hidden'); viewW.classList.add('hidden');
+    viewQ.classList.add('hidden'); viewM.classList.add('hidden');
     viewS.classList.remove('hidden');
     navRow.classList.add('hidden');
     document.querySelectorAll('.set-card').forEach(c=>c.classList.remove('open'));
@@ -1467,11 +1722,16 @@
     setStatus.textContent=''; setStatus.className='set-status';
     setWsStatus.textContent=''; setWsStatus.className='set-status';
     setMtStatus.textContent=''; setMtStatus.className='set-status';
+    setQaStatus.textContent=''; setQaStatus.className='set-status';
     api && api.getRedmineConfig && api.getRedmineConfig().then(cfg=>{
       setUrl.value=(cfg&&cfg.url)||''; setKey.value=(cfg&&cfg.apiKey)||'';
     });
     api && api.getWorkspaceDir && api.getWorkspaceDir().then(dir=>{ setWsDir.value=dir||''; });
     api && api.getMeetingsDir && api.getMeetingsDir().then(dir=>{ setMtDir.value=dir||''; });
+    api && api.getQaSources && api.getQaSources().then(sources=>{
+      qaRows=(sources&&sources.length?sources:[{label:'',path:''}]).map(s=>({label:s.label||'',path:s.path||''}));
+      renderSetQaRows();
+    });
   }
   function closeSettings(){
     viewS.classList.add('hidden'); navRow.classList.remove('hidden');
@@ -1516,6 +1776,40 @@
       setMtSave.disabled=false;
       setMtStatus.className='set-status ok';
       setMtStatus.textContent='บันทึกแล้ว';
+    });
+  };
+
+  // QA test sources — repeatable rows (label + path), edited in place in qaRows
+  // and only persisted on บันทึก. Starts as one empty row when nothing is configured
+  // yet, same as every other card defaulting to an empty input.
+  let qaRows=[{label:'',path:''}];
+  function renderSetQaRows(){
+    setQaRowsEl.innerHTML=qaRows.map((r,i)=>`
+      <div class="qa-src-row" data-i="${i}">
+        <input class="search qa-src-label" type="text" placeholder="ชื่อ source" value="${esc(r.label)}" autocomplete="off">
+        <input class="search" type="text" placeholder="เช่น D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\results" value="${esc(r.path)}" autocomplete="off">
+        <button type="button" class="qa-src-rm" title="ลบ source นี้">✕</button>
+      </div>`).join('');
+    setQaRowsEl.querySelectorAll('.qa-src-row').forEach(row=>{
+      const i=Number(row.dataset.i);
+      const [labelInput,pathInput]=row.querySelectorAll('input');
+      labelInput.oninput=()=>qaRows[i].label=labelInput.value;
+      pathInput.oninput=()=>qaRows[i].path=pathInput.value;
+      row.querySelector('.qa-src-rm').onclick=()=>{
+        qaRows.splice(i,1);
+        if(!qaRows.length) qaRows=[{label:'',path:''}];
+        renderSetQaRows();
+      };
+    });
+  }
+  setQaAdd.onclick=()=>{ qaRows.push({label:'',path:''}); renderSetQaRows(); };
+  setQaSave.onclick=()=>{
+    const sources=qaRows.map(r=>({label:r.label.trim(),path:r.path.trim()})).filter(r=>r.path);
+    setQaSave.disabled=true;
+    api.saveQaSources(sources).then(()=>{
+      setQaSave.disabled=false;
+      setQaStatus.className='set-status ok';
+      setQaStatus.textContent='บันทึกแล้ว';
     });
   };
 

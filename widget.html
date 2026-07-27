@@ -1530,11 +1530,18 @@
     const s=Math.max(0,Math.round((b-a)/1000));
     return s<60?`${s}s`:`${Math.floor(s/60)}m ${s%60}s`;
   }
+  // ทุกบรรทัดใน log ขึ้นต้นด้วย [YYYY-MM-DD HH:MM:SS] — ตัดวันที่ทิ้งเหลือแค่เวลา
+  // เพราะวันเต็มโชว์อยู่แล้วในหัวข้อด้านบน (qa-reader-sub) ซ้ำทุกบรรทัดกินที่เปล่าๆ
+  // (รันนึงยาวไม่กี่นาที ไม่ต้องห่วงข้ามวัน — ถ้าข้ามจริงก็ยังเห็นเวลาวิ่ง 23:59 → 00:0x อยู่ดี)
+  function qaStripDate(t){
+    return String(t).replace(/^\[\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2})\]/gm,'[$1]');
+  }
   function qaColorLog(t){
     return esc(t).split('\n').map(l=>{
       if(/RESULT:\s*PASS|🎉|DONE_OK/.test(l)) return `<span class="ok">${l}</span>`;
       if(/RESULT:\s*FAIL|❌/.test(l)) return `<span class="bad">${l}</span>`;
-      if(/^📁|🔗|ℹ️|⏳/.test(l)) return `<span class="info">${l}</span>`;
+      // ห้ามใส่ ^ — มันจะ anchor แค่ alternative แรก ทำให้บรรทัด 📁 ไม่ติดสีทั้งที่ 🔗/ℹ️/⏳ ติด
+      if(/📁|🔗|ℹ️|⏳/.test(l)) return `<span class="info">${l}</span>`;
       return l;
     }).join('\n');
   }
@@ -1624,20 +1631,21 @@
     // ต้องล้าง innerHTML ด้วย ไม่ใช่แค่ .hidden — จอกว้าง container query สั่ง display:block ทับ .hidden อยู่
     if(!r){ el.innerHTML=''; qaBackToList(); return; }
     const collapsedDefault=r.status==='PASS'; // FAIL/ไม่จบ ขึ้นเต็มทันที เพราะเป็นอันที่ต้องอ่าน
-    const lines=r.log.split('\n');
+    const logText=qaStripDate(r.log);   // วันเต็มอยู่ใน qa-reader-sub ด้านล่างแล้ว
+    const lines=logText.split('\n');
     el.innerHTML=`
       <button class="mt-back" id="qaBack">← กลับไปรายการรัน</button>
       <div class="qa-reader-head">${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}
         <span class="mt-title" style="font-size:14.5px">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span></div>
       <div class="qa-reader-sub">${esc(r.id)}${r.startedAt?' · '+esc(r.startedAt):''}${qaDur(r)?' · '+qaDur(r):''}</div>
       <span class="qa-toggle" id="qaToggle">${collapsedDefault?'▸ ขยาย log เต็ม':'▾ ย่อ log'}</span>
-      <div class="qa-log" id="qaLog">${collapsedDefault?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(r.log)}</div>
+      <div class="qa-log" id="qaLog">${collapsedDefault?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(logText)}</div>
       ${r.hasXml?`<button class="qa-xmlbtn" id="qaXmlBtn">📄 ดู UI hierarchy (failure.xml)</button><div id="qaXmlBox"></div>`:''}`;
     document.getElementById('qaBack').onclick=qaBackToList;
     let collapsed=collapsedDefault;
     document.getElementById('qaToggle').onclick=()=>{
       collapsed=!collapsed;
-      document.getElementById('qaLog').innerHTML=collapsed?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(r.log);
+      document.getElementById('qaLog').innerHTML=collapsed?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(logText);
       document.getElementById('qaToggle').textContent=collapsed?'▸ ขยาย log เต็ม':'▾ ย่อ log';
     };
     const xb=document.getElementById('qaXmlBtn');

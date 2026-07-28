@@ -1579,6 +1579,12 @@
   }
   function renderQaChips(){
     const runs=(qaData&&qaData.runs)||[];
+    const sources=(qaData&&qaData.sources)||[];
+    // ล้าง qaSrcFilter ที่ค้างอยู่ก่อนนับเลข — ถ้า source ที่กรองไว้ถูกลบทิ้งในหน้าตั้งค่า
+    // แล้วปล่อยค้าง ชิปจะนับได้ 0 ทุกอันทั้งที่ลิสต์ข้างล่างยังมีรันอยู่ (renderQaRows
+    // รันทีหลังและเห็นค่าที่ล้างแล้ว) — ต้องล้างตรงนี้ ไม่ใช่ท้ายฟังก์ชัน
+    if(qaSrcFilter!==null && !sources.includes(qaSrcFilter)) qaSrcFilter=null;
+    if(sources.length<=1) qaSrcFilter=null;
     // ตัวเลขบนชิปแต่ละแถวต้องนับ "หลังหักตัวกรองอีกแถวแล้ว" ไม่งั้นเลขโกหก —
     // เช่นกรอง source เหลือ 3 รัน แต่ชิป FAIL ยังขึ้น 4 ทั้งที่ในลิสต์เห็นแค่ 1
     const inSrc=qaSrcFilter===null?runs:runs.filter(r=>r.sourceLabel===qaSrcFilter);
@@ -1590,8 +1596,7 @@
       `<div class="chip${qaFilter===k?' active':''}" data-k="${k}">${l}<span class="n">${counts[k]||0}</span></div>`).join('');
     document.querySelectorAll('#qaChips .chip').forEach(c=>c.onclick=()=>{qaFilter=c.dataset.k;renderQaChips();renderQaRows()});
 
-    // ชิปกรอง source โผล่เฉพาะตอนมีมากกว่า 1 source — ตอนนี้ยังไม่โผล่จนกว่าจะเพิ่ม source ที่ 2
-    const sources=(qaData&&qaData.sources)||[];
+    // ชิปกรอง source โผล่เฉพาะตอนมีมากกว่า 1 source (sources ประกาศไว้ข้างบนแล้ว)
     const srcLabelEl=document.getElementById('qaSrcLabel'), srcEl=document.getElementById('qaSrcChips');
     if(sources.length>1){
       srcLabelEl.style.display=''; srcEl.style.display='';

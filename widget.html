@@ -662,6 +662,9 @@
             <div class="row-label">โฟลเดอร์บันทึกประชุม</div>
             <input id="setMtDir" class="search" type="text" placeholder="เช่น D:\COWORK\meeting-notes\meetings" autocomplete="off">
             <div class="hint" style="margin:-4px 0 12px">โครงสร้างที่รองรับ: 1 โฟลเดอร์ = 1 ประชุม ชื่อ <code>YYYY-MM-DD_HH-MM-ชื่อประชุม</code> ข้างในมี summary.md / transcript.md</div>
+            <div class="row-label">พอร์ตตัวรันประชุม</div>
+            <input id="setMtPort" class="search" type="text" placeholder="8765" autocomplete="off">
+            <div class="hint" style="margin:-4px 0 12px">ต้องตรงกับ <code>UI_PORT</code> ใน <code>.env</code> ของ meeting-notes · ปล่อยว่าง = 8765 · แถบเปิด/ปิดห้องจะไม่แสดงเลยถ้าตัวรันไม่ตอบ</div>
             <div id="setMtStatus" class="set-status"></div>
             <div class="set-actions"><button id="setMtSave" class="set-save">บันทึก</button></div>
           </div>
@@ -1878,6 +1881,7 @@
   const setWsDir=document.getElementById('setWsDir'), setWsStatus=document.getElementById('setWsStatus'),
         setWsSave=document.getElementById('setWsSave');
   const setMtDir=document.getElementById('setMtDir'), setMtStatus=document.getElementById('setMtStatus'),
+        setMtPort=document.getElementById('setMtPort'),
         setMtSave=document.getElementById('setMtSave');
   const setQaRowsEl=document.getElementById('setQaRows'), setQaAdd=document.getElementById('setQaAdd'),
         setQaStatus=document.getElementById('setQaStatus'), setQaSave=document.getElementById('setQaSave');
@@ -1900,6 +1904,7 @@
     });
     api && api.getWorkspaceDir && api.getWorkspaceDir().then(dir=>{ setWsDir.value=dir||''; });
     api && api.getMeetingsDir && api.getMeetingsDir().then(dir=>{ setMtDir.value=dir||''; });
+    api && api.getRunnerConfig && api.getRunnerConfig().then(cfg=>{ setMtPort.value=(cfg&&cfg.port)||''; });
     api && api.getQaSources && api.getQaSources().then(sources=>{
       qaRows=(sources&&sources.length?sources:[{label:'',path:''}]).map(s=>({label:s.label||'',path:s.path||''}));
       renderSetQaRows();
@@ -1943,6 +1948,13 @@
   setMtSave.onclick=()=>{
     const dir=setMtDir.value.trim();
     if(!dir){ setMtStatus.className='set-status err'; setMtStatus.textContent='กรอก path ก่อน'; return; }
+    // พอร์ตว่าง = กลับไปใช้ 8765 ไม่ใช่ error — คนส่วนใหญ่ไม่เคยแก้ UI_PORT
+    const portRaw=setMtPort.value.trim();
+    const port=portRaw===''?8765:Number(portRaw);
+    if(!Number.isInteger(port)||port<1||port>65535){
+      setMtStatus.className='set-status err'; setMtStatus.textContent='พอร์ตต้องเป็นเลข 1-65535'; return;
+    }
+    api && api.saveRunnerConfig && api.saveRunnerConfig({port});
     setMtSave.disabled=true;
     api.saveMeetingsDir(dir).then(()=>{
       setMtSave.disabled=false;

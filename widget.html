@@ -474,6 +474,9 @@
   #qaView{container-type:inline-size}
   @container (min-width:760px){
     #qaStage{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,40%);gap:16px;align-items:start}
+    /* วิวเวอร์ UI hierarchy แน่นกว่าแท็บอื่นมาก (มีทั้ง wireframe + tree + attributes)
+       บีบคอลัมน์รายการรันให้แคบลงตอนเปิดแท็บนี้ ยังสลับรันได้อยู่แต่วิวเวอร์ได้ที่เต็มที่ */
+    #qaStage.ui-wide{grid-template-columns:minmax(0,230px) minmax(0,1fr)}
     #qaRows.hidden,#qaReader.hidden{display:block}
     #qaBack{display:none}
     #qaReader{position:sticky;top:-6px;max-height:calc(100vh - 200px);overflow-y:auto}
@@ -503,14 +506,19 @@
   .qa-log .ok{color:var(--green)}
   .qa-log .bad{color:var(--rose)}
   .qa-log .info{color:var(--cyan)}
-  .qa-xmlbtn{-webkit-app-region:no-drag;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;
-    color:var(--rose);background:color-mix(in srgb,var(--rose) 10%,transparent);
-    border:1px solid color-mix(in srgb,var(--rose) 35%,transparent);border-radius:8px;padding:7px 12px;
-    cursor:pointer;margin-top:10px}
-  .qa-xmlbtn:hover{background:color-mix(in srgb,var(--rose) 18%,transparent)}
   .qa-xml{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.6;color:var(--dim);
     background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;
-    white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto;margin-top:8px}
+    white-space:pre-wrap;word-break:break-all;max-height:min(52vh,420px);overflow:auto}
+  /* แถบแท็บในหน้าอ่านรัน — โครงเดียวกับ .mt-seg ของแท็บ Meeting */
+  .qa-seg{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;
+    margin:0 0 11px;max-width:440px}
+  .qa-seg button{-webkit-app-region:no-drag;flex:1;font-family:inherit;font-size:11.5px;font-weight:600;
+    color:var(--muted);background:transparent;border:none;border-radius:7px;padding:7px 8px;cursor:pointer}
+  .qa-seg button:hover{color:var(--ink)}
+  .qa-seg button.on{background:var(--accent);color:var(--on-accent)}
+  /* วิวเวอร์ failure.xml — iframe แยก document กัน CSS ชนกับแอป (ดู uidump.js) */
+  .qa-ui{display:block;width:100%;height:min(72vh,760px);border:1px solid var(--line);
+    border-radius:10px;background:var(--panel)}
   /* การ์ดตั้งค่า: หนึ่งแถวต่อหนึ่ง source (label + path + ลบ) */
   .qa-src-row{display:flex;gap:6px;margin-bottom:8px;align-items:center}
   .qa-src-row input{flex:1;min-width:0}
@@ -673,6 +681,8 @@
     </div>
   </div>
 
+<!-- แปลง failure.xml เป็นวิวเวอร์ interactive (พอร์ตจาก uidump2html.py) — แยกไฟล์เพราะเทมเพลตยาว -->
+<script src="uidump.js"></script>
 <script>
   const D=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
   const M=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
@@ -704,6 +714,12 @@
     themeBtn.textContent = dark ? '☀' : '🌙';                      // ไอคอน = โหมดที่จะสลับไป
     themeBtn.title = dark ? 'สลับ Light Mode' : 'สลับ Dark Mode';
     try{ localStorage.setItem('cowork.theme',t); }catch{}
+    // วิวเวอร์ failure.xml อยู่ใน iframe คนละ document — สีถูก inline ไปตอนสร้าง
+    // ไม่ได้สืบทอด :root ของแอป จึงต้องสร้างใหม่เองเมื่อธีมเปลี่ยน
+    // เช็คจาก DOM ไม่ใช่ตัวแปร qaTab เพราะ applyTheme ถูกเรียกตอน init ก่อนที่ let qaTab จะถูกประกาศ
+    // (typeof ก็กันไม่ได้ ตัวแปร let ที่ยังไม่ถึงบรรทัดประกาศอยู่ใน TDZ แตะเมื่อไหร่ throw ทันที)
+    const onTab=document.querySelector('#qaSeg button.on');
+    if(onTab && onTab.dataset.t==='ui') renderQaReader();
   }
   applyTheme(document.documentElement.dataset.theme==='sand'?'sand':'carbon');
   themeBtn.onclick=()=>applyTheme(document.documentElement.dataset.theme==='sand'?'carbon':'sand');
@@ -1511,6 +1527,7 @@
   // payload = { runs:[{id,dir,sourceLabel,name,status,startedAt,endedAt,log,hasXml}], sources:[label,...], error }
   // failure.xml is never in the payload (can be tens of KB) — loaded on demand via getQaFailureXml and cached.
   let qaData=null, qaFilter='all', qaSrcFilter=null, qaOpen=null, qaXmlCache=new Map();
+  let qaTab='log';                 // log = ข้อความ log, ui = วิวเวอร์ failure.xml, xml = XML ดิบ
 
   function qaSrcIdx(label){
     let h=0; for(let i=0;i<label.length;i++) h=(h*31+label.charCodeAt(i))>>>0;
@@ -1614,7 +1631,7 @@
     });
   }
   function qaOpenRun(r){
-    qaOpen=r.id;
+    qaOpen=r.id; qaTab='log';   // เปิดรันใหม่เริ่มที่ log เสมอ ไม่ให้ค้างแท็บวิวเวอร์ของรันก่อนหน้า
     document.getElementById('qaRows').classList.add('hidden');
     document.getElementById('qaReader').classList.remove('hidden');
     renderQaRows();   // รีเฟรชไฮไลต์ .sel (ไม่มีผลตอนจอแคบเพราะแถวถูกซ่อนไปแล้ว)
@@ -1626,44 +1643,87 @@
     document.getElementById('qaReader').classList.add('hidden');
     document.getElementById('qaRows').classList.remove('hidden');
   }
-  function renderQaReader(){
-    const r=qaData && qaData.runs.find(x=>x.id===qaOpen); const el=document.getElementById('qaReader');
-    // ต้องล้าง innerHTML ด้วย ไม่ใช่แค่ .hidden — จอกว้าง container query สั่ง display:block ทับ .hidden อยู่
-    if(!r){ el.innerHTML=''; qaBackToList(); return; }
-    const collapsedDefault=r.status==='PASS'; // FAIL/ไม่จบ ขึ้นเต็มทันที เพราะเป็นอันที่ต้องอ่าน
-    const logText=qaStripDate(r.log);   // วันเต็มอยู่ใน qa-reader-sub ด้านล่างแล้ว
+  // สีของวิวเวอร์ (iframe) ต้องส่งเป็นค่าจริง ไม่ใช่ var(--x) เพราะ iframe คนละ document
+  // ไม่เห็น :root ของแอป — อ่านค่าที่ resolve แล้วตอนสร้าง แล้ว re-render ใหม่เมื่อสลับธีม
+  function qaViewerPalette(){
+    const cs=getComputedStyle(document.documentElement);
+    const v=n=>cs.getPropertyValue(n).trim();
+    return {
+      bg:v('--bg'), panel:v('--panel'), panelSoft:v('--panel'), line:v('--line'),
+      lineSoft:v('--line-soft'), edge:v('--line'), ink:v('--ink'), muted:v('--muted'),
+      deep:v('--dim'), accent:v('--accent'), amber:v('--amber'), rose:v('--rose'),
+      clsInk:v('--cyan'), ridInk:v('--muted'), bdInk:v('--dim'),
+      fitInk:v('--ink'), fitClkInk:v('--amber'), onAccent:v('--on-accent'),
+      grid:'color-mix(in srgb,'+v('--accent')+' 7%,transparent)', shadow:v('--shadow'),
+    };
+  }
+  // โหลด failure.xml (lazy + cache ต่อรัน) แล้วเรียก cb — ใช้ร่วมกันทั้งแท็บวิวเวอร์และแท็บ XML ดิบ
+  function qaLoadXml(r, box, cb){
+    if(qaXmlCache.has(r.dir)){ cb(qaXmlCache.get(r.dir)); return; }
+    box.innerHTML='<div class="hint">กำลังโหลด...</div>';
+    api.getQaFailureXml(r.dir).then(res=>{
+      if(qaOpen!==r.id) return;               // เปลี่ยนไปดูรันอื่นก่อนโหลดเสร็จ
+      if(res && res.xml!=null){ qaXmlCache.set(r.dir,res.xml); cb(res.xml); }
+      else box.innerHTML=`<div class="empty">อ่าน failure.xml ไม่สำเร็จ: ${esc(res&&res.error||'unknown error')}</div>`;
+    });
+  }
+  function renderQaPane(r, logText, collapsedDefault){
+    const box=document.getElementById('qaPane');
+    if(!box) return;
+    if(qaTab==='ui'){
+      qaLoadXml(r, box, xml=>{
+        let html;
+        try{ html=uidumpHtml(xml,{label:'failure.xml',palette:qaViewerPalette()}); }
+        catch(e){ box.innerHTML=`<div class="empty">แปลง failure.xml ไม่สำเร็จ: ${esc(e.message)}</div>`; return; }
+        // sandbox allow-scripts (ไม่ให้ allow-same-origin) — วิวเวอร์รัน JS ของตัวเองได้
+        // แต่แตะ DOM/ข้อมูลของแอปไม่ได้ และ CSS ก็ไม่ชนกัน
+        const f=document.createElement('iframe');
+        f.className='qa-ui'; f.setAttribute('sandbox','allow-scripts'); f.srcdoc=html;
+        box.innerHTML=''; box.appendChild(f);
+      });
+      return;
+    }
+    if(qaTab==='xml'){
+      qaLoadXml(r, box, xml=>{ box.innerHTML=`<div class="qa-xml">${qaColorLog(xml)}</div>`; });
+      return;
+    }
     const lines=logText.split('\n');
-    el.innerHTML=`
-      <button class="mt-back" id="qaBack">← กลับไปรายการรัน</button>
-      <div class="qa-reader-head">${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}
-        <span class="mt-title" style="font-size:14.5px">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span></div>
-      <div class="qa-reader-sub">${esc(r.id)}${r.startedAt?' · '+esc(r.startedAt):''}${qaDur(r)?' · '+qaDur(r):''}</div>
+    box.innerHTML=`
       <span class="qa-toggle" id="qaToggle">${collapsedDefault?'▸ ขยาย log เต็ม':'▾ ย่อ log'}</span>
-      <div class="qa-log" id="qaLog">${collapsedDefault?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(logText)}</div>
-      ${r.hasXml?`<button class="qa-xmlbtn" id="qaXmlBtn">📄 ดู UI hierarchy (failure.xml)</button><div id="qaXmlBox"></div>`:''}`;
-    document.getElementById('qaBack').onclick=qaBackToList;
+      <div class="qa-log" id="qaLog">${collapsedDefault?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(logText)}</div>`;
     let collapsed=collapsedDefault;
     document.getElementById('qaToggle').onclick=()=>{
       collapsed=!collapsed;
       document.getElementById('qaLog').innerHTML=collapsed?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(logText);
       document.getElementById('qaToggle').textContent=collapsed?'▸ ขยาย log เต็ม':'▾ ย่อ log';
     };
-    const xb=document.getElementById('qaXmlBtn');
-    if(xb) xb.onclick=()=>{
-      const box=document.getElementById('qaXmlBox');
-      if(box.childElementCount){ box.innerHTML=''; return; } // toggle closed
-      if(qaXmlCache.has(r.dir)){ box.innerHTML=`<div class="qa-xml">${qaColorLog(qaXmlCache.get(r.dir))}</div>`; return; }
-      box.innerHTML='<div class="hint">กำลังโหลด...</div>';
-      api.getQaFailureXml(r.dir).then(res=>{
-        if(qaOpen!==r.id) return; // เปลี่ยนไปดูรันอื่นก่อนโหลดเสร็จ
-        if(res && res.xml!=null){
-          qaXmlCache.set(r.dir,res.xml);
-          box.innerHTML=`<div class="qa-xml">${qaColorLog(res.xml)}</div>`;
-        } else {
-          box.innerHTML=`<div class="empty">อ่าน failure.xml ไม่สำเร็จ: ${esc(res&&res.error||'unknown error')}</div>`;
-        }
-      });
-    };
+  }
+  function renderQaReader(){
+    const r=qaData && qaData.runs.find(x=>x.id===qaOpen); const el=document.getElementById('qaReader');
+    // ต้องล้าง innerHTML ด้วย ไม่ใช่แค่ .hidden — จอกว้าง container query สั่ง display:block ทับ .hidden อยู่
+    if(!r){
+      el.innerHTML=''; document.getElementById('qaStage').classList.remove('ui-wide');
+      qaBackToList(); return;
+    }
+    if(!r.hasXml) qaTab='log';          // รันที่ไม่มี failure.xml มีแค่แท็บ Log ให้ดู
+    const collapsedDefault=r.status==='PASS'; // FAIL/ไม่จบ ขึ้นเต็มทันที เพราะเป็นอันที่ต้องอ่าน
+    const logText=qaStripDate(r.log);   // วันเต็มอยู่ใน qa-reader-sub ด้านล่างแล้ว
+    const seg=[['log','📄 Log'],['ui','🧩 UI hierarchy'],['xml','⟨⟩ XML ดิบ']];
+    el.innerHTML=`
+      <button class="mt-back" id="qaBack">← กลับไปรายการรัน</button>
+      <div class="qa-reader-head">${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}
+        <span class="mt-title" style="font-size:14.5px">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span></div>
+      <div class="qa-reader-sub">${esc(r.id)}${r.startedAt?' · '+esc(r.startedAt):''}${qaDur(r)?' · '+qaDur(r):''}</div>
+      ${r.hasXml?`<div class="qa-seg" id="qaSeg">${seg.map(([k,l])=>
+        `<button data-t="${k}" class="${qaTab===k?'on':''}">${l}</button>`).join('')}</div>`:''}
+      <div id="qaPane"></div>`;
+    document.getElementById('qaBack').onclick=qaBackToList;
+    document.getElementById('qaStage').classList.toggle('ui-wide', qaTab==='ui');
+    const segEl=document.getElementById('qaSeg');
+    if(segEl) segEl.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      qaTab=b.dataset.t; renderQaReader();
+    });
+    renderQaPane(r, logText, collapsedDefault);
   }
   function renderQaTests(payload){
     qaData=payload;

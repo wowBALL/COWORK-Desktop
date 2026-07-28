@@ -96,11 +96,17 @@
   // อะไรเลย เครื่องที่ไม่เคยมีตัวอัดต้องเห็นแท็บ Meeting เหมือน v1.8.1 เป๊ะ
   let seenService = false;
 
-  function esc(s) {
-    const d = document.createElement('div');
-    d.textContent = s == null ? '' : String(s);
-    return d.innerHTML;
-  }
+  // esc ตัวเดียวของแอปอยู่ที่ util.js -- ตรงนี้เคยมีก๊อปส่วนตัวที่ไม่ escape " ซึ่งเป็นบั๊กจริง:
+  // พิมพ์ " ในชื่อห้องแล้ว value="${esc(roomDraft)}" ขาดกลางคัน เหลือข้อความแค่ถึงตัว " แรก
+  // แล้วส่วนที่เหลืองอกเป็น attribute ขยะติดมากับ <input>
+  //
+  // ต่างกันแค่ " เท่านั้น -- null/undefined/ตัวเลข/บูลีน ทั้งสองตัวให้ผลเท่ากันหมด
+  // (textContent = undefined ได้ "" ไม่ใช่ "undefined" จึงไม่ต้องมี String(s) คร่อมอีกชั้น)
+  //
+  // ใต้ node (tests/meetingrun.test.js) util ไม่ export esc เพราะตัวจริงต้องใช้ document
+  // ตรงนี้เลยได้ undefined -- ไม่กระทบ เพราะเทสเรียกแต่ core ที่ไม่แตะ DOM
+  const {esc} = (global.COWORK && global.COWORK.util) ||
+    (typeof require !== 'undefined' ? require('./util.js') : {});
 
   function modelTitle(id) {
     const hit = MODELS.find((m) => m[0] === id);

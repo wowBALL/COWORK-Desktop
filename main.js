@@ -337,13 +337,18 @@ function pushQaTests() {
 }
 
 function createWidget() {
-  const { width } = screen.getPrimaryDisplay().workAreaSize;
-  const W = 420, H = 640;
+  const { width, height: availH } = screen.getPrimaryDisplay().workAreaSize;
+  const W = 420, Y = 60;
+  // สัดส่วนมือถือแนวตั้ง 9:19.5 (iPhone 14/15, Pixel) — จากเดิม 640 ที่เห็นลิสต์ได้ราว 7 แถว
+  // ขึ้นเป็นราว 13 แถว โดยความกว้างคงเดิม การจัดวางในหน้าจึงไม่เปลี่ยนเลย
+  // ต้องหนีบด้วย เพราะตัวติดตั้งไปลงหลายเครื่อง จอ 1080p เหลือพื้นที่ใช้งานสูงราว 1032
+  // (60 + 910 ยังพอดี) แต่จอเตี้ยกว่านั้นหรือทาสก์บาร์แนวตั้งจะทำให้ขอบล่างหลุดจอ
+  const H = Math.max(420, Math.min(Math.round(W * 19.5 / 9), availH - Y - 24));
   win = new BrowserWindow({
     width: W,
     height: H,
     x: width - W - 24,       // dock bottom-right
-    y: 60,
+    y: Y,                    // ต้องใช้ตัวเดียวกับที่หนีบ H ไม่งั้นสองค่าหลุดจากกันเมื่อแก้ทีหลัง
     frame: false,             // no title bar
     transparent: true,        // rounded floating panel
     resizable: true,

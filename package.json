@@ -31,6 +31,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "util.js",
       "workspace.js",
       "meetings.js",
       "qatest.js",

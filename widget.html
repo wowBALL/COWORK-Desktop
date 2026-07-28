@@ -699,12 +699,15 @@
     </div>
   </div>
 
+<!-- ลำดับสำคัญ: util.js ต้องมาก่อนทุกไฟล์ เพราะไฟล์อื่นพึ่ง window.COWORK.util -->
+<script src="util.js"></script>
 <!-- แปลง failure.xml เป็นวิวเวอร์ interactive (พอร์ตจาก uidump2html.py) — แยกไฟล์เพราะเทมเพลตยาว -->
 <script src="uidump.js"></script>
 <script src="meetingrun.js"></script>
 <script>
-  const D=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
-  const M=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  // ตัวช่วยที่ใช้ร่วมกันทุกแท็บ อยู่ใน util.js — ตั้งนามแฝงไว้ที่นี่เพื่อให้โค้ดข้างล่างเรียกสั้นเหมือนเดิม
+  // ต้องอยู่บรรทัดแรกสุดของสคริปต์ เพราะ const ไม่ hoist แบบ function declaration ที่มันมาแทน
+  const {D, M, esc, hashN, timeAgo} = window.COWORK.util;
   let currentUserName='';
   function tick(){
     const n=new Date(),p=x=>String(x).padStart(2,'0'),h=n.getHours();
@@ -743,28 +746,8 @@
   themeBtn.onclick=()=>applyTheme(document.documentElement.dataset.theme==='sand'?'carbon':'sand');
 
   // Redmine tasks, grouped by status, filtered by a multi-select project set
-  // textContent→innerHTML แปลง & < > ให้ แต่ไม่แตะ " — และ esc() ถูกใช้ใน attribute หลายที่
-  // (title=, data-g=, value=) พิมพ์ " ในช่องค้นหาบทถอดเสียงแล้ว value ขาดกลางคัน
-  // แถมงอก attribute ขยะขึ้นมาจริง ๆ จึงต้อง escape " ต่อท้ายอีกชั้น
-  // ไม่ต้องแตะ ' เพราะทุก attribute ในไฟล์นี้ครอบด้วย " ทั้งหมด
-  function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML.replace(/"/g,'&quot;'); }
   const STATUS_COLOR={'In Progress':'var(--accent)','New':'var(--cyan)','Test':'var(--amber)',
     'Backlog':'var(--dim)','Resolved':'var(--green)','Closed':'var(--dim)'};
-  function hashN(key,n){ let h=0; for(const c of String(key)) h=(h*31+c.charCodeAt(0))>>>0; return h%n; }
-  function timeAgo(iso){
-    if(!iso) return 'ไม่ระบุ';
-    const diff=Date.now()-new Date(iso).getTime();
-    const min=Math.floor(diff/60000);
-    if(min<1) return 'เมื่อสักครู่';
-    if(min<60) return `${min} นาทีที่แล้ว`;
-    const hr=Math.floor(min/60);
-    if(hr<24) return `${hr} ชม.ที่แล้ว`;
-    const day=Math.floor(hr/24);
-    if(day<30) return `${day} วันที่แล้ว`;
-    const mon=Math.floor(day/30);
-    if(mon<12) return `${mon} เดือนที่แล้ว`;
-    return `${Math.floor(mon/12)} ปีที่แล้ว`;
-  }
   function projColor(key){ return 'pc'+hashN(key,6); }
   function whoColor(key){ return 'wc'+hashN(key,6); }
   const RISK_ORDER=['Low','Fairly Low','Moderate','Medium','High'];

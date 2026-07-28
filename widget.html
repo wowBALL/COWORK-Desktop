@@ -1579,8 +1579,12 @@
   }
   function renderQaChips(){
     const runs=(qaData&&qaData.runs)||[];
-    const counts={all:runs.length,PASS:0,FAIL:0,CRASH:0};
-    runs.forEach(r=>counts[r.status]=(counts[r.status]||0)+1);
+    // ตัวเลขบนชิปแต่ละแถวต้องนับ "หลังหักตัวกรองอีกแถวแล้ว" ไม่งั้นเลขโกหก —
+    // เช่นกรอง source เหลือ 3 รัน แต่ชิป FAIL ยังขึ้น 4 ทั้งที่ในลิสต์เห็นแค่ 1
+    const inSrc=qaSrcFilter===null?runs:runs.filter(r=>r.sourceLabel===qaSrcFilter);
+    const inStatus=qaFilter==='all'?runs:runs.filter(r=>r.status===qaFilter);
+    const counts={all:inSrc.length,PASS:0,FAIL:0,CRASH:0};
+    inSrc.forEach(r=>counts[r.status]=(counts[r.status]||0)+1);
     const defs=[['all','ทั้งหมด'],['PASS','PASS'],['FAIL','FAIL'],['CRASH','ไม่จบ']];
     document.getElementById('qaChips').innerHTML=defs.map(([k,l])=>
       `<div class="chip${qaFilter===k?' active':''}" data-k="${k}">${l}<span class="n">${counts[k]||0}</span></div>`).join('');
@@ -1591,8 +1595,8 @@
     const srcLabelEl=document.getElementById('qaSrcLabel'), srcEl=document.getElementById('qaSrcChips');
     if(sources.length>1){
       srcLabelEl.style.display=''; srcEl.style.display='';
-      srcEl.innerHTML=`<div class="chip${qaSrcFilter===null?' active':''}" data-s="">ทุก source<span class="n">${runs.length}</span></div>`+
-        sources.map(s=>`<div class="chip${qaSrcFilter===s?' active':''}" data-s="${esc(s)}">${esc(s)}<span class="n">${runs.filter(r=>r.sourceLabel===s).length}</span></div>`).join('');
+      srcEl.innerHTML=`<div class="chip${qaSrcFilter===null?' active':''}" data-s="">ทุก source<span class="n">${inStatus.length}</span></div>`+
+        sources.map(s=>`<div class="chip${qaSrcFilter===s?' active':''}" data-s="${esc(s)}">${esc(s)}<span class="n">${inStatus.filter(r=>r.sourceLabel===s).length}</span></div>`).join('');
       srcEl.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{qaSrcFilter=c.dataset.s||null;renderQaChips();renderQaRows()});
     } else {
       srcLabelEl.style.display='none'; srcEl.style.display='none'; srcEl.innerHTML=''; qaSrcFilter=null;

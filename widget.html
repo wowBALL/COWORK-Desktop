@@ -1621,15 +1621,14 @@
     // showTab ประกาศอยู่ล่างกว่านี้ แต่เป็น function declaration จึง hoist
     // และ callback นี้ถูกเรียกตอนคลิกเท่านั้น ไม่ใช่ตอน mount
     mtRunner.mountBar(document.getElementById('mrunLive'), ()=>showTab('mt'));
-    mtRunner.mountRead(stem=>{
+    mtRunner.mountRead(id=>{
       // โฟลเดอร์เพิ่งถูกสร้าง รายการที่ถืออยู่จึงยังไม่มีมัน — ขอก้อนใหม่ก่อน
       api && api.refreshMeetings && api.refreshMeetings();
+      if(!id) return;
       // ปุ่มที่พาไปผิดที่แย่กว่าปุ่มที่ไม่พาไปไหน: หาไม่เจอให้อยู่หน้ารายการเฉย ๆ
       // ไม่ขึ้น error เพราะรายการที่รีเฟรชแล้วก็ตอบคำถามผู้ใช้ได้อยู่ดี
       setTimeout(()=>{
         if(!mtData || !mtData.meetings) return;
-        const id=window.COWORK.meetingRunCore.matchMeetingId(stem, mtData.meetings);
-        if(!id) return;
         const hit=mtData.meetings.find(m=>m.id===id);
         if(hit) mtOpenMeeting(hit);
       }, 400);

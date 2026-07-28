@@ -64,31 +64,50 @@ test('progressOf ignores codes it does not know', () => {
   assert.deepStrictEqual(core.progressOf(activity, 'job1'), { stage: 1, failed: false });
 });
 
-test('matchMeetingId finds the exact folder', () => {
-  const meetings = [{ id: '2026-07-28_10-03-standup' }, { id: '2026-07-27_09-00-other' }];
-  assert.strictEqual(core.matchMeetingId('2026-07-28_10-03-standup', meetings),
-    '2026-07-28_10-03-standup');
-});
-
-test('matchMeetingId prefers the highest collision suffix', () => {
-  // ชื่อโฟลเดอร์ไม่มีวินาที ประชุมที่ชนกันถูกเติม -2/-3 ตัวหลังคือตัวใหม่กว่า
-  const meetings = [
-    { id: '2026-07-28_10-03-standup' },
-    { id: '2026-07-28_10-03-standup-2' },
+// เคสข้างล่างนี้ลอกมาจาก D:\COWORK\meeting-notes\state\activity.jsonl ของจริง
+// (28 ก.ค. 2026) ไม่ใช่ค่าที่แต่งขึ้น -- รอบก่อนเทสผ่านหมดทั้งที่โค้ดใช้ไม่ได้
+// เพราะข้อมูลสมมติเข้ารูปกับสมมติฐานที่ผิดพอดี
+test('finishedMeetingId takes the folder from meeting_done, for a named room', () => {
+  // ชื่อไฟล์ใน inbox กับชื่อโฟลเดอร์คนละรูปแบบ: ชื่อห้องย้ายไปท้าย วินาทีหายไป
+  const activity = [
+    { job: 'ทดสอบประชุม 1', code: 'encode_done',
+      params: { path: 'D:\\COWORK\\meeting-notes\\inbox\\ทดสอบประชุม 1-13-49-53.ogg' } },
+    { job: 'ทดสอบประชุม 1-13-49-53', code: 'transcribe_started', params: {} },
+    { job: 'ทดสอบประชุม 1-13-49-53', code: 'meeting_done',
+      params: { path: 'D:\\COWORK\\meeting-notes\\meetings\\2026-07-28_13-49-ทดสอบประชุม 1' } },
   ];
-  assert.strictEqual(core.matchMeetingId('2026-07-28_10-03-standup', meetings),
-    '2026-07-28_10-03-standup-2');
+  assert.strictEqual(core.finishedMeetingId(activity, 'ทดสอบประชุม 1-13-49-53'),
+    '2026-07-28_13-49-ทดสอบประชุม 1');
 });
 
-test('matchMeetingId does not match a different meeting that merely starts the same', () => {
-  const meetings = [{ id: '2026-07-28_10-03-standup-extra' }];
-  assert.strictEqual(core.matchMeetingId('2026-07-28_10-03-standup', meetings), null);
+test('finishedMeetingId works for an unnamed room, where the folder is SHORTER than the stem', () => {
+  const activity = [
+    { job: '2026-07-28_13-48-56', code: 'meeting_done',
+      params: { path: 'D:\\COWORK\\meeting-notes\\meetings\\2026-07-28_13-48' } },
+  ];
+  assert.strictEqual(core.finishedMeetingId(activity, '2026-07-28_13-48-56'), '2026-07-28_13-48');
 });
 
-test('matchMeetingId returns null instead of guessing', () => {
-  assert.strictEqual(core.matchMeetingId('nope', [{ id: '2026-07-28_10-03-standup' }]), null);
-  assert.strictEqual(core.matchMeetingId(null, [{ id: 'x' }]), null);
-  assert.strictEqual(core.matchMeetingId('x', null), null);
+test('finishedMeetingId ignores meeting_done belonging to another job', () => {
+  const activity = [
+    { job: 'other', code: 'meeting_done',
+      params: { path: 'D:\\meetings\\2026-07-27_20-38-test 111' } },
+    { job: 'mine', code: 'diarize_started', params: {} },
+  ];
+  assert.strictEqual(core.finishedMeetingId(activity, 'mine'), null);
+});
+
+test('finishedMeetingId returns null instead of guessing', () => {
+  assert.strictEqual(core.finishedMeetingId([], 'job1'), null);
+  assert.strictEqual(core.finishedMeetingId(null, 'job1'), null);
+  assert.strictEqual(core.finishedMeetingId([{ job: 'job1', code: 'meeting_done' }], 'job1'), null);
+  assert.strictEqual(core.finishedMeetingId(
+    [{ job: 'job1', code: 'meeting_done', params: { path: 'D:\\m\\x' } }], null), null);
+});
+
+test('finishedMeetingId tolerates a trailing separator on the path', () => {
+  const activity = [{ job: 'j', code: 'meeting_done', params: { path: 'D:\\m\\2026-07-28_13-48\\' } }];
+  assert.strictEqual(core.finishedMeetingId(activity, 'j'), '2026-07-28_13-48');
 });
 
 test('the five step labels match meeting-notes web/app.js exactly', () => {

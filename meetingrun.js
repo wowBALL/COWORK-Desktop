@@ -55,19 +55,25 @@
     return { stage, failed };
   }
 
-  // last_result ชี้ไฟล์ .ogg ใน inbox/ ส่วนโฟลเดอร์ผลลัพธ์ถูกเติม -2/-3 ได้ถ้าชื่อชนกัน
-  // (ชื่อโฟลเดอร์ไม่มีวินาที) จึงเทียบแบบ prefix + ตัวเลข แล้วเอาเลขสูงสุด
-  // เทียบ prefix เปล่า ๆ ไม่ได้ เพราะประชุมคนละตัวที่ชื่อขึ้นต้นเหมือนกันจะติดมาด้วย
-  function matchMeetingId(jobStem, meetings) {
+  // โฟลเดอร์ผลลัพธ์มาจาก params.path ของ meeting_done ไม่ใช่การเดาจากชื่อไฟล์
+  //
+  // เคยเขียนเป็นการเทียบชื่อ แล้วพังทุกเคส เพราะชื่อไฟล์ใน inbox/ กับชื่อโฟลเดอร์
+  // คนละรูปแบบกันคนละทาง (วัดจาก state/activity.jsonl ของจริง 2026-07-28):
+  //   ตั้งชื่อห้อง   ไฟล์ "ทดสอบประชุม 1-13-49-53"  →  โฟลเดอร์ "2026-07-28_13-49-ทดสอบประชุม 1"
+  //   ไม่ตั้งชื่อ     ไฟล์ "2026-07-28_13-48-56"      →  โฟลเดอร์ "2026-07-28_13-48"
+  // ชื่อห้องย้ายข้างและวินาทีหายไป ไม่มีเคสไหนขึ้นต้นเหมือนกัน
+  //
+  // watcher เป็นคนตั้งชื่อโฟลเดอร์และเป็นคนบอกมาเองว่าตั้งว่าอะไร -- ใช้คำตอบของมัน
+  // แทนที่จะสร้างกฎการตั้งชื่อชุดที่สองขึ้นมาแข่ง แล้วรอวันที่มันไม่ตรงกัน
+  function finishedMeetingId(activity, jobStem) {
     if (!jobStem) return null;
-    const hits = (meetings || []).filter((m) => {
-      if (!m || typeof m.id !== 'string' || !m.id.startsWith(jobStem)) return false;
-      const rest = m.id.slice(jobStem.length);
-      return rest === '' || /^-\d+$/.test(rest);
-    });
-    if (!hits.length) return null;
-    return hits.reduce((best, m) => (m.id.length > best.id.length
-      || (m.id.length === best.id.length && m.id > best.id) ? m : best)).id;
+    const done = (activity || []).filter(
+      (e) => e && e.job === jobStem && e.code === 'meeting_done' && e.params && e.params.path
+    );
+    if (!done.length) return null;
+    const last = done[done.length - 1];
+    const name = String(last.params.path).split(/[\\/]/).filter(Boolean).pop();
+    return name || null;
   }
 
   // ---- ตัวโมดูล (ต้องมี DOM) ------------------------------------------------
@@ -283,7 +289,11 @@
     if (act.dataset.act === 'stop') confirmStop();
     if (act.dataset.act === 'detail') { detailOpen = !detailOpen; draw(); }
     if (act.dataset.act === 'dismiss') { dismissedJob = followingJob; detailOpen = false; draw(); }
-    if (act.dataset.act === 'read' && onRead) onRead(followingJob);
+    // ส่ง id ของโฟลเดอร์ออกไปเลย ไม่ใช่ชื่องาน -- การแปลงเป็นหน้าที่ของโมดูลนี้
+    // ที่ถือ activity อยู่ ไม่ใช่ของ widget.html ที่ต้องมาเดาต่อ
+    if (act.dataset.act === 'read' && onRead) {
+      onRead(finishedMeetingId(state && state.activity, followingJob));
+    }
   }
 
   function onInput(e) {
@@ -373,7 +383,7 @@
     jobStemOf,
     fmtClock,
     progressOf,
-    matchMeetingId,
+    finishedMeetingId,
   };
 
   global.COWORK = global.COWORK || {};

@@ -215,7 +215,9 @@
     };
   }
   function renderQaReader(){
-    const r=qaData && qaData.runs.find(x=>x.id===qaOpen); const el=document.getElementById('qaReader');
+    // ต้องเช็ค qaData.runs ด้วย ไม่ใช่แค่ qaData — payload ที่เป็น {error} ไม่มี runs เลย
+    // ปล่อยให้ r เป็น undefined แล้วตกลงไปเข้าเคส !r ข้างล่าง ซึ่งล้างจอแล้วพากลับไปหน้ารายการ
+    const r=qaData && qaData.runs && qaData.runs.find(x=>x.id===qaOpen); const el=document.getElementById('qaReader');
     // ต้องล้าง innerHTML ด้วย ไม่ใช่แค่ .hidden — จอกว้าง container query สั่ง display:block ทับ .hidden อยู่
     if(!r){
       el.innerHTML=''; document.getElementById('qaStage').classList.remove('ui-wide');

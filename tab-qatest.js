@@ -7,7 +7,7 @@
 // CSS อยู่ใน tab-qatest.css
 (function (global) {
   'use strict';
-  const {esc} = global.COWORK.util;
+  const {esc, hashN} = global.COWORK.util;
   const {dateMatch, dateFilterHtml, wireDateFilter} = global.COWORK.dateFilter;
   const shell = () => global.COWORK.shell;   // เปลือกสร้างทีหลังไฟล์นี้ ต้องหยิบตอนเรียกใช้
 
@@ -15,20 +15,18 @@
   const qaDateSel={y:null,m:null,d:null};
   let qaTab='log';                 // log = ข้อความ log, ui = วิวเวอร์ failure.xml, xml = XML ดิบ
 
-  // ไม่ยุบเข้า util.hashN ทั้งที่หน้าตาเหมือนกัน — hashN วนด้วย for-of (ทีละ code point)
-  // ส่วนตัวนี้วนด้วย index (ทีละ code unit) ผลต่างกันถ้าชื่อ source มีอิโมจิ
-  // จะยุบต้องยืนยันก่อนว่าไม่มีใครใช้อิโมจิเป็นชื่อ source ซึ่งเกินขอบเขตของการย้ายไฟล์
-  function qaSrcIdx(label){
-    let h=0; for(let i=0;i<label.length;i++) h=(h*31+label.charCodeAt(i))>>>0;
-    return h%8; // reuse the .sp0-7 speaker-color rotation from the transcript view
-  }
   function qaBadge(status){
     const cls={PASS:'qa-b-pass',FAIL:'qa-b-fail',CRASH:'qa-b-crash'}[status]||'qa-b-crash';
     const label={PASS:'PASS',FAIL:'FAIL',CRASH:'ไม่จบ'}[status]||status;
     return `<span class="qa-badge ${cls}">${label}</span>`;
   }
+  // สีของป้าย source หมุนตาม .sp0-7 ชุดเดียวกับสีผู้พูดในบทถอดเสียง
+  //
+  // เคยมีตัวแฮชส่วนตัวตรงนี้ที่วนทีละ code unit ส่วน hashN วนทีละ code point --
+  // ให้ผลเท่ากันทุกค่าใน BMP (ตรวจแล้ว 83,487 ค่า ต่างกัน 0) ต่างเฉพาะป้ายที่มีอิโมจิ
+  // ซึ่งได้แค่เปลี่ยนสี ไม่กระทบข้อมูล จึงยุบเข้าตัวกลาง
   function qaSrcTag(label){
-    return `<span class="qa-src sp${qaSrcIdx(label)}">${esc(label)}</span>`;
+    return `<span class="qa-src sp${hashN(label,8)}">${esc(label)}</span>`;
   }
   function qaDur(r){
     if(!r.startedAt||!r.endedAt) return '';

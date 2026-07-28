@@ -83,10 +83,7 @@
 
   .row-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:700;margin-bottom:5px}
   .hint{font-size:12px;color:var(--dim);padding:6px 0}
-  .loadMoreBtn{-webkit-app-region:no-drag;width:100%;font-family:inherit;font-size:11.5px;font-weight:600;
-    color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:9px;
-    padding:9px;margin-top:6px;cursor:pointer;transition:.15s}
-  .loadMoreBtn:hover{color:var(--ink);border-color:var(--accent)}
+  /* .loadMoreBtn ย้ายไป tab-redmine.css — ปุ่ม "โหลดเพิ่ม" มีแต่แท็บ Redmine ที่ใช้ */
 
   /* project filter — multi-select chips */
   .chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px}
@@ -103,124 +100,7 @@
   .chip .n .sep{color:var(--dim);margin:0 1px;opacity:.6}
   .chip.active .n .o,.chip.active .n .c,.chip.active .n .sep{color:var(--on-accent);opacity:1}
 
-  /* status tabs — single-select, color-coded */
-  .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-  .tab{-webkit-app-region:no-drag;font-size:11px;font-weight:600;color:var(--muted);background:transparent;
-    border:1px solid var(--line);border-radius:7px;padding:5px 11px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:.12s}
-  .tab .dot{width:7px;height:7px;border-radius:50%;background:var(--sc,var(--dim));flex-shrink:0}
-  .tab .n{font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--ink);
-    background:var(--pill-bg);border-radius:20px;padding:1px 6px}
-  .tab .n .o{color:var(--green)}
-  .tab .n .c{color:var(--muted)}
-  .tab .n .sep{color:var(--dim);margin:0 1px;opacity:.6}
-  .tab:hover{color:var(--ink)}
-  .tab.active{color:var(--ink);background:var(--panel-2);border-color:var(--sc,var(--accent))}
-  .tab.active .n{color:var(--muted)}
-
-  /* task rows */
-  .task{display:flex;align-items:center;gap:10px;padding:10px 8px;cursor:pointer;transition:.12s;
-    border-bottom:1px solid var(--line-soft)}
-  .task:last-child{border-bottom:none}
-  .task:hover{background:var(--panel);border-radius:8px;border-bottom-color:transparent}
-  .task.overdue .t{color:var(--amber)}
-  .idnum{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);flex-shrink:0;width:36px}
-  .tmain{flex:1;min-width:0;position:relative}
-  .t{font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  /* hover tooltip: created / updated timing */
-  .tip{position:absolute;left:0;bottom:calc(100% + 8px);z-index:20;
-    background:var(--tip-bg);color:var(--tip-ink);font-size:11.5px;font-weight:600;line-height:1.5;
-    padding:7px 11px;border-radius:8px;border:1px solid var(--accent);
-    white-space:nowrap;box-shadow:0 10px 26px var(--shadow);
-    opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity .12s,transform .12s}
-  .tip b{color:var(--accent);font-weight:700}
-  .task:hover .tip{opacity:1;transform:translateY(0)}
-  .proj{font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;flex-shrink:0;
-    max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .who{font-size:10.5px;font-weight:600;flex-shrink:0;max-width:88px;padding:2px 8px;border-radius:6px;
-    border:1px solid currentColor;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .risk{font-size:8.5px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:6px;
-    flex-shrink:0;width:66px;text-align:center;text-transform:uppercase}
-  .risk.rk-none{background:transparent;color:var(--line);border:1px dashed var(--line)}
-  .rk0{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}    /* Low */
-  .rk1{background:color-mix(in srgb,var(--cyan) 16%,transparent);color:var(--cyan)}      /* Fairly Low */
-  .rk2{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}    /* Moderate */
-  .rk3{background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}  /* Medium */
-  .rk4{background:color-mix(in srgb,var(--rose) 20%,transparent);color:var(--rose)}      /* High */
-  /* close-issue button (Resolved -> Closed) */
-  .closeBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
-    background:var(--panel);color:var(--muted);cursor:pointer;font-size:12px;flex-shrink:0;
-    display:flex;align-items:center;justify-content:center;transition:.15s}
-  .closeBtn:hover{color:var(--ink);border-color:var(--accent)}
-  .closeBtn.armed{background:var(--amber);color:var(--on-accent);border-color:var(--amber)}
-  .closeBtn.pending{opacity:.5;pointer-events:none}
-  .closeBtn.err{background:var(--rose);color:var(--on-accent);border-color:var(--rose)}
-  /* close-issue preview panel: existing Test Results vs. compiled history */
-  .testPreview{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
-    padding:12px;margin:0 0 10px}
-  .testPreview .tp-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
-    font-weight:700;margin-bottom:5px}
-  .testPreview .tp-label:not(:first-child){margin-top:12px}
-  .testPreview .tp-block{font-size:12px;line-height:1.5;white-space:pre-wrap;color:var(--ink);
-    max-height:160px;overflow-y:auto;background:var(--panel);border:1px solid var(--line-soft);
-    border-radius:7px;padding:8px 10px}
-  .testPreview .tp-block.empty{color:var(--dim);font-style:italic}
-  .testPreview .tp-edit{width:100%;min-height:90px;resize:vertical;font-family:inherit;font-size:12px;
-    line-height:1.5;color:var(--ink);background:var(--panel);border:1px solid var(--line-soft);
-    border-radius:7px;padding:8px 10px;outline:none}
-  .testPreview .tp-edit:focus{border-color:var(--accent)}
-  .testPreview .tp-edit::placeholder{color:var(--dim);font-style:italic}
-  .testPreview .tp-warn{font-size:12px;color:var(--rose);line-height:1.5}
-  .testPreview .tp-err{font-size:11.5px;color:var(--rose);margin-top:8px}
-  .testPreview .tp-actions{display:flex;gap:8px;margin-top:12px}
-  .testPreview .tp-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
-    border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);
-    color:var(--muted);transition:.15s}
-  .testPreview .tp-actions button:hover{color:var(--ink);border-color:var(--accent)}
-  .testPreview .tp-actions button.confirm{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
-  .testPreview .tp-actions button.confirm:disabled{opacity:.4;cursor:not-allowed;background:var(--panel);color:var(--dim)}
-  .testPreview .tp-actions button.pending{opacity:.6;pointer-events:none}
-  /* private note button/panel — local-only, never sent to Redmine */
-  .noteBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
-    background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px;flex-shrink:0;
-    display:flex;align-items:center;justify-content:center;transition:.15s;position:relative}
-  .noteBtn:hover{color:var(--accent);border-color:var(--accent)}
-  .noteBtn.has{color:var(--violet);border-color:color-mix(in srgb,var(--violet) 45%,transparent);
-    background:color-mix(in srgb,var(--violet) 12%,transparent)}
-  .noteBtn.has::after{content:'';position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:50%;
-    background:var(--violet);border:1.5px solid var(--bg)}
-  .notePanel{background:var(--panel-2);border:1px solid color-mix(in srgb,var(--violet) 38%,var(--line));
-    border-left:3px solid var(--violet);border-radius:10px;padding:12px;margin:0 0 10px}
-  .notePanel .np-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--violet);
-    font-weight:700;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .notePanel .np-label .local{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:10px;font-weight:600}
-  .notePanel .np-edit{width:100%;min-height:74px;resize:vertical;font-family:inherit;font-size:12.5px;
-    line-height:1.6;color:var(--ink);background:var(--panel);border:1px solid var(--line-soft);
-    border-radius:7px;padding:8px 10px;outline:none}
-  .notePanel .np-edit:focus{border-color:var(--violet)}
-  .notePanel .np-edit::placeholder{color:var(--dim);font-style:italic}
-  .notePanel .np-actions{display:flex;align-items:center;gap:8px;margin-top:10px}
-  .notePanel .np-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
-    border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);
-    color:var(--muted);transition:.15s}
-  .notePanel .np-actions button:hover{color:var(--ink);border-color:var(--violet)}
-  .notePanel .np-actions button.save{background:var(--violet);color:var(--on-accent);border-color:var(--violet)}
-  .notePanel .np-actions button.save:hover{color:var(--on-accent);opacity:.88}
-  .notePanel .np-actions button.save:disabled{opacity:.5;cursor:not-allowed}
-  .notePanel .np-actions button.del{margin-left:auto;color:var(--rose);border-color:transparent;background:transparent}
-  .notePanel .np-actions button.del:hover{border-color:var(--rose);color:var(--rose)}
-  .notePanel .np-actions button.del:disabled{opacity:.5;cursor:not-allowed}
-  .notePanel .np-stamp{font-size:10px;color:var(--dim)}
-  .notePanel .np-err{font-size:11.5px;color:var(--rose);margin-top:8px}
-  /* project pill palette (muted, curated) */
-  .pc0{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
-  .pc1{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
-  .pc2{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}
-  .pc3{background:color-mix(in srgb,var(--rose) 16%,transparent);color:var(--rose)}
-  .pc4{background:color-mix(in srgb,var(--cyan) 16%,transparent);color:var(--cyan)}
-  .pc5{background:color-mix(in srgb,var(--violet) 16%,transparent);color:var(--violet)}
-  /* assignee name colour (text only, same hue family) */
-  .wc0{color:var(--accent)}.wc1{color:var(--green)}.wc2{color:var(--amber)}
-  .wc3{color:var(--rose)}.wc4{color:var(--cyan)}.wc5{color:var(--violet)}
+  /* ---- Redmine tab ---- ย้ายไป tab-redmine.css ทั้งก้อน (.chips/.chip ข้างบน กับ .stats/.stat ข้างล่าง เป็นของใช้ร่วม ไม่ย้าย) */
 
   .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px;align-items:start}
   .stats.w5{grid-template-columns:repeat(5,1fr)}
@@ -350,7 +230,8 @@
      ลิงก์ไว้ท้าย head หลังก้อนนี้ เพื่อให้ลำดับการทับกันเหมือนตอนที่มันอยู่ท้ายก้อนนี้ */
   .hidden{display:none}
 </style>
-<!-- ลำดับสองบรรทัดนี้ต้องเป็น meeting ก่อน qatest — เดิมอยู่ในก้อนบนเรียงแบบนี้ -->
+<!-- ลำดับสามบรรทัดนี้ต้องเป็น redmine → meeting → qatest — เดิมอยู่ในก้อนบนเรียงแบบนี้ -->
+<link rel="stylesheet" href="tab-redmine.css">
 <link rel="stylesheet" href="tab-meeting.css">
 <link rel="stylesheet" href="tab-qatest.css">
 </head>
@@ -531,6 +412,7 @@
 <script src="uidump.js"></script>
 <script src="meetingrun.js"></script>
 <!-- โมดูลแท็บ — ลงทะเบียนไว้ที่ COWORK.tabs.* เฉย ๆ เปลือกเป็นคนเรียก mount() ท้ายไฟล์ -->
+<script src="tab-redmine.js"></script>
 <script src="tab-workspace.js"></script>
 <script src="tab-qatest.js"></script>
 <script src="tab-meeting.js"></script>
@@ -559,10 +441,14 @@
   // เปิดไฟล์ในโปรแกรมประจำเครื่อง — ทั้ง Workspace และ Meeting ใช้ จึงอยู่ที่เปลือก
   function openFile(p){ api&&api.openFile&&api.openFile(p); }
 
+  // ชื่อผู้ใช้มาจาก payload ของ Redmine แต่ไปโผล่ที่คำทักทายข้างนาฬิกาซึ่งเป็นของเปลือก
+  // เปิดเป็นเมธอดให้เรียก แทนที่จะให้โมดูลเขียนตัวแปรของเปลือกตรง ๆ
+  function setUserName(name){ currentUserName=name||currentUserName; }
+
   // สิ่งที่เปลือกเปิดให้โมดูลแท็บใช้ ต้องประกาศหลัง api (const ไม่ hoist)
-  // ส่วน openSettings/openFile/showTab เป็น function declaration จึง hoist มาถึงตรงนี้ได้
+  // ที่เหลือเป็น function declaration จึง hoist มาถึงตรงนี้ได้
   // showTab อยู่ในนี้เพราะแถบควบคุมการอัดของ Meeting ต้องพาผู้ใช้กลับเข้าแท็บตัวเองได้
-  window.COWORK.shell={ api, openSettings, openFile, showTab };
+  window.COWORK.shell={ api, openSettings, openFile, showTab, setUserName };
   api && api.getVersion && api.getVersion().then(v=>{ document.getElementById('appVer').textContent='v'+v; });
   document.getElementById('close').onclick=()=>api&&api.close();
   let pinned=false;
@@ -588,359 +474,9 @@
   }
   themeBtn.onclick=()=>applyTheme(document.documentElement.dataset.theme==='sand'?'carbon':'sand');
 
-  // Redmine tasks, grouped by status, filtered by a multi-select project set
-  const STATUS_COLOR={'In Progress':'var(--accent)','New':'var(--cyan)','Test':'var(--amber)',
-    'Backlog':'var(--dim)','Resolved':'var(--green)','Closed':'var(--dim)'};
-  function projColor(key){ return 'pc'+hashN(key,6); }
-  function whoColor(key){ return 'wc'+hashN(key,6); }
-  const RISK_ORDER=['Low','Fairly Low','Moderate','Medium','High'];
-  const RISK_COLORS=['var(--green)','var(--cyan)','var(--amber)','var(--orange)','var(--rose)'];
-  let lastPayload=null, activeStatus=null;
-  let notes={};   // set from payload.notes in renderTasks(), before renderPanel() runs — never fetched separately
-  const selectedProjects=new Set();    // empty = show all projects
-  const selectedAssignees=new Set();   // empty = show all assignees
-  let selectedRisk=null;   // null = ทั้งหมด; 'none' = ไม่ระบุ; else exact risk string
-  function issueMatch(i){
-    return (selectedProjects.size===0 || selectedProjects.has(i.project))
-        && (selectedAssignees.size===0 || selectedAssignees.has(i.assignee))
-        && (selectedRisk===null || (selectedRisk==='none' ? !i.risk : i.risk===selectedRisk));
-  }
-  function allIssues(){ return lastPayload.groups.flatMap(g=>g.issues); }
-  function openIssues(){ return allIssues().filter(i=>!i.closed && i.status!=='Backlog'); } // ALL tab = only open work, excluding Backlog
-  function statusIssues(status){
-    const g=lastPayload.groups.find(g=>g.status===status);
-    return (g?g.issues:[]).filter(issueMatch);
-  }
-  let visibleCount=15; // reset to 15 whenever the tab/filters change; "load more" just bumps this
-  function renderPanel(){
-    const el=document.getElementById('tasks');
-    const allMatching=activeStatus==='ALL'?openIssues().filter(issueMatch):statusIssues(activeStatus);
-    if(!allMatching.length){ el.innerHTML='<div class="hint">ไม่มีงานในสถานะนี้</div>'; return; }
-    const issues=allMatching.slice(0,visibleCount);
-    el.innerHTML='';
-    issues.forEach(issue=>{
-      const row=document.createElement('div');
-      row.className='task'+(issue.overdue?' overdue':'');
-      const rank=RISK_ORDER.indexOf(issue.risk);
-      const riskCls=rank>=0?`rk${rank}`:'rk-none';
-      const riskTxt=issue.risk||'–';
-      const idColor=STATUS_COLOR[issue.status]||'var(--dim)';
-      row.innerHTML=`
-        <span class="idnum" style="color:${idColor}" title="${esc(issue.status)}">#${issue.id}</span>
-        <div class="tmain">
-          <div class="t">${esc(issue.subject)}</div>
-          <div class="tip">สร้าง <b>${timeAgo(issue.createdOn)}</b> · แก้ไข <b>${timeAgo(issue.updatedOn)}</b></div>
-        </div>
-        <span class="proj ${projColor(issue.project)}" title="${esc(issue.project)}">${esc(issue.project)}</span>
-        <span class="who ${whoColor(issue.assignee)}" title="${esc(issue.assignee)}">${esc(issue.assignee)}</span>
-        <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>`;
-      row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
-      const slot=document.createElement('div');
-      if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id, slot));
-      row.appendChild(makeNoteBtn(issue.id, slot));
-      el.appendChild(row);
-      el.appendChild(slot);
-    });
-    if(allMatching.length>visibleCount){
-      const moreBtn=document.createElement('button');
-      moreBtn.className='loadMoreBtn';
-      moreBtn.textContent=`โหลดเพิ่ม (เหลืออีก ${allMatching.length-visibleCount})`;
-      moreBtn.onclick=()=>{ visibleCount+=15; renderPanel(); };
-      el.appendChild(moreBtn);
-    }
-  }
-  // both the close-issue preview and the private-note panel render into the same
-  // per-row `slot` (a sibling element right after the row) — only one panel of
-  // either kind is open at a time, tracked via slot.dataset.kind
-  function clearSlot(slot){ slot.innerHTML=''; delete slot.dataset.kind; delete slot._attemptClose; }
-  function closeAllPanels(){ document.querySelectorAll('[data-kind]').forEach(clearSlot); }
-  // icon button: click fetches the issue's history + Test Results field and opens a preview
-  // panel in `slot` for review before closing
-  function makeCloseBtn(issueId, slot){
-    const btn=document.createElement('button');
-    btn.className='closeBtn'; btn.textContent='✓'; btn.title='ปิดงาน (Resolved → Closed)';
-    btn.onclick=(e)=>{
-      e.stopPropagation();
-      if(slot.dataset.kind==='close'){ closeAllPanels(); return; } // toggle closed if already open
-      closeAllPanels(); // only one panel open at a time, across the whole list
-      btn.classList.add('pending'); btn.title='กำลังโหลดประวัติ...';
-      api.getIssuePreview(issueId).then(result=>{
-        btn.classList.remove('pending'); btn.title='ปิดงาน (Resolved → Closed)';
-        if(!result || !result.ok){
-          btn.classList.add('err');
-          btn.title='โหลดประวัติไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ');
-          setTimeout(()=>btn.classList.remove('err'),2000);
-          return;
-        }
-        slot.dataset.kind='close';
-        renderTestPreview(slot, issueId, result);
-      });
-    };
-    return btn;
-  }
-  function notePreview(text){ return text.length>60 ? text.slice(0,60)+'…' : text; }
-  // icon button: opens/closes the private note panel for this issue in `slot`.
-  // Local-only — the note text never leaves this machine via any Redmine call.
-  function makeNoteBtn(issueId, slot){
-    const btn=document.createElement('button');
-    const existing=notes[String(issueId)];
-    btn.className='noteBtn'+(existing?' has':'');
-    btn.textContent='📝';
-    btn.title=existing?('โน้ต: '+notePreview(existing.text)):'เพิ่มโน้ตส่วนตัว';
-    btn.onclick=(e)=>{
-      e.stopPropagation();
-      if(slot.dataset.kind==='note'){ (slot._attemptClose||closeAllPanels)(); return; }
-      closeAllPanels();
-      slot.dataset.kind='note';
-      renderNotePanel(slot, issueId);
-    };
-    return btn;
-  }
-  function renderNotePanel(slot, issueId){
-    const existing=notes[String(issueId)];
-    const original=existing?existing.text:'';
-    const panel=document.createElement('div');
-    panel.className='notePanel';
-    panel.onclick=e=>e.stopPropagation();
-    panel.innerHTML=`
-      <div class="np-label"><span>📝 โน้ตส่วนตัว · #${issueId}</span><span class="local">เก็บบนเครื่องนี้ · ไม่ส่งไป Redmine</span></div>
-      <textarea class="np-edit" placeholder="จดอะไรก็ได้ที่ไม่อยากให้ใครเห็น…">${esc(original)}</textarea>
-      <div class="np-actions">
-        <button class="save">บันทึก</button>
-        <button class="cancel">ยกเลิก</button>
-        ${existing?`<span class="np-stamp">แก้ไขล่าสุด ${timeAgo(existing.updatedAt)}</span><button class="del">ลบโน้ต</button>`:''}
-      </div>
-      <div class="np-err" style="display:none"></div>`;
-    slot.appendChild(panel);
-    const textarea=panel.querySelector('.np-edit');
-    const saveBtn=panel.querySelector('.save');
-    const showErr=msg=>{ const err=panel.querySelector('.np-err'); err.style.display='block'; err.textContent=msg; };
-    function doSave(){
-      const val=textarea.value.trim();
-      saveBtn.disabled=true; saveBtn.textContent='กำลังบันทึก...';
-      api.saveNote(issueId, val).then(result=>{
-        saveBtn.disabled=false; saveBtn.textContent='บันทึก';
-        if(!result || !result.ok){ showErr('บันทึกไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ')); return; }
-        if(val) notes[String(issueId)]={text:val, updatedAt:new Date().toISOString()};
-        else delete notes[String(issueId)];
-        clearSlot(slot);
-        renderPanel();
-      });
-    }
-    function attemptClose(){
-      if(textarea.value.trim()!==original.trim() && !confirm('มีข้อความที่ยังไม่ได้บันทึก ปิดทิ้งเลยไหม?')) return;
-      clearSlot(slot);
-    }
-    slot._attemptClose=attemptClose;
-    panel.querySelector('.save').onclick=doSave;
-    panel.querySelector('.cancel').onclick=attemptClose;
-    const delBtn=panel.querySelector('.del');
-    if(delBtn) delBtn.onclick=()=>{
-      delBtn.disabled=true;
-      api.saveNote(issueId,'').then(result=>{
-        delBtn.disabled=false;
-        if(!result || !result.ok){ showErr('ลบไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ')); return; }
-        delete notes[String(issueId)];
-        clearSlot(slot);
-        renderPanel();
-      });
-    };
-    textarea.addEventListener('keydown',e=>{
-      if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); doSave(); }
-      else if(e.key==='Escape'){ e.preventDefault(); attemptClose(); }
-    });
-    textarea.focus();
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-  }
-  function renderTestPreview(slot, issueId, {historyText, testResults}){
-    const panel=document.createElement('div');
-    panel.className='testPreview';
-    const historyBlock=historyText
-      ? `<div class="tp-block">${esc(historyText)}</div>`
-      : `<div class="tp-block empty">ไม่มี comment ในประวัติ</div>`;
-    if(!testResults){
-      panel.innerHTML=`
-        <div class="tp-warn">งานนี้ไม่มี field "Test Results" ในโปรเจกต์/tracker นี้ จึงปิดงานจากตรงนี้ไม่ได้</div>
-        <div class="tp-label">ประวัติที่รวบรวมได้</div>
-        ${historyBlock}
-        <div class="tp-actions"><button class="cancel">ปิด</button></div>`;
-      panel.querySelector('.cancel').onclick=(e)=>{ e.stopPropagation(); clearSlot(slot); };
-      slot.appendChild(panel);
-      return;
-    }
-    panel.innerHTML=`
-      <div class="tp-label">Test Results (แก้ไขได้)</div>
-      <textarea class="tp-edit" placeholder="ยังไม่มีข้อมูล — ดูประวัติด้านล่างแล้วเขียน/แก้ไขผล test ที่นี่">${esc(testResults.value||'')}</textarea>
-      <div class="tp-label">ประวัติที่รวบรวมได้</div>
-      ${historyBlock}
-      <div class="tp-actions">
-        <button class="confirm">ยืนยันและปิดงาน</button>
-        <button class="cancel">ยกเลิก</button>
-      </div>`;
-    panel.querySelector('.cancel').onclick=(e)=>{ e.stopPropagation(); clearSlot(slot); };
-    const confirmBtn=panel.querySelector('.confirm');
-    confirmBtn.onclick=(e)=>{
-      e.stopPropagation();
-      const newValue=panel.querySelector('.tp-edit').value;
-      confirmBtn.disabled=true; confirmBtn.classList.add('pending'); confirmBtn.textContent='กำลังปิดงาน...';
-      api.closeIssue(issueId, { id: testResults.fieldId, value: newValue }).then(result=>{
-        if(!result || !result.ok){
-          confirmBtn.disabled=false; confirmBtn.classList.remove('pending'); confirmBtn.textContent='ยืนยันและปิดงาน';
-          let err=panel.querySelector('.tp-err');
-          if(!err){ err=document.createElement('div'); err.className='tp-err'; panel.appendChild(err); }
-          err.textContent='ปิดงานไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ');
-          return;
-        }
-        // success: main process refetches tasks; this row + panel disappear once the new payload renders
-      });
-    };
-    slot.appendChild(panel);
-  }
-  function renderTabs(){
-    const tabsEl=document.getElementById('tabs');
-    tabsEl.innerHTML='';
-    // ALL tab (default) — every status combined
-    const allTab=document.createElement('div');
-    allTab.className='tab'+(activeStatus==='ALL'?' active':'');
-    allTab.style.setProperty('--sc','var(--accent)');
-    allTab.innerHTML=`<span class="dot"></span>ALL<span class="n">${openIssues().filter(issueMatch).length}</span>`;
-    allTab.onclick=()=>{ activeStatus='ALL'; visibleCount=15; renderTabs(); renderPanel(); };
-    tabsEl.appendChild(allTab);
-    lastPayload.groups.forEach(g=>{
-      const tab=document.createElement('div');
-      tab.className='tab'+(g.status===activeStatus?' active':'');
-      tab.style.setProperty('--sc', STATUS_COLOR[g.status]||'var(--dim)');
-      tab.innerHTML=`<span class="dot"></span>${esc(g.status)}<span class="n">${statusIssues(g.status).length}</span>`;
-      tab.onclick=()=>{ activeStatus=g.status; visibleCount=15; renderTabs(); renderPanel(); };
-      tabsEl.appendChild(tab);
-    });
-  }
-  const ocSpan=(o,c)=>`<span class="n"><span class="o">${o}</span><span class="sep">/</span><span class="c">${c}</span></span>`;
-  function renderChipFilter(elId, keyFn, selected){
-    const el=document.getElementById(elId);
-    el.innerHTML='';
-    const counts=new Map();
-    allIssues().forEach(i=>{
-      const k=keyFn(i);
-      if(!counts.has(k)) counts.set(k,{open:0,closed:0});
-      const c=counts.get(k);
-      i.closed?c.closed++:c.open++;
-    });
-    [...counts.keys()].sort().forEach(k=>{
-      const chip=document.createElement('div');
-      chip.className='chip'+(selected.has(k)?' active':'');
-      const c=counts.get(k);
-      chip.innerHTML=`${esc(k)}${ocSpan(c.open,c.closed)}`;
-      chip.onclick=()=>{
-        selected.has(k)?selected.delete(k):selected.add(k);
-        visibleCount=15; renderFilters(); renderTabs(); renderPanel();
-      };
-      el.appendChild(chip);
-    });
-  }
-  function renderRiskFilter(){
-    const el=document.getElementById('riskFilter');
-    el.innerHTML='';
-    const issues=allIssues();
-    const oc=list=>({open:list.filter(i=>!i.closed).length,closed:list.filter(i=>i.closed).length});
-    const mk=(cls,sc,label,list,onclick)=>{
-      const tab=document.createElement('div');
-      tab.className='tab'+cls;
-      tab.style.setProperty('--sc',sc);
-      const c=oc(list);
-      tab.innerHTML=`<span class="dot"></span>${esc(label)}${ocSpan(c.open,c.closed)}`;
-      tab.onclick=onclick;
-      el.appendChild(tab);
-    };
-    mk(selectedRisk===null?' active':'','var(--accent)','ทั้งหมด',issues,
-      ()=>{ selectedRisk=null; visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
-    RISK_ORDER.forEach((r,idx)=>{
-      const list=issues.filter(i=>i.risk===r);
-      mk(selectedRisk===r?' active':'',RISK_COLORS[idx],r,list,
-        ()=>{ selectedRisk=(selectedRisk===r?null:r); visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
-    });
-    const noneList=issues.filter(i=>!i.risk);
-    mk(selectedRisk==='none'?' active':'','var(--dim)','ไม่ระบุ',noneList,
-      ()=>{ selectedRisk=(selectedRisk==='none'?null:'none'); visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
-  }
-  function renderFilters(){
-    renderChipFilter('projectFilter', i=>i.project, selectedProjects);
-    renderChipFilter('assigneeFilter', i=>i.assignee, selectedAssignees);
-    renderRiskFilter();
-  }
-  let closedYearsOpen=false;
-  function renderRmStats(stats){
-    const el=document.getElementById('rmStats');
-    if(!stats){ el.innerHTML=''; return; }
-    const cells=[
-      ['open',stats.open,'var(--accent)'],
-      ['high risk',stats.highRisk,'var(--rose)'],
-      ['overdue',stats.overdue,'var(--amber)'],
-    ];
-    const closedYears=stats.closedByYear||[];
-    const yearsHtml=closedYears.map(y=>
-      `<div class="yr"><span>${esc(y.label)}</span><b>${y.count}</b></div>`).join('');
-    el.innerHTML=cells.map(([l,n,c])=>
-      `<div class="stat" style="--sc:${c}"><div class="n">${n}</div><div class="l">${esc(l)}</div></div>`).join('')
-      + `<div class="stat${closedYears.length?' expandable':''}${closedYears.length&&closedYearsOpen?' open':''}" style="--sc:var(--dim)" id="closedStat">
-           <div class="n">${stats.closed}</div><div class="l">closed${closedYears.length?'<i class="chev2">›</i>':''}</div>
-           <div class="years">${yearsHtml}</div>
-         </div>`;
-    const closedEl=document.getElementById('closedStat');
-    if(closedEl && closedYears.length){
-      closedEl.onclick=()=>{ closedYearsOpen=!closedYearsOpen; renderRmStats(stats); };
-    }
-  }
-  function renderTasks(payload){
-    const el=document.getElementById('tasks');
-    document.getElementById('tabs').innerHTML='';
-    document.getElementById('projectFilter').innerHTML='';
-    document.getElementById('assigneeFilter').innerHTML='';
-    document.getElementById('riskFilter').innerHTML='';
-    currentUserName=payload.currentUser||currentUserName;
-    renderRmStats(payload.stats);
-    if(payload.error){
-      if(payload.error==='ยังไม่ได้ตั้งค่า Redmine'){
-        el.innerHTML=`<div class="not-configured">
-          <p>ยังไม่ได้ตั้งค่า Redmine URL และ API key — ตั้งค่าก่อนถึงจะดึงงานได้</p>
-          <button id="notConfiguredBtn">ตั้งค่าเลย</button>
-        </div>`;
-        document.getElementById('notConfiguredBtn').onclick=()=>openSettings('cardRedmine');
-      } else {
-        el.innerHTML=`<div class="hint">โหลด Redmine ไม่สำเร็จ: ${esc(payload.error)}</div>`;
-      }
-      return;
-    }
-    if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; return; }
-    lastPayload=payload;
-    notes=payload.notes||{};
-    // drop selections that no longer exist
-    const projNames=new Set(allIssues().map(i=>i.project));
-    const asgNames=new Set(allIssues().map(i=>i.assignee));
-    [...selectedProjects].forEach(p=>{ if(!projNames.has(p)) selectedProjects.delete(p); });
-    [...selectedAssignees].forEach(a=>{ if(!asgNames.has(a)) selectedAssignees.delete(a); });
-    const riskValues=new Set(allIssues().map(i=>i.risk).filter(Boolean));
-    if(selectedRisk && selectedRisk!=='none' && !riskValues.has(selectedRisk)) selectedRisk=null;
-    if(!activeStatus || (activeStatus!=='ALL' && !payload.groups.some(g=>g.status===activeStatus))){
-      activeStatus='ALL';
-    }
-    renderFilters(); renderTabs(); renderPanel();
-  }
-  api && api.onTasks && api.onTasks(renderTasks);
-
-  // ===== Workspace tab =====
-  // ย้ายไป tab-workspace.js ทั้งก้อนแล้ว (โมดูลแท็บตัวแรกตามสัญญาของ v1.8.3)
-  // เปลือกเหลือแค่ปุ่ม nav / การซ่อน-แสดง view / การ์ดตั้งค่า ซึ่งยังอยู่ในไฟล์นี้
-
-  // ===== ตัวกรอง ปี / เดือน / วัน (ใช้ร่วมกันทั้ง Meeting และ QA test) =====
-  // ตัวจริงอยู่ใน datefilter.js — กฎทั้งหมด (ข้ามแถวที่มีค่าเดียว / ล้างค่าค้าง) อธิบายไว้ที่นั่น
-  const {dateMatch, dateFilterHtml, wireDateFilter} = window.COWORK.dateFilter;
-
-  // ===== Meeting tab =====
-  // ย้ายไป tab-meeting.js + tab-meeting.css ทั้งก้อนแล้ว (แถบควบคุมการอัดยังอยู่ที่ meetingrun.js เหมือนเดิม)
-
-  // ===== QA test tab =====
-  // ย้ายไป tab-qatest.js + tab-qatest.css ทั้งก้อนแล้ว
+  // ทั้งสี่แท็บอยู่ในไฟล์ของตัวเองแล้ว: tab-redmine / tab-workspace / tab-qatest / tab-meeting
+  // (.js และ .css ตามที่แต่ละแท็บมี) ส่วนตัวกรอง ปี/เดือน/วัน ที่ Meeting กับ QA ใช้ร่วมอยู่ที่ datefilter.js
+  // เปลือกเหลือหน้าที่: นาฬิกา, ปุ่มหน้าต่าง, ธีม, ทะเบียนแท็บ, showTab, หน้าตั้งค่า
 
   // tab switching
   const navR=document.getElementById('navRedmine'), navW=document.getElementById('navWorkspace'),

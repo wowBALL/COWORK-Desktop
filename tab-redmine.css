@@ -1,0 +1,140 @@
+/* แท็บ Redmine — คู่กับ tab-redmine.js
+ *
+ * โหลดหลัง </style> ของ widget.html และต้องอยู่ "ก่อน" tab-meeting.css / tab-qatest.css
+ * เพราะเดิมกฎชุดนี้อยู่ก่อนสองก้อนนั้นในก้อนเดียวกัน
+ *
+ * ของที่ "ไม่" ได้ย้ายมา ทั้งที่เกิดในบล็อกนี้ เพราะแท็บอื่นใช้ด้วย:
+ *   .chips / .chip   ตัวกรองทุกแท็บใช้ (รวมตัวกรอง ปี/เดือน/วัน)
+ *   .stats / .stat   แถวตัวเลขสรุปหัวแท็บ ใช้ทั้งสี่แท็บ
+ *   .not-configured  กล่อง "ยังไม่ได้ตั้งค่า" ใช้ทั้งสี่แท็บ
+ * ทั้งสามยังอยู่ใน widget.html ห้ามยกตามมา
+ *
+ * ระวัง: .t กับ .who เป็นชื่อคลาสกว้าง ๆ ที่รั่วไปโดนของคนอื่นอยู่แล้ว
+ *   .t   → meetingrun.js ใช้ class="t" (.mrunopt .t ทับ font-size ให้ ที่เหลือรับของ .t ไป)
+ *   .who → tab-meeting.js ใช้ .utt .who (specificity สูงกว่า แต่ padding/border รับของ .who ไป)
+ * ไฟล์นี้จึงถอดออกไม่ได้ ต้องโหลดเสมอ
+ */
+
+.loadMoreBtn{-webkit-app-region:no-drag;width:100%;font-family:inherit;font-size:11.5px;font-weight:600;
+  color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:9px;
+  padding:9px;margin-top:6px;cursor:pointer;transition:.15s}
+.loadMoreBtn:hover{color:var(--ink);border-color:var(--accent)}
+
+/* status tabs — single-select, color-coded */
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.tab{-webkit-app-region:no-drag;font-size:11px;font-weight:600;color:var(--muted);background:transparent;
+  border:1px solid var(--line);border-radius:7px;padding:5px 11px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:.12s}
+.tab .dot{width:7px;height:7px;border-radius:50%;background:var(--sc,var(--dim));flex-shrink:0}
+.tab .n{font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--ink);
+  background:var(--pill-bg);border-radius:20px;padding:1px 6px}
+.tab .n .o{color:var(--green)}
+.tab .n .c{color:var(--muted)}
+.tab .n .sep{color:var(--dim);margin:0 1px;opacity:.6}
+.tab:hover{color:var(--ink)}
+.tab.active{color:var(--ink);background:var(--panel-2);border-color:var(--sc,var(--accent))}
+.tab.active .n{color:var(--muted)}
+
+/* task rows */
+.task{display:flex;align-items:center;gap:10px;padding:10px 8px;cursor:pointer;transition:.12s;
+  border-bottom:1px solid var(--line-soft)}
+.task:last-child{border-bottom:none}
+.task:hover{background:var(--panel);border-radius:8px;border-bottom-color:transparent}
+.task.overdue .t{color:var(--amber)}
+.idnum{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);flex-shrink:0;width:36px}
+.tmain{flex:1;min-width:0;position:relative}
+.t{font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* hover tooltip: created / updated timing */
+.tip{position:absolute;left:0;bottom:calc(100% + 8px);z-index:20;
+  background:var(--tip-bg);color:var(--tip-ink);font-size:11.5px;font-weight:600;line-height:1.5;
+  padding:7px 11px;border-radius:8px;border:1px solid var(--accent);
+  white-space:nowrap;box-shadow:0 10px 26px var(--shadow);
+  opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity .12s,transform .12s}
+.tip b{color:var(--accent);font-weight:700}
+.task:hover .tip{opacity:1;transform:translateY(0)}
+.proj{font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;flex-shrink:0;
+  max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who{font-size:10.5px;font-weight:600;flex-shrink:0;max-width:88px;padding:2px 8px;border-radius:6px;
+  border:1px solid currentColor;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.risk{font-size:8.5px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:6px;
+  flex-shrink:0;width:66px;text-align:center;text-transform:uppercase}
+.risk.rk-none{background:transparent;color:var(--line);border:1px dashed var(--line)}
+.rk0{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}    /* Low */
+.rk1{background:color-mix(in srgb,var(--cyan) 16%,transparent);color:var(--cyan)}      /* Fairly Low */
+.rk2{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}    /* Moderate */
+.rk3{background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}  /* Medium */
+.rk4{background:color-mix(in srgb,var(--rose) 20%,transparent);color:var(--rose)}      /* High */
+/* close-issue button (Resolved -> Closed) */
+.closeBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel);color:var(--muted);cursor:pointer;font-size:12px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;transition:.15s}
+.closeBtn:hover{color:var(--ink);border-color:var(--accent)}
+.closeBtn.armed{background:var(--amber);color:var(--on-accent);border-color:var(--amber)}
+.closeBtn.pending{opacity:.5;pointer-events:none}
+.closeBtn.err{background:var(--rose);color:var(--on-accent);border-color:var(--rose)}
+/* close-issue preview panel: existing Test Results vs. compiled history */
+.testPreview{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+  padding:12px;margin:0 0 10px}
+.testPreview .tp-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  font-weight:700;margin-bottom:5px}
+.testPreview .tp-label:not(:first-child){margin-top:12px}
+.testPreview .tp-block{font-size:12px;line-height:1.5;white-space:pre-wrap;color:var(--ink);
+  max-height:160px;overflow-y:auto;background:var(--panel);border:1px solid var(--line-soft);
+  border-radius:7px;padding:8px 10px}
+.testPreview .tp-block.empty{color:var(--dim);font-style:italic}
+.testPreview .tp-edit{width:100%;min-height:90px;resize:vertical;font-family:inherit;font-size:12px;
+  line-height:1.5;color:var(--ink);background:var(--panel);border:1px solid var(--line-soft);
+  border-radius:7px;padding:8px 10px;outline:none}
+.testPreview .tp-edit:focus{border-color:var(--accent)}
+.testPreview .tp-edit::placeholder{color:var(--dim);font-style:italic}
+.testPreview .tp-warn{font-size:12px;color:var(--rose);line-height:1.5}
+.testPreview .tp-err{font-size:11.5px;color:var(--rose);margin-top:8px}
+.testPreview .tp-actions{display:flex;gap:8px;margin-top:12px}
+.testPreview .tp-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
+  border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);
+  color:var(--muted);transition:.15s}
+.testPreview .tp-actions button:hover{color:var(--ink);border-color:var(--accent)}
+.testPreview .tp-actions button.confirm{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.testPreview .tp-actions button.confirm:disabled{opacity:.4;cursor:not-allowed;background:var(--panel);color:var(--dim)}
+.testPreview .tp-actions button.pending{opacity:.6;pointer-events:none}
+/* private note button/panel — local-only, never sent to Redmine */
+.noteBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;transition:.15s;position:relative}
+.noteBtn:hover{color:var(--accent);border-color:var(--accent)}
+.noteBtn.has{color:var(--violet);border-color:color-mix(in srgb,var(--violet) 45%,transparent);
+  background:color-mix(in srgb,var(--violet) 12%,transparent)}
+.noteBtn.has::after{content:'';position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:50%;
+  background:var(--violet);border:1.5px solid var(--bg)}
+.notePanel{background:var(--panel-2);border:1px solid color-mix(in srgb,var(--violet) 38%,var(--line));
+  border-left:3px solid var(--violet);border-radius:10px;padding:12px;margin:0 0 10px}
+.notePanel .np-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--violet);
+  font-weight:700;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.notePanel .np-label .local{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:10px;font-weight:600}
+.notePanel .np-edit{width:100%;min-height:74px;resize:vertical;font-family:inherit;font-size:12.5px;
+  line-height:1.6;color:var(--ink);background:var(--panel);border:1px solid var(--line-soft);
+  border-radius:7px;padding:8px 10px;outline:none}
+.notePanel .np-edit:focus{border-color:var(--violet)}
+.notePanel .np-edit::placeholder{color:var(--dim);font-style:italic}
+.notePanel .np-actions{display:flex;align-items:center;gap:8px;margin-top:10px}
+.notePanel .np-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
+  border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);
+  color:var(--muted);transition:.15s}
+.notePanel .np-actions button:hover{color:var(--ink);border-color:var(--violet)}
+.notePanel .np-actions button.save{background:var(--violet);color:var(--on-accent);border-color:var(--violet)}
+.notePanel .np-actions button.save:hover{color:var(--on-accent);opacity:.88}
+.notePanel .np-actions button.save:disabled{opacity:.5;cursor:not-allowed}
+.notePanel .np-actions button.del{margin-left:auto;color:var(--rose);border-color:transparent;background:transparent}
+.notePanel .np-actions button.del:hover{border-color:var(--rose);color:var(--rose)}
+.notePanel .np-actions button.del:disabled{opacity:.5;cursor:not-allowed}
+.notePanel .np-stamp{font-size:10px;color:var(--dim)}
+.notePanel .np-err{font-size:11.5px;color:var(--rose);margin-top:8px}
+/* project pill palette (muted, curated) */
+.pc0{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+.pc1{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+.pc2{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}
+.pc3{background:color-mix(in srgb,var(--rose) 16%,transparent);color:var(--rose)}
+.pc4{background:color-mix(in srgb,var(--cyan) 16%,transparent);color:var(--cyan)}
+.pc5{background:color-mix(in srgb,var(--violet) 16%,transparent);color:var(--violet)}
+/* assignee name colour (text only, same hue family) */
+.wc0{color:var(--accent)}.wc1{color:var(--green)}.wc2{color:var(--amber)}
+.wc3{color:var(--rose)}.wc4{color:var(--cyan)}.wc5{color:var(--violet)}

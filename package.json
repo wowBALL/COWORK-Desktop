@@ -7,6 +7,7 @@
     "widget": "electron . --widget",
     "screensaver": "electron . --screensaver",
     "start": "electron . --widget",
+    "test": "node --test \"tests/*.test.js\"",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win"
   },
@@ -34,6 +35,8 @@
       "meetings.js",
       "qatest.js",
       "uidump.js",
+      "meetingrun.js",
+      "meetingrun.css",
       "widget.html",
       "screensaver.html",
       "icons/**/*",

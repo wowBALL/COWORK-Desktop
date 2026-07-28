@@ -9,6 +9,20 @@ const { readQaResults } = require('./qatest');
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
 
+// วิดเจ็ตเปิดได้ทีละตัว -- ตัวที่สองอ่าน localStorage ไม่ได้ เพราะตัวแรกถือล็อกโปรไฟล์ของ
+// Chromium อยู่ ธีมที่เซฟไว้เลยตกไปเป็นค่าเริ่มต้น (widget.html บรรทัด 9 มี catch คลุมไว้
+// เงียบ ๆ) แล้วหน้าต่างสองบานยังทับกันสนิทเพราะจำตำแหน่งเดียวกัน มองไม่ออกว่ามีสองตัว
+//
+// สกรีนเซฟเวอร์ไม่ขอล็อก เพราะต้องขึ้นทับได้ทั้งที่วิดเจ็ตเปิดอยู่ -- อิเล็กตรอนมีล็อกชุดเดียว
+// ต่อแอป ถ้าให้ใช้ร่วมกันสกรีนเซฟเวอร์จะโดนเด้งทิ้งทันทีที่วิดเจ็ตเปิดค้างไว้
+//
+// เฉพาะตัวที่ติดตั้งแล้ว -- ตัวที่รันจากซอร์สใช้ userData โฟลเดอร์เดียวกับตัวติดตั้ง
+// (cowork-desktop ทั้งคู่ เพราะ userData มาจาก name ใน package.json ไม่ใช่ productName)
+// ล็อกจึงเป็นตัวเดียวกัน ถ้าไม่กันไว้ npm run widget จะเงียบหายทุกครั้งที่วิดเจ็ตตัวติดตั้ง
+// เปิดค้างอยู่ -- ซึ่งมันเปิดเองตอนล็อกอินวินโดวส์อยู่แล้ว
+const gotLock = MODE === 'screensaver' || !app.isPackaged || app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+
 function loadEnv() {
   // dev: .env next to the source; packaged: .env shipped as an extraResource
   const candidates = [
@@ -668,10 +682,20 @@ ipcMain.handle('get-qa-failure-xml', (_e, runDir) => {
   catch (e) { return { error: e.message }; }
 });
 
-app.whenReady().then(() => {
+if (gotLock) app.whenReady().then(() => {
   loadAppConfig();
   MODE === 'screensaver' ? createScreensaver() : createWidget();
   if (MODE === 'widget') setupAutoUpdate();
+});
+
+// กดไอคอนซ้ำตอนเปิดอยู่แล้ว ให้ดึงบานเดิมขึ้นมาแทนที่จะเปิดบานใหม่
+// ใช้ moveTop ไม่ใช่ setAlwaysOnTop เพราะปุ่มปักหมุดถือค่านั้นอยู่ เผลอไปทับค่าที่ผู้ใช้ตั้งไว้
+app.on('second-instance', () => {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.moveTop();
+  win.focus();
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());

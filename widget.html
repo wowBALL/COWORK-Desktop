@@ -419,7 +419,7 @@
 <script>
   // ตัวช่วยที่ใช้ร่วมกันทุกแท็บ อยู่ใน util.js — ตั้งนามแฝงไว้ที่นี่เพื่อให้โค้ดข้างล่างเรียกสั้นเหมือนเดิม
   // ต้องอยู่บรรทัดแรกสุดของสคริปต์ เพราะ const ไม่ hoist แบบ function declaration ที่มันมาแทน
-  const {D, M, esc, hashN, timeAgo} = window.COWORK.util;
+  const {D, M} = window.COWORK.util;   // เปลือกเหลือใช้แค่ชื่อวัน/เดือนของนาฬิกา ที่เหลือโมดูลหยิบเอง
   let currentUserName='';
   function tick(){
     const n=new Date(),p=x=>String(x).padStart(2,'0'),h=n.getHours();
@@ -512,16 +512,9 @@
 
   // settings view — collapsible per-tab cards (defaults to collapsed; more cards can be
   // added later as more tabs need config, without touching the open/close plumbing)
+  // เปลือกดูแลแค่ตัวหน้า: สลับ view, เปิด/ปิดการ์ด, แล้วสั่งให้แต่ละโมดูลไปโหลดค่าของตัวเอง
+  // ข้างในการ์ด (ปุ่มบันทึก ค่าที่ดึงมาใส่ฟอร์ม) เป็นของโมดูลผ่าน mountSettings/loadSettings
   const viewS=document.getElementById('settingsView'), navRow=document.querySelector('.navrow');
-  const setUrl=document.getElementById('setUrl'), setKey=document.getElementById('setKey'),
-        setStatus=document.getElementById('setStatus'), setSave=document.getElementById('setSave');
-  const setWsDir=document.getElementById('setWsDir'), setWsStatus=document.getElementById('setWsStatus'),
-        setWsSave=document.getElementById('setWsSave');
-  const setMtDir=document.getElementById('setMtDir'), setMtStatus=document.getElementById('setMtStatus'),
-        setMtPort=document.getElementById('setMtPort'),
-        setMtSave=document.getElementById('setMtSave');
-  const setQaRowsEl=document.getElementById('setQaRows'), setQaAdd=document.getElementById('setQaAdd'),
-        setQaStatus=document.getElementById('setQaStatus'), setQaSave=document.getElementById('setQaSave');
   document.querySelectorAll('.set-card-header').forEach(h=>{
     h.onclick=()=>document.getElementById(h.dataset.card).classList.toggle('open');
   });
@@ -532,19 +525,10 @@
     navRow.classList.add('hidden');
     document.querySelectorAll('.set-card').forEach(c=>c.classList.remove('open'));
     if(autoOpenCard) document.getElementById(autoOpenCard).classList.add('open');
-    setStatus.textContent=''; setStatus.className='set-status';
-    setWsStatus.textContent=''; setWsStatus.className='set-status';
-    setMtStatus.textContent=''; setMtStatus.className='set-status';
-    setQaStatus.textContent=''; setQaStatus.className='set-status';
-    api && api.getRedmineConfig && api.getRedmineConfig().then(cfg=>{
-      setUrl.value=(cfg&&cfg.url)||''; setKey.value=(cfg&&cfg.apiKey)||'';
-    });
-    api && api.getWorkspaceDir && api.getWorkspaceDir().then(dir=>{ setWsDir.value=dir||''; });
-    api && api.getMeetingsDir && api.getMeetingsDir().then(dir=>{ setMtDir.value=dir||''; });
-    api && api.getRunnerConfig && api.getRunnerConfig().then(cfg=>{ setMtPort.value=(cfg&&cfg.port)||''; });
-    api && api.getQaSources && api.getQaSources().then(sources=>{
-      qaRows=(sources&&sources.length?sources:[{label:'',path:''}]).map(s=>({label:s.label||'',path:s.path||''}));
-      renderSetQaRows();
+    // ดึงค่าใหม่ทุกครั้งที่เปิด ไม่ใช่ครั้งเดียวตอน boot — ค่าอาจถูกแก้จากที่อื่นระหว่างทาง
+    TABS.forEach(name=>{
+      const mod=window.COWORK.tabs[name];
+      if(mod && mod.loadSettings) mod.loadSettings();
     });
   }
   function closeSettings(){
@@ -553,92 +537,18 @@
   }
   document.getElementById('settingsBtn').onclick=()=>openSettings();
   document.getElementById('setCancel').onclick=closeSettings;
-  setSave.onclick=()=>{
-    const url=setUrl.value.trim(), apiKey=setKey.value.trim();
-    if(!url || !apiKey){ setStatus.className='set-status err'; setStatus.textContent='กรอก URL และ API key ให้ครบ'; return; }
-    setSave.disabled=true; setStatus.className='set-status'; setStatus.textContent='กำลังทดสอบการเชื่อมต่อ...';
-    api.testRedmineConnection({url,apiKey}).then(result=>{
-      if(!result || !result.ok){
-        setSave.disabled=false;
-        setStatus.className='set-status err';
-        setStatus.textContent='เชื่อมต่อไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ');
-        return;
-      }
-      api.saveRedmineConfig({url,apiKey}).then(()=>{
-        setSave.disabled=false;
-        setStatus.className='set-status ok';
-        setStatus.textContent='บันทึกแล้ว · สวัสดี '+result.userName;
-      });
-    });
-  };
-  setWsSave.onclick=()=>{
-    const dir=setWsDir.value.trim();
-    if(!dir){ setWsStatus.className='set-status err'; setWsStatus.textContent='กรอก path ก่อน'; return; }
-    setWsSave.disabled=true;
-    api.saveWorkspaceDir(dir).then(()=>{
-      setWsSave.disabled=false;
-      setWsStatus.className='set-status ok';
-      setWsStatus.textContent='บันทึกแล้ว';
-    });
-  };
-
-  setMtSave.onclick=()=>{
-    const dir=setMtDir.value.trim();
-    if(!dir){ setMtStatus.className='set-status err'; setMtStatus.textContent='กรอก path ก่อน'; return; }
-    // พอร์ตว่าง = กลับไปใช้ 8765 ไม่ใช่ error — คนส่วนใหญ่ไม่เคยแก้ UI_PORT
-    const portRaw=setMtPort.value.trim();
-    const port=portRaw===''?8765:Number(portRaw);
-    if(!Number.isInteger(port)||port<1||port>65535){
-      setMtStatus.className='set-status err'; setMtStatus.textContent='พอร์ตต้องเป็นเลข 1-65535'; return;
-    }
-    api && api.saveRunnerConfig && api.saveRunnerConfig({port});
-    setMtSave.disabled=true;
-    api.saveMeetingsDir(dir).then(()=>{
-      setMtSave.disabled=false;
-      setMtStatus.className='set-status ok';
-      setMtStatus.textContent='บันทึกแล้ว';
-    });
-  };
-
-  // QA test sources — repeatable rows (label + path), edited in place in qaRows
-  // and only persisted on บันทึก. Starts as one empty row when nothing is configured
-  // yet, same as every other card defaulting to an empty input.
-  let qaRows=[{label:'',path:''}];
-  function renderSetQaRows(){
-    setQaRowsEl.innerHTML=qaRows.map((r,i)=>`
-      <div class="qa-src-row" data-i="${i}">
-        <input class="search qa-src-label" type="text" placeholder="ชื่อ source" value="${esc(r.label)}" autocomplete="off">
-        <input class="search" type="text" placeholder="เช่น D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\results" value="${esc(r.path)}" autocomplete="off">
-        <button type="button" class="qa-src-rm" title="ลบ source นี้">✕</button>
-      </div>`).join('');
-    setQaRowsEl.querySelectorAll('.qa-src-row').forEach(row=>{
-      const i=Number(row.dataset.i);
-      const [labelInput,pathInput]=row.querySelectorAll('input');
-      labelInput.oninput=()=>qaRows[i].label=labelInput.value;
-      pathInput.oninput=()=>qaRows[i].path=pathInput.value;
-      row.querySelector('.qa-src-rm').onclick=()=>{
-        qaRows.splice(i,1);
-        if(!qaRows.length) qaRows=[{label:'',path:''}];
-        renderSetQaRows();
-      };
-    });
-  }
-  setQaAdd.onclick=()=>{ qaRows.push({label:'',path:''}); renderSetQaRows(); };
-  setQaSave.onclick=()=>{
-    const sources=qaRows.map(r=>({label:r.label.trim(),path:r.path.trim()})).filter(r=>r.path);
-    setQaSave.disabled=true;
-    api.saveQaSources(sources).then(()=>{
-      setQaSave.disabled=false;
-      setQaStatus.className='set-status ok';
-      setQaStatus.textContent='บันทึกแล้ว';
-    });
-  };
+  // ปุ่มบันทึกของทั้งสี่การ์ดผูกในโมดูลของแท็บนั้นแล้ว (mountSettings)
 
   // boot โมดูลแท็บตามลำดับในทะเบียน — ต้องอยู่ท้ายสุด เพราะ mount() ของโมดูลอาจเรียก
   // อะไรที่เปลือกประกาศไว้ด้วย const ซึ่งยังอยู่ใน TDZ ถ้าไปเรียกกลางไฟล์
+  //
+  // mountSettings แยกจาก onShow โดยเจตนา: การ์ดตั้งค่าต้องใช้ได้ตั้งแต่เปิดแอป
+  // คนที่กดเฟืองเลยโดยไม่เคยเข้าแท็บนั้น ต้องเจอปุ่มบันทึกที่กดได้จริง
   TABS.forEach(name=>{
     const mod=window.COWORK.tabs[name];
-    if(mod && mod.mount) mod.mount();
+    if(!mod) return;
+    if(mod.mount) mod.mount();
+    if(mod.mountSettings) mod.mountSettings();
   });
   // ธีมครั้งแรกต้องมาหลัง mount ครบทุกโมดูล — applyTheme วน onTheme ของทุกแท็บ
   // ถ้าเรียกก่อน จะยิงเข้าโมดูลที่ยังไม่พร้อม (ทั้งไฟล์นี้รันแบบ synchronous จอจึงไม่กระพริบ)

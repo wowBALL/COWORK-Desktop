@@ -200,7 +200,31 @@
     document.getElementById('wsRefresh').onclick=()=>api&&api.refreshWorkspace&&api.refreshWorkspace();
   }
 
+  // ===== การ์ดตั้งค่าของแท็บนี้ =====
+  // markup ของการ์ดอยู่ใน widget.html เหมือนเดิม ที่ย้ายมาคือสายไฟ
+  let setWsDir,setWsStatus,setWsSave;
+  function mountSettings(){
+    setWsDir=document.getElementById('setWsDir');
+    setWsStatus=document.getElementById('setWsStatus');
+    setWsSave=document.getElementById('setWsSave');
+    setWsSave.onclick=()=>{
+      const dir=setWsDir.value.trim();
+      if(!dir){ setWsStatus.className='set-status err'; setWsStatus.textContent='กรอก path ก่อน'; return; }
+      setWsSave.disabled=true;
+      shell().api.saveWorkspaceDir(dir).then(()=>{
+        setWsSave.disabled=false;
+        setWsStatus.className='set-status ok';
+        setWsStatus.textContent='บันทึกแล้ว';
+      });
+    };
+  }
+  function loadSettings(){
+    setWsStatus.textContent=''; setWsStatus.className='set-status';
+    const api=shell().api;
+    api && api.getWorkspaceDir && api.getWorkspaceDir().then(dir=>{ setWsDir.value=dir||''; });
+  }
+
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.workspace = { key:'ws', mount, onData };
+  global.COWORK.tabs.workspace = { key:'ws', mount, mountSettings, loadSettings, onData };
 })(typeof window !== 'undefined' ? window : globalThis);

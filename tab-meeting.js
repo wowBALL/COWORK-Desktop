@@ -312,7 +312,40 @@
   // — เปิด start-ui.bat ทีหลังแล้วต้องนั่งรอคือของจริงที่เจอ
   function onShow(){ if(mtRunner && mtRunner.onShow) mtRunner.onShow(); }
 
+  // ===== การ์ดตั้งค่าของแท็บนี้ =====
+  // markup ของการ์ดอยู่ใน widget.html เหมือนเดิม ที่ย้ายมาคือสายไฟ
+  // การ์ดนี้เก็บสองอย่าง: โฟลเดอร์บันทึกประชุม (main process อ่าน) และพอร์ตของตัวรัน (meetingrun.js ใช้)
+  let setMtDir,setMtStatus,setMtPort,setMtSave;
+  function mountSettings(){
+    setMtDir=document.getElementById('setMtDir'); setMtStatus=document.getElementById('setMtStatus');
+    setMtPort=document.getElementById('setMtPort'); setMtSave=document.getElementById('setMtSave');
+    setMtSave.onclick=()=>{
+      const api=shell().api;
+      const dir=setMtDir.value.trim();
+      if(!dir){ setMtStatus.className='set-status err'; setMtStatus.textContent='กรอก path ก่อน'; return; }
+      // พอร์ตว่าง = กลับไปใช้ 8765 ไม่ใช่ error — คนส่วนใหญ่ไม่เคยแก้ UI_PORT
+      const portRaw=setMtPort.value.trim();
+      const port=portRaw===''?8765:Number(portRaw);
+      if(!Number.isInteger(port)||port<1||port>65535){
+        setMtStatus.className='set-status err'; setMtStatus.textContent='พอร์ตต้องเป็นเลข 1-65535'; return;
+      }
+      api && api.saveRunnerConfig && api.saveRunnerConfig({port});
+      setMtSave.disabled=true;
+      api.saveMeetingsDir(dir).then(()=>{
+        setMtSave.disabled=false;
+        setMtStatus.className='set-status ok';
+        setMtStatus.textContent='บันทึกแล้ว';
+      });
+    };
+  }
+  function loadSettings(){
+    setMtStatus.textContent=''; setMtStatus.className='set-status';
+    const api=shell().api;
+    api && api.getMeetingsDir && api.getMeetingsDir().then(dir=>{ setMtDir.value=dir||''; });
+    api && api.getRunnerConfig && api.getRunnerConfig().then(cfg=>{ setMtPort.value=(cfg&&cfg.port)||''; });
+  }
+
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.meeting = { key:"mt", mount, onData, onShow };
+  global.COWORK.tabs.meeting = { key:"mt", mount, mountSettings, loadSettings, onData, onShow };
 })(typeof window !== 'undefined' ? window : globalThis);

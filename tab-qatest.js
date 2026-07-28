@@ -265,7 +265,55 @@
     document.getElementById('qaRefresh').onclick=()=>api&&api.refreshQaTests&&api.refreshQaTests();
   }
 
+  // ===== การ์ดตั้งค่าของแท็บนี้ =====
+  // markup ของการ์ดอยู่ใน widget.html เหมือนเดิม ที่ย้ายมาคือสายไฟ
+  // แต่ละ source เป็นหนึ่งแถว (label + path) แก้ในตัว qaRows แล้วเขียนลงดิสก์ตอนกดบันทึกเท่านั้น
+  // เริ่มด้วยแถวว่างหนึ่งแถวเมื่อยังไม่เคยตั้งค่า เหมือนการ์ดอื่นที่เริ่มด้วยช่องว่าง
+  let setQaRowsEl,setQaAdd,setQaStatus,setQaSave;
+  let qaRows=[{label:'',path:''}];
+  function renderSetQaRows(){
+    setQaRowsEl.innerHTML=qaRows.map((r,i)=>`
+      <div class="qa-src-row" data-i="${i}">
+        <input class="search qa-src-label" type="text" placeholder="ชื่อ source" value="${esc(r.label)}" autocomplete="off">
+        <input class="search" type="text" placeholder="เช่น D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\results" value="${esc(r.path)}" autocomplete="off">
+        <button type="button" class="qa-src-rm" title="ลบ source นี้">✕</button>
+      </div>`).join('');
+    setQaRowsEl.querySelectorAll('.qa-src-row').forEach(row=>{
+      const i=Number(row.dataset.i);
+      const [labelInput,pathInput]=row.querySelectorAll('input');
+      labelInput.oninput=()=>qaRows[i].label=labelInput.value;
+      pathInput.oninput=()=>qaRows[i].path=pathInput.value;
+      row.querySelector('.qa-src-rm').onclick=()=>{
+        qaRows.splice(i,1);
+        if(!qaRows.length) qaRows=[{label:'',path:''}];
+        renderSetQaRows();
+      };
+    });
+  }
+  function mountSettings(){
+    setQaRowsEl=document.getElementById('setQaRows'); setQaAdd=document.getElementById('setQaAdd');
+    setQaStatus=document.getElementById('setQaStatus'); setQaSave=document.getElementById('setQaSave');
+    setQaAdd.onclick=()=>{ qaRows.push({label:'',path:''}); renderSetQaRows(); };
+    setQaSave.onclick=()=>{
+      const sources=qaRows.map(r=>({label:r.label.trim(),path:r.path.trim()})).filter(r=>r.path);
+      setQaSave.disabled=true;
+      shell().api.saveQaSources(sources).then(()=>{
+        setQaSave.disabled=false;
+        setQaStatus.className='set-status ok';
+        setQaStatus.textContent='บันทึกแล้ว';
+      });
+    };
+  }
+  function loadSettings(){
+    setQaStatus.textContent=''; setQaStatus.className='set-status';
+    const api=shell().api;
+    api && api.getQaSources && api.getQaSources().then(sources=>{
+      qaRows=(sources&&sources.length?sources:[{label:'',path:''}]).map(s=>({label:s.label||'',path:s.path||''}));
+      renderSetQaRows();
+    });
+  }
+
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.qatest = { key:'qa', mount, onData, onTheme };
+  global.COWORK.tabs.qatest = { key:'qa', mount, mountSettings, loadSettings, onData, onTheme };
 })(typeof window !== 'undefined' ? window : globalThis);

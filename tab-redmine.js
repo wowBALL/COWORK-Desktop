@@ -359,7 +359,40 @@
     api && api.onTasks && api.onTasks(onData);
   }
 
+  // ===== การ์ดตั้งค่าของแท็บนี้ =====
+  // markup ของการ์ดอยู่ใน widget.html เหมือนเดิม (เปลือกเป็นเจ้าของ markup ทุก view)
+  // ที่ย้ายมาคือสายไฟ: mountSettings ผูกปุ่มครั้งเดียวตอน boot, loadSettings ดึงค่าทุกครั้งที่เปิดหน้า
+  let setUrl,setKey,setStatus,setSave;
+  function mountSettings(){
+    setUrl=document.getElementById('setUrl'); setKey=document.getElementById('setKey');
+    setStatus=document.getElementById('setStatus'); setSave=document.getElementById('setSave');
+    setSave.onclick=()=>{
+      const url=setUrl.value.trim(), apiKey=setKey.value.trim();
+      if(!url || !apiKey){ setStatus.className='set-status err'; setStatus.textContent='กรอก URL และ API key ให้ครบ'; return; }
+      setSave.disabled=true; setStatus.className='set-status'; setStatus.textContent='กำลังทดสอบการเชื่อมต่อ...';
+      api.testRedmineConnection({url,apiKey}).then(result=>{
+        if(!result || !result.ok){
+          setSave.disabled=false;
+          setStatus.className='set-status err';
+          setStatus.textContent='เชื่อมต่อไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ');
+          return;
+        }
+        api.saveRedmineConfig({url,apiKey}).then(()=>{
+          setSave.disabled=false;
+          setStatus.className='set-status ok';
+          setStatus.textContent='บันทึกแล้ว · สวัสดี '+result.userName;
+        });
+      });
+    };
+  }
+  function loadSettings(){
+    setStatus.textContent=''; setStatus.className='set-status';
+    api && api.getRedmineConfig && api.getRedmineConfig().then(cfg=>{
+      setUrl.value=(cfg&&cfg.url)||''; setKey.value=(cfg&&cfg.apiKey)||'';
+    });
+  }
+
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.redmine = { key:"rm", mount, onData };
+  global.COWORK.tabs.redmine = { key:"rm", mount, mountSettings, loadSettings, onData };
 })(typeof window !== 'undefined' ? window : globalThis);

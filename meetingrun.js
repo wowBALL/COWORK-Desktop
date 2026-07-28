@@ -144,16 +144,98 @@
       </div>${warnHtml()}`;
   }
 
+  let followingJob = null;   // stem ของงานที่กำลังตาม
+  let dismissedJob = null;   // งานที่ผู้ใช้กด ✕ ปิดไปแล้ว
+  let detailOpen = false;
+
+  function stepsHtml(stage, failed) {
+    const skip = state && state.model === NO_SUMMARY_MODEL;
+    return STEPS.map((label, i) => {
+      // transcript-only ไม่มีขั้นสรุปเลย ไม่ใช่ค้างเป็น ○ ตลอดกาล
+      if (skip && i === SUMMARIZE_STEP) return '';
+      if (failed && i === stage) {
+        return `<div class="mrunstep err"><span class="ic">✕</span><span>${esc(label)}</span></div>`;
+      }
+      const cls = i < stage ? 'done' : i === stage ? 'now' : 'wait';
+      const ic = i < stage ? '✓' : i === stage ? '<span class="mrunspin">◠</span>' : '○';
+      return `<div class="mrunstep ${cls}"><span class="ic">${ic}</span><span>${esc(label)}</span></div>`;
+    }).join('');
+  }
+
+  function logHtml() {
+    const rows = ((state && state.activity) || []).slice(-60).map((e) => {
+      const time = String(e.ts || '').slice(11, 19);
+      return `<div class="${esc(e.level || 'info')}">${esc(time)}  ${esc(e.text || e.code)}</div>`;
+    }).join('');
+    return `<details class="mrunlog"><summary>▸ จอแสดงผลการทำงาน</summary><pre>${rows}</pre></details>`;
+  }
+
+  function stepCount() {
+    return state && state.model === NO_SUMMARY_MODEL ? STEPS.length - 1 : STEPS.length;
+  }
+
+  function viewProcessing(progress) {
+    const total = stepCount();
+    const shown = Math.min(progress.stage + 1, total);
+    return `<div class="mrun" data-s="processing">
+        <span class="sd"></span>
+        <span class="stxt"><span class="mrunspin">◠</span> ${esc(STEPS[progress.stage] || '')}
+          <em>· ขั้นที่ ${shown} จาก ${total}</em></span>
+        <button class="smore" data-act="detail">${detailOpen ? '⌃' : '⌄'}</button>
+      </div>
+      <div class="mrunbar"><i style="width:${Math.round((shown / total) * 100)}%"></i></div>
+      ${detailOpen ? `<div class="mrunx"><div class="mrunjob">${esc(followingJob || '')}</div>
+        ${stepsHtml(progress.stage, false)}${logHtml()}</div>` : ''}
+      ${warnHtml()}`;
+  }
+
+  function viewDone() {
+    return `<div class="mrun" data-s="done">
+        <span class="sd"></span>
+        <span class="stxt">✓ บันทึกเรียบร้อย <em>· ${esc(followingJob || '')}</em></span>
+        <button class="sbtn" data-act="read">อ่านสรุป</button>
+        <button class="smore" data-act="dismiss" title="ปิด">✕</button>
+      </div>`;
+  }
+
+  function viewFailed(progress) {
+    return `<div class="mrun" data-s="failed">
+        <span class="sd"></span>
+        <span class="stxt">✕ ประมวลผลไม่สำเร็จที่ขั้น "${esc(STEPS[progress.stage] || '')}"</span>
+        <button class="smore" data-act="detail">${detailOpen ? '⌃' : '⌄'}</button>
+      </div>
+      ${detailOpen ? `<div class="mrunx">
+        <div class="mrunwarn bad">⚠<span>เสียงและไฟล์ถอดเสียงยังอยู่ครบใน <code>failed/</code> —
+          ประชุมไม่ได้หาย สั่งประมวลผลใหม่ได้จากฝั่ง meeting-notes</span></div>
+        <div class="mrunjob">${esc(followingJob || '')}</div>
+        ${stepsHtml(progress.stage, true)}${logHtml()}</div>` : ''}`;
+  }
+
   function draw() {
+    // ขั้น "บีบอัดไฟล์เสียง" ไม่ได้มาจาก activity[] -- ตอน encode ยังไม่มี
+    // last_result ให้ตาม จึงอ่านจาก recorder === 'stopping' แทน ซึ่งกินช่วงนั้นพอดี
+    const recording = state && (state.recorder === 'recording' || state.recorder === 'stopping');
+    const progress = !state || recording ? null : progressOf(state.activity, followingJob);
+    const following = progress && followingJob !== dismissedJob;
     const view = !state ? 'absent'
-      : (state.recorder === 'recording' || state.recorder === 'stopping') ? 'recording' : 'idle';
+      : recording ? 'recording'
+      : !following ? 'idle'
+      : progress.failed ? 'failed'
+      : progress.stage >= 4 ? 'done'
+      : 'processing';
+
     const sig = [view, state && state.room, state && state.model, model, modelsOpen, stopping,
-      state && state.worker_ready,
+      detailOpen, followingJob, state && state.worker_ready,
+      progress ? `${progress.stage}:${progress.failed}` : '',
       state ? (state.warnings || []).map((w) => w.code).join(',') : ''].join('|');
     if (sig !== signature) {
       // service ไม่ตอบ = ไม่วาดอะไรเลย ไม่ใช่ปุ่มเทาที่กดแล้วพัง
       root.innerHTML = view === 'absent' ? ''
-        : view === 'recording' ? viewRecording() : viewIdle();
+        : view === 'recording' ? viewRecording()
+        : view === 'processing' ? viewProcessing(progress)
+        : view === 'done' ? viewDone()
+        : view === 'failed' ? viewFailed(progress)
+        : viewIdle();
       signature = sig;
     }
     // นาฬิกาเดินทุกวินาทีโดยไม่ต้องวาดใหม่ทั้งก้อน -- การแทน innerHTML ทุกวินาที
@@ -198,6 +280,8 @@
     if (act.dataset.act === 'models') { modelsOpen = !modelsOpen; draw(); }
     if (act.dataset.act === 'open') openRoom();
     if (act.dataset.act === 'stop') confirmStop();
+    if (act.dataset.act === 'detail') { detailOpen = !detailOpen; draw(); }
+    if (act.dataset.act === 'dismiss') { dismissedJob = followingJob; detailOpen = false; draw(); }
   }
 
   function onInput(e) {
@@ -227,6 +311,15 @@
   function onData(next) {
     state = next;
     if (state && state.recorder === 'recording') stopping = false;
+    // เริ่มตามงานตั้งแต่วินาทีที่ service บอกว่าได้ไฟล์แล้ว -- last_result ถูกล้าง
+    // เมื่อเปิดห้องถัดไป จึงต้องจำไว้เอง ไม่ใช่อ่านจาก state ทุกรอบ
+    if (state && state.last_result) {
+      const stem = jobStemOf(state.last_result);
+      if (stem && stem !== followingJob && stem !== dismissedJob) {
+        followingJob = stem;
+        detailOpen = false;
+      }
+    }
     if (root) draw();
   }
 

@@ -727,18 +727,17 @@
   // ธีม — เก็บใน localStorage ไม่ใช่ config.json เพราะอ่านได้ทันทีแบบ synchronous
   // ตอนเปิดแอป ถ้าไปอ่านผ่าน IPC (async) หน้าต่างจะวาดด้วยธีมเก่าก่อนแล้วค่อยกระพริบ
   const themeBtn=document.getElementById('themeBtn');
+  // แท็บที่ต้องวาดตัวเองใหม่เมื่อธีมเปลี่ยน ลงทะเบียนไว้ที่นี่ แทนที่จะให้ applyTheme
+  // เอื้อมไปเรียกฟังก์ชันของแท็บนั้นตรง ๆ — ตอนแยกไฟล์ shell จะเรียกข้ามไฟล์ไม่ได้
+  // ตัวที่ลงทะเบียนต้องทนถูกเรียกตอนที่แท็บยังไม่มีข้อมูลได้ (เช็คจาก DOM ไม่ใช่ตัวแปร)
+  const themeListeners=[];
   function applyTheme(t){
     document.documentElement.dataset.theme=t;
     const dark = t!=='sand';
     themeBtn.textContent = dark ? '☀' : '🌙';                      // ไอคอน = โหมดที่จะสลับไป
     themeBtn.title = dark ? 'สลับ Light Mode' : 'สลับ Dark Mode';
     try{ localStorage.setItem('cowork.theme',t); }catch{}
-    // วิวเวอร์ failure.xml อยู่ใน iframe คนละ document — สีถูก inline ไปตอนสร้าง
-    // ไม่ได้สืบทอด :root ของแอป จึงต้องสร้างใหม่เองเมื่อธีมเปลี่ยน
-    // เช็คจาก DOM ไม่ใช่ตัวแปร qaTab เพราะ applyTheme ถูกเรียกตอน init ก่อนที่ let qaTab จะถูกประกาศ
-    // (typeof ก็กันไม่ได้ ตัวแปร let ที่ยังไม่ถึงบรรทัดประกาศอยู่ใน TDZ แตะเมื่อไหร่ throw ทันที)
-    const onTab=document.querySelector('#qaSeg button.on');
-    if(onTab && onTab.dataset.t==='ui') renderQaReader();
+    themeListeners.forEach(fn=>fn(t));
   }
   applyTheme(document.documentElement.dataset.theme==='sand'?'sand':'carbon');
   themeBtn.onclick=()=>applyTheme(document.documentElement.dataset.theme==='sand'?'carbon':'sand');
@@ -1874,6 +1873,14 @@
     });
     renderQaPane(r, logText, collapsedDefault);
   }
+  // วิวเวอร์ failure.xml อยู่ใน iframe คนละ document — สีถูก inline ไปตอนสร้าง ไม่ได้สืบทอด :root
+  // ของแอป จึงต้องสร้างใหม่เองเมื่อธีมเปลี่ยน
+  // เช็คจาก DOM ไม่ใช่ตัวแปร qaTab เพราะ applyTheme ถูกเรียกตอน init ก่อนที่ let qaTab จะถูกประกาศ
+  // (typeof ก็กันไม่ได้ ตัวแปร let ที่ยังไม่ถึงบรรทัดประกาศอยู่ใน TDZ แตะเมื่อไหร่ throw ทันที)
+  themeListeners.push(()=>{
+    const onTab=document.querySelector('#qaSeg button.on');
+    if(onTab && onTab.dataset.t==='ui') renderQaReader();
+  });
   function renderQaTests(payload){
     qaData=payload;
     const stillThere=qaOpen && payload && !payload.error && payload.runs.find(x=>x.id===qaOpen);

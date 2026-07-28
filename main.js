@@ -167,10 +167,26 @@ function installUpdate(installerPath) {
   // path at the first space (confirmed: "D:\Program\COWORK Desktop" -> "D:\Program\COWORK").
   // Quoting it, plus windowsVerbatimArguments so Node doesn't add its own escaping on top,
   // is what actually works.
-  const child = spawn(installerPath, ['/S', '/D="' + installDir + '"'],
-    { detached: true, stdio: 'ignore', windowsVerbatimArguments: true });
-  child.unref();
-  setTimeout(() => app.quit(), 400); // let the detached installer fully launch before we release file locks
+  // ต้องปิดแอปให้สนิท "ก่อน" ตัวติดตั้งเริ่มทำงาน ไม่ใช่ปิดทีหลัง
+  //
+  // ของเดิมสั่งติดตั้งแล้วค่อย app.quit() ใน 400ms ซึ่งเป็นการแข่งเวลา และเวลาแพ้คือพังเงียบ:
+  // ตัวติดตั้งลบไฟล์ชุดเก่าไม่ได้เพราะยังถูกเปิดค้างอยู่ แล้วจบด้วย exit 2 -- ไม่คัดลอกไฟล์
+  // ไม่เขียนรีจิสทรี ไม่ทำอะไรเลยสักอย่าง และเพราะสั่ง /S มา ผู้ใช้ไม่เห็นอะไรทั้งสิ้น
+  // เข้าใจว่านี่คือเหตุที่เวอร์ชันใน "แอปที่ติดตั้ง" ค้างอยู่ที่ 1.3.15 ตั้งแต่ 24 ก.ค.
+  //
+  // วัดมาแล้วทั้งสามทาง (เปิดแอปค้างไว้ / เปิดค้างไว้ + --updated / ปิดแอประหว่างติดตั้ง):
+  // สองแบบแรกได้ exit 2 รีจิสทรีไม่ขยับ แบบสุดท้ายได้ exit 0 และรีจิสทรีอัปเดตถูกต้อง
+  // ส่วน --updated ยิ่งแย่ -- มันเด้ง MessageBox ค้างรอคนกดทั้งที่อยู่ในโหมด /S
+  //
+  // spawn ใน 'quit' จึงยิงตอนหน้าต่างปิดหมดและอิเล็กตรอนกำลังลงแล้ว ตัวติดตั้งยังต้องแตกไฟล์
+  // อีกหลายวินาทีกว่าจะแตะไฟล์จริง โพรเซสเราหมดไปก่อนแน่นอน
+  //
+  // /D= ต้องอยู่ท้ายสุดเสมอ
+  app.once('quit', () => {
+    spawn(installerPath, ['/S', '/D="' + installDir + '"'],
+      { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
+  });
+  app.quit();
 }
 
 async function runUpdateCheck() {

@@ -9,6 +9,7 @@
   try { document.documentElement.dataset.theme = localStorage.getItem('cowork.theme') || 'carbon'; }
   catch { document.documentElement.dataset.theme = 'carbon'; }
 </script>
+<link rel="stylesheet" href="meetingrun.css">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
   /* ── ธีม ────────────────────────────────────────────────────────────────
@@ -619,6 +620,7 @@
       <!-- สองหน้าในตัวเอง: mtList (รายการ) ↔ mtReader (หน้าอ่านเต็ม) สลับด้วย .hidden -->
       <div id="meetingView" class="hidden">
         <div id="mtList">
+          <div id="mtRunSlot"></div>
           <h3>ภาพรวม Meeting</h3>
           <div id="mtStats" class="stats"></div>
 
@@ -682,10 +684,24 @@
         <button id="setCancel" class="set-cancel" style="width:100%">ปิด</button>
       </div>
     </div>
+
+    <!-- ยืนยันปิดห้อง — อยู่ใน .shell เพราะ position:absolute ต้องอ้างอิงมัน
+         ไม่งั้นฉากมืดจะล้นออกนอกมุมโค้งของหน้าต่างที่พื้นหลังโปร่งใส -->
+    <div class="mrunscrim hidden" id="mrunScrim">
+      <div class="mrunmodal">
+        <h4>ปิดการประชุมใช่ไหม</h4>
+        <p>หยุดอัดแล้วส่งเข้าประมวลผลทันที <b>ประชุมนี้อัดซ้ำไม่ได้</b></p>
+        <div class="r">
+          <button class="no" id="mrunNo">อัดต่อ</button>
+          <button class="yes" id="mrunYes">ปิดเลย</button>
+        </div>
+      </div>
+    </div>
   </div>
 
 <!-- แปลง failure.xml เป็นวิวเวอร์ interactive (พอร์ตจาก uidump2html.py) — แยกไฟล์เพราะเทมเพลตยาว -->
 <script src="uidump.js"></script>
+<script src="meetingrun.js"></script>
 <script>
   const D=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
   const M=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
@@ -1597,6 +1613,14 @@
     renderMtStats(); renderMtFilters(); renderMtRows();
   }
   api && api.onMeetings && api.onMeetings(renderMeetings);
+
+  // แถบควบคุมการอัด — โมดูลแยกไฟล์ ที่นี่รู้จักแค่สัญญาสี่เมธอด
+  const mtRunner = window.COWORK && window.COWORK.tabs && window.COWORK.tabs.meetingRunner;
+  if(mtRunner){
+    mtRunner.mount(document.getElementById('mtRunSlot'));
+    api && api.onRunnerState && api.onRunnerState(s=>mtRunner.onData(s));
+    api && api.getRunnerState && api.getRunnerState().then(s=>mtRunner.onData(s));
+  }
   document.getElementById('mtSearch').oninput=e=>{
     // ต้องวาดแถวตัวกรองใหม่ด้วย เพราะเลขบนชิปนับหลังหักคำค้นแล้ว
     mtQuery=e.target.value; if(mtData){ renderMtFilters(); renderMtRows(); }

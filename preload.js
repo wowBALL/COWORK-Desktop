@@ -28,5 +28,12 @@ contextBridge.exposeInMainWorld('cowork', {
   refreshQaTests: () => ipcRenderer.send('qatest-refresh'),
   getQaFailureXml: (runDir) => ipcRenderer.invoke('get-qa-failure-xml', runDir),
   getQaSources: () => ipcRenderer.invoke('get-qa-sources'),
-  saveQaSources: (sources) => ipcRenderer.invoke('save-qa-sources', sources)
+  saveQaSources: (sources) => ipcRenderer.invoke('save-qa-sources', sources),
+  // meeting-notes recorder service — see main.js, the renderer never fetches it directly
+  getRunnerState: () => ipcRenderer.invoke('runner-get-state'),
+  onRunnerState: (cb) => ipcRenderer.on('runner-update', (_e, state) => cb(state)),
+  startMeeting: (model, name) => ipcRenderer.invoke('runner-start', model, name),
+  stopMeeting: () => ipcRenderer.invoke('runner-stop'),
+  getRunnerConfig: () => ipcRenderer.invoke('get-runner-config'),
+  saveRunnerConfig: (cfg) => ipcRenderer.invoke('save-runner-config', cfg)
 });

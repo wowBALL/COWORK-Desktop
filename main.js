@@ -46,6 +46,11 @@ let meetingsDir = '';
 // (other jobs' QA results) are a confirmed near-term need, not a maybe.
 // See docs/superpowers/specs/2026-07-27-qa-test-tab-design.md
 let qaSources = [];
+// Port of meeting-notes' session_service — configurable because that side can
+// change UI_PORT in its .env, and a hardcoded 8765 would silently drift apart.
+let runnerPort = 8765;
+// Last summary model picked, remembered so opening a room is a single click.
+let runnerModel = 'GLM-5.2';
 
 // ---- private per-issue notes, local-only — never written back to Redmine ----
 // See docs/superpowers/specs/2026-07-27-private-issue-notes-design.md
@@ -80,6 +85,8 @@ function loadAppConfig() {
   workspaceDir = saved.workspaceDir || '';
   meetingsDir = saved.meetingsDir || '';
   qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
+  runnerPort = Number(saved.meetingRunnerPort) || 8765;
+  runnerModel = saved.meetingRunnerModel || 'GLM-5.2';
   // dev convenience only: unpackaged runs may still use a local .env; never packaged
   if (!app.isPackaged) {
     if (!redmineConfig.url) redmineConfig.url = ENV.REDMINE_URL || '';
@@ -315,6 +322,45 @@ function pushWorkspace() {
   win.webContents.send('workspace-update', payload);
 }
 
+// ---- meeting-notes runner service (127.0.0.1 only) --------------------------
+// Reads and commands over HTTP, never spawns the recorder itself: the
+// manifest -> encode -> inbox/ ordering lives in session_service.py and nowhere
+// else. Copying it to a second place is how a meeting's audio goes missing.
+let runnerTimer = null;
+
+async function fetchRunnerState() {
+  try {
+    const res = await fetch(`http://127.0.0.1:${runnerPort}/api/state?lang=th`,
+      { signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }   // no answer = no recorder on this machine, not an error to show
+}
+
+// Poll cadence follows the situation. The installer goes to 8 machines, most
+// without the service at all — hammering 127.0.0.1 once a second all day there
+// buys nothing.
+function runnerInterval(state) {
+  if (!state) return 30000;
+  if (state.recorder !== 'idle') return 1000;
+  // Room closed but the watcher's pipeline is still running: keep up the pace
+  // while fresh events keep arriving, then ease off once it goes quiet.
+  const activity = state.activity || [];
+  const last = activity[activity.length - 1];
+  // ts is Python's datetime.now().isoformat() — no timezone suffix. JS reads a
+  // date-time without one as local time, which is right here: Python and
+  // Electron are on the same machine.
+  const age = last && last.ts ? Date.now() - Date.parse(last.ts) : Infinity;
+  return age < 90000 ? 1000 : 5000;
+}
+
+async function pollRunner() {
+  const state = await fetchRunnerState();
+  if (win) win.webContents.send('runner-update', state);
+  // setTimeout rather than setInterval: the gap changes with the state
+  runnerTimer = setTimeout(pollRunner, runnerInterval(state));
+}
+
 // meeting-notes vault — path comes from settings (meetingsDir, loaded in loadAppConfig).
 // รายการ + summary ส่งมาทั้งก้อน ส่วน transcript โหลดตอนกดเข้าไปอ่านทีละประชุม
 function pushMeetings() {
@@ -370,6 +416,7 @@ function createWidget() {
   setInterval(pushWorkspace, 5 * 60 * 1000);
   setInterval(pushMeetings, 5 * 60 * 1000);
   setInterval(pushQaTests, 5 * 60 * 1000);
+  pollRunner();
 }
 
 function createScreensaver() {
@@ -524,6 +571,43 @@ ipcMain.handle('save-qa-sources', (_e, sources) => {
   qaSources = (sources || []).filter(s => s && s.path);
   writeConfigMerge({ qaSources });
   pushQaTests();
+  return { ok: true };
+});
+// renderer's Meeting tab: the recorder controls. The renderer never talks to
+// 127.0.0.1 itself — everything it can do goes through these five handles.
+ipcMain.handle('runner-get-state', () => fetchRunnerState());
+ipcMain.handle('runner-start', async (_e, model, name) => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${runnerPort}/api/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, name: name || '' }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const body = await res.json().catch(() => ({}));
+    // 409 = a room is already open. Let the next poll report the truth rather
+    // than guessing on the renderer's behalf.
+    if (res.status === 201) return { ok: true };
+    return { error: body.error || `http_${res.status}` };
+  } catch { return { error: 'unreachable' }; }
+});
+ipcMain.handle('runner-stop', async () => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${runnerPort}/api/session/stop`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(5000),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 202) return { ok: true };
+    return { error: body.error || `http_${res.status}` };
+  } catch { return { error: 'unreachable' }; }
+});
+ipcMain.handle('get-runner-config', () => ({ port: runnerPort, model: runnerModel }));
+ipcMain.handle('save-runner-config', (_e, cfg) => {
+  const patch = {};
+  if (cfg && cfg.port) { runnerPort = Number(cfg.port) || 8765; patch.meetingRunnerPort = runnerPort; }
+  if (cfg && cfg.model) { runnerModel = cfg.model; patch.meetingRunnerModel = runnerModel; }
+  if (Object.keys(patch).length) writeConfigMerge(patch);
   return { ok: true };
 });
 // UI hierarchy dump for a failed run — lazy, can be tens of KB, only read on demand

@@ -1,6 +1,6 @@
 {
   "name": "cowork-desktop",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "COWORK Command Center — desktop widget & screensaver",
   "main": "main.js",
   "scripts": {

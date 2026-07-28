@@ -602,6 +602,7 @@
         <div id="qaStats" class="stats"></div>
 
         <h3>รันทดสอบ</h3>
+        <div id="qaDateRows"></div>
         <div class="row-label">สถานะ</div>
         <div id="qaChips" class="chips"></div>
         <div class="row-label" id="qaSrcLabel" style="display:none">Source</div>
@@ -623,8 +624,7 @@
 
           <h3>รายการประชุม</h3>
           <input id="mtSearch" class="search" type="text" placeholder="🔍 ค้นหา (ชื่อประชุม / เนื้อหาในสรุป)" autocomplete="off">
-          <div class="row-label">วันที่</div>
-          <div id="mtDays" class="chips"></div>
+          <div id="mtDays"></div>
           <div class="row-label">หมวดหัวข้อที่คุยกัน</div>
           <div id="mtTopics" class="chips"></div>
           <div id="mtRows"><div class="hint">กำลังโหลด...</div></div>
@@ -1261,11 +1261,72 @@
   }
   api && api.onWorkspace && api.onWorkspace(renderWorkspace);
 
+  // ===== ตัวกรอง ปี / เดือน / วัน (ใช้ร่วมกันทั้ง Meeting และ QA test) =====
+  // รับลิสต์ที่ "หักตัวกรองแถวอื่นของแท็บนั้นแล้ว" + ตัวดึงวันที่รูปแบบ YYYY-MM-DD + sel={y,m,d}
+  // แล้วคืน HTML ของแถวชิปเท่าที่ควรโชว์ (0–3 แถว)
+  //
+  // กฎที่ตกลงไว้: ชั้นไหนมีค่าเดียวให้ข้ามไปเลย ตอนข้อมูลยังอยู่ปีเดียวเดือนเดียวจะได้กดวันได้ทันที
+  // เหมือนเดิม แล้วค่อยงอกแถวเดือน/ปีขึ้นมาเองเมื่อข้อมูลสะสมข้ามเดือนข้ามปีจริง
+  //
+  // อีกกฎที่ห้ามพลาด: ชั้นล่างจะโชว์ได้ก็ต่อเมื่อชั้นบนถูกจำกัดเหลือค่าเดียวแล้ว (เลือกเอง หรือมีค่าเดียวอยู่แล้ว)
+  // ไม่งั้นป้ายมันกำกวม — เลข 18 จะหมายถึงทั้ง 18 มิ.ย. และ 18 ก.ค. พร้อมกัน แยกไม่ออก
+  const MTH_TH=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const DF_ORDER=['y','m','d'];
+  const DF_CUT={y:d=>d.slice(0,4), m:d=>d.slice(0,7), d:d=>d};
+  function dateMatch(sel,d){
+    if(!sel.y&&!sel.m&&!sel.d) return true;      // ไม่ได้กรอง — รายการที่ไม่มีวันที่ก็ต้องเห็น
+    if(!d) return false;
+    return (!sel.y||d.slice(0,4)===sel.y)&&(!sel.m||d.slice(0,7)===sel.m)&&(!sel.d||d===sel.d);
+  }
+  // แก้ sel ในตัวมันเอง (mutate) ให้เหลือแต่ค่าที่ยังเลือกได้จริง — ต้องล้างตรงนี้ก่อนที่ผู้เรียก
+  // จะเอา sel ไปนับเลขชิปแถวอื่น ไม่ใช่ล้างทีหลัง (เคยพลาดมาแล้วตอนลบ source: เลขขึ้น 0 ทั้งแถวทั้งที่ลิสต์ยังมีของ)
+  function dateFilterHtml(list,getDate,sel){
+    const dates=list.map(getDate).filter(Boolean);
+    const mth=v=>MTH_TH[+v.slice(5,7)-1];
+    // ป้ายวันเป็นเลขเปล่าได้ก็ต่อเมื่อแถวเดือนโชว์อยู่ ถ้าแถวเดือนถูกข้ามไป (ข้อมูลมีเดือนเดียว)
+    // ต้องแปะชื่อเดือนไว้กับวันแทน ไม่งั้นเหลือ "27" ลอยๆ ไม่รู้เดือนอะไร
+    const fmt={y:v=>v, m:mth, d:v=>+v.slice(8,10)+(mRowShown?'':' '+mth(v))};
+    const allLabel={y:'ทุกปี', m:'ทั้งปี', d:'ทั้งเดือน'};
+    const rowLabel={y:'ปี', m:'เดือน', d:'วัน'};
+    let pool=dates, html='', confined=true, mRowShown=false;
+    DF_ORDER.forEach((k,i)=>{
+      const cut=DF_CUT[k];
+      const vals=[...new Set(pool.map(cut))].sort().reverse();
+      const show=confined&&vals.length>1;
+      // ล้างค่าที่ค้างเมื่อ (ก) หายไปจากข้อมูลแล้ว หรือ (ข) แถวนี้ไม่ได้โชว์ทั้งที่มีให้เลือกหลายค่า
+      // ปล่อยค้างไว้จะกลายเป็นตัวกรองล่องหน — รายการหายไปเฉยๆ โดยไม่มีชิปไหนติดไฟให้กดออก
+      if(sel[k]&&(!vals.includes(sel[k])||!show)&&vals.length>1)
+        DF_ORDER.slice(i).forEach(x=>sel[x]=null);
+      if(show){
+        if(k==='m') mRowShown=true;
+        html+=`<div class="row-label">${rowLabel[k]}</div><div class="chips" data-df="${k}">`+
+          `<div class="chip${sel[k]?'':' active'}" data-v="">${allLabel[k]}<span class="n">${pool.length}</span></div>`+
+          vals.map(v=>`<div class="chip${sel[k]===v?' active':''}" data-v="${esc(v)}">${fmt[k](v)}`+
+            `<span class="n">${pool.filter(x=>cut(x)===v).length}</span></div>`).join('')+
+          `</div>`;
+      }
+      if(sel[k]) pool=pool.filter(x=>cut(x)===sel[k]);
+      confined=confined&&(vals.length<=1||!!sel[k]);
+    });
+    return html;
+  }
+  function wireDateFilter(el,sel,onChange){
+    el.querySelectorAll('.chips[data-df]').forEach(row=>{
+      const k=row.dataset.df, from=DF_ORDER.indexOf(k);
+      row.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+        DF_ORDER.slice(from).forEach(x=>sel[x]=null);   // เลือกชั้นบนใหม่ = ล้างชั้นล่างเสมอ
+        sel[k]=c.dataset.v||null;
+        onChange();
+      });
+    });
+  }
+
   // ===== Meeting tab =====
   // payload = { meetings:[{id,date,time,title,summary,topics,actions,...}], stats, error }
   // summary มาพร้อมรายการเลย ส่วน transcript โหลดทีละประชุมตอนกดเข้าไปอ่าน
   let mtData=null;
-  let mtQuery='', mtDay='all', mtTopic=null;
+  let mtQuery='', mtTopic=null;
+  const mtDateSel={y:null,m:null,d:null};   // ชื่อห้ามเป็น mtDate — ชนกับฟังก์ชันจัดรูปแบบวันที่ข้างล่าง
   let mtOpen=null;                 // ประชุมที่กำลังอ่านอยู่ (null = อยู่หน้ารายการ)
   let mtTab='s';                   // s=สรุป t=ถอดเสียง f=ไฟล์
   let mtTq='', mtSpk=null;         // ค้นหา / กรองผู้พูด ในหน้าถอดเสียง
@@ -1336,7 +1397,7 @@
     const terms=mtQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return mtData.meetings.filter(m=>{
       const hay=(m.title+' '+m.summary+' '+m.topics.join(' ')).toLowerCase();
-      return (mtDay==='all'||m.date===mtDay) &&
+      return dateMatch(mtDateSel,m.date) &&
         (!mtTopic||m.topics.includes(mtTopic)) &&
         terms.every(t=>hay.includes(t));
     });
@@ -1350,20 +1411,30 @@
   }
   function renderMtFilters(){
     const ms=mtData.meetings||[];
-    const days=[...new Set(ms.map(m=>m.date))].sort().reverse();
-    document.getElementById('mtDays').innerHTML=
-      `<div class="chip${mtDay==='all'?' active':''}" data-d="all">ทั้งหมด<span class="n">${ms.length}</span></div>`+
-      days.map(d=>`<div class="chip${mtDay===d?' active':''}" data-d="${esc(d)}">${esc(mtDate(d).replace(/^\S+\s/,''))}<span class="n">${ms.filter(m=>m.date===d).length}</span></div>`).join('');
+    const terms=mtQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const hit=m=>{
+      const hay=(m.title+' '+m.summary+' '+m.topics.join(' ')).toLowerCase();
+      return terms.every(t=>hay.includes(t));
+    };
+    // เลขบนชิปแต่ละแถวต้องนับ "หลังหักตัวกรองแถวอื่น + คำค้นแล้ว" ไม่งั้นเลขโกหก —
+    // ของเดิมนับจาก ms ทั้งก้อนตลอด เลือกวันแล้วชิปหัวข้อยังขึ้นเลขรวมทั้งหมดอยู่ดี
+    const forDate=ms.filter(m=>hit(m)&&(!mtTopic||m.topics.includes(mtTopic)));
+    const dEl=document.getElementById('mtDays');
+    dEl.innerHTML=dateFilterHtml(forDate,m=>m.date,mtDateSel);   // ล้าง mtDateSel ที่ค้างให้ด้วย ต้องมาก่อนบรรทัดล่าง
+    wireDateFilter(dEl,mtDateSel,()=>{ renderMtFilters(); renderMtRows(); });
+
+    const forTopic=ms.filter(m=>hit(m)&&dateMatch(mtDateSel,m.date));
     const counts={};
-    ms.forEach(m=>m.topics.forEach(t=>counts[t]=(counts[t]||0)+1));
+    forTopic.forEach(m=>m.topics.forEach(t=>counts[t]=(counts[t]||0)+1));
     const top=Object.entries(counts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,10);
+    // หัวข้อที่กรองอยู่ต้องอยู่ในแถวเสมอ ถึงจะหล่นออกจาก top 10 หรือเหลือ 0 หลังกรองวัน —
+    // ไม่งั้นกลายเป็นตัวกรองล่องหนที่กดปิดไม่ได้
+    if(mtTopic&&!top.some(([t])=>t===mtTopic)) top.push([mtTopic,counts[mtTopic]||0]);
     const tEl=document.getElementById('mtTopics');
     tEl.innerHTML=top.length
-      ? `<div class="chip${!mtTopic?' active':''}" data-g="">ทั้งหมด<span class="n">${ms.length}</span></div>`+
+      ? `<div class="chip${!mtTopic?' active':''}" data-g="">ทั้งหมด<span class="n">${forTopic.length}</span></div>`+
         top.map(([t,n])=>`<div class="chip${mtTopic===t?' active':''}" data-g="${esc(t)}" title="${esc(t)}">${esc(t.length>24?t.slice(0,24)+'…':t)}<span class="n">${n}</span></div>`).join('')
       : `<div class="hint" style="padding:0 0 6px">ยังไม่มีหัวข้อย่อยในสรุป</div>`;
-    document.querySelectorAll('#mtDays .chip').forEach(el=>
-      el.onclick=()=>{ mtDay=el.dataset.d; renderMtFilters(); renderMtRows(); });
     tEl.querySelectorAll('.chip').forEach(el=>
       el.onclick=()=>{ mtTopic=el.dataset.g||null; renderMtFilters(); renderMtRows(); });
   }
@@ -1508,8 +1579,7 @@
     }
     mtData=payload;
     mtCache.clear();                                   // ไฟล์อาจถูกเขียนใหม่ระหว่างรอบ refresh
-    const days=new Set(payload.meetings.map(m=>m.date));
-    if(mtDay!=='all' && !days.has(mtDay)) mtDay='all';
+    // ไม่ต้องล้าง mtDateSel ตรงนี้ — dateFilterHtml ล้างค่าที่หายไปให้เองตอน renderMtFilters
     const tops=new Set(payload.meetings.flatMap(m=>m.topics));
     if(mtTopic && !tops.has(mtTopic)) mtTopic=null;
     if(mtOpen){                                        // ยังอ่านค้างอยู่ — เอาข้อมูลก้อนใหม่มาแทน
@@ -1520,13 +1590,15 @@
   }
   api && api.onMeetings && api.onMeetings(renderMeetings);
   document.getElementById('mtSearch').oninput=e=>{
-    mtQuery=e.target.value; if(mtData) renderMtRows();
+    // ต้องวาดแถวตัวกรองใหม่ด้วย เพราะเลขบนชิปนับหลังหักคำค้นแล้ว
+    mtQuery=e.target.value; if(mtData){ renderMtFilters(); renderMtRows(); }
   };
 
   // ===== QA test tab =====
   // payload = { runs:[{id,dir,sourceLabel,name,status,startedAt,endedAt,log,hasXml}], sources:[label,...], error }
   // failure.xml is never in the payload (can be tens of KB) — loaded on demand via getQaFailureXml and cached.
   let qaData=null, qaFilter='all', qaSrcFilter=null, qaOpen=null, qaXmlCache=new Map();
+  const qaDateSel={y:null,m:null,d:null};
   let qaTab='log';                 // log = ข้อความ log, ui = วิวเวอร์ failure.xml, xml = XML ดิบ
 
   function qaSrcIdx(label){
@@ -1562,11 +1634,24 @@
       return l;
     }).join('\n');
   }
+  // วันที่ของรัน: ปกติมาจากบรรทัดแรกของ log แต่ log ที่ไม่มี timestamp เลย (adb ล้มก่อนเริ่ม)
+  // จะไม่มี startedAt — ถอยไปใช้ชื่อโฟลเดอร์ YYYYMMDDHHMMSS ซึ่งมีเสมอ
+  function qaDateOf(r){
+    if(r.startedAt) return r.startedAt.slice(0,10);
+    const m=/^(\d{4})(\d{2})(\d{2})/.exec(r.id||'');
+    return m?`${m[1]}-${m[2]}-${m[3]}`:null;
+  }
+  // รันที่ผ่านตัวกรอง "ทุกแถวยกเว้นแถวที่ระบุ" — ใช้นับเลขบนชิปให้ตรงกับที่เห็นในลิสต์จริง
+  function qaExcept(skip){
+    const runs=(qaData&&qaData.runs)||[];
+    return runs.filter(r=>
+      (skip==='status'||qaFilter==='all'||r.status===qaFilter) &&
+      (skip==='src'||qaSrcFilter===null||r.sourceLabel===qaSrcFilter) &&
+      (skip==='date'||dateMatch(qaDateSel,qaDateOf(r))));
+  }
   function qaList(){
     if(!qaData||!qaData.runs) return [];
-    return qaData.runs.filter(r=>
-      (qaFilter==='all'||r.status===qaFilter) &&
-      (qaSrcFilter===null||r.sourceLabel===qaSrcFilter));
+    return qaExcept(null);
   }
   function renderQaStats(){
     const runs=(qaData&&qaData.runs)||[];
@@ -1578,17 +1663,22 @@
       `<div class="stat" style="--sc:${c}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
   }
   function renderQaChips(){
-    const runs=(qaData&&qaData.runs)||[];
     const sources=(qaData&&qaData.sources)||[];
     // ล้าง qaSrcFilter ที่ค้างอยู่ก่อนนับเลข — ถ้า source ที่กรองไว้ถูกลบทิ้งในหน้าตั้งค่า
     // แล้วปล่อยค้าง ชิปจะนับได้ 0 ทุกอันทั้งที่ลิสต์ข้างล่างยังมีรันอยู่ (renderQaRows
     // รันทีหลังและเห็นค่าที่ล้างแล้ว) — ต้องล้างตรงนี้ ไม่ใช่ท้ายฟังก์ชัน
     if(qaSrcFilter!==null && !sources.includes(qaSrcFilter)) qaSrcFilter=null;
     if(sources.length<=1) qaSrcFilter=null;
-    // ตัวเลขบนชิปแต่ละแถวต้องนับ "หลังหักตัวกรองอีกแถวแล้ว" ไม่งั้นเลขโกหก —
+
+    // แถว ปี/เดือน/วัน ต้องวาดก่อน เพราะ dateFilterHtml เป็นตัวล้าง qaDateSel ที่ค้างอยู่
+    // ถ้าไปวาดทีหลัง เลขบนชิปสถานะ/source ข้างล่างจะนับด้วยค่าที่ค้างและออกมาเป็น 0 ทั้งแถว
+    const dEl=document.getElementById('qaDateRows');
+    dEl.innerHTML=dateFilterHtml(qaExcept('date'),qaDateOf,qaDateSel);
+    wireDateFilter(dEl,qaDateSel,()=>{ renderQaChips(); renderQaRows(); });
+
+    // ตัวเลขบนชิปแต่ละแถวต้องนับ "หลังหักตัวกรองแถวอื่นแล้ว" ไม่งั้นเลขโกหก —
     // เช่นกรอง source เหลือ 3 รัน แต่ชิป FAIL ยังขึ้น 4 ทั้งที่ในลิสต์เห็นแค่ 1
-    const inSrc=qaSrcFilter===null?runs:runs.filter(r=>r.sourceLabel===qaSrcFilter);
-    const inStatus=qaFilter==='all'?runs:runs.filter(r=>r.status===qaFilter);
+    const inSrc=qaExcept('status'), inStatus=qaExcept('src');
     const counts={all:inSrc.length,PASS:0,FAIL:0,CRASH:0};
     inSrc.forEach(r=>counts[r.status]=(counts[r.status]||0)+1);
     const defs=[['all','ทั้งหมด'],['PASS','PASS'],['FAIL','FAIL'],['CRASH','ไม่จบ']];

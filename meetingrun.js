@@ -192,6 +192,19 @@
     return state && state.model === NO_SUMMARY_MODEL ? STEPS.length - 1 : STEPS.length;
   }
 
+  // อัดเสร็จแล้วแต่ watcher ไม่ได้รัน -- ไฟล์นอนอยู่ใน inbox/ ไม่มีใครมาหยิบ
+  // ปั่นสปินเนอร์ที่ขั้น "บีบอัดไฟล์เสียง" ตลอดกาลคือการโกหก งานนั้นเสร็จไปแล้ว
+  // และไม่มีอะไรกำลังเดินอยู่เลย
+  function viewQueued() {
+    return `<div class="mrun" data-s="queued">
+        <span class="sd"></span>
+        <span class="stxt">⏸ รอตัวประมวลผล <em>· ไฟล์เข้าคิวไว้แล้ว จะประมวลผลเมื่อตัวประมวลผลกลับมา</em></span>
+        <button class="smore" data-act="detail">${detailOpen ? '⌃' : '⌄'}</button>
+      </div>
+      ${detailOpen ? `<div class="mrunx"><div class="mrunjob">${esc(followingJob || '')}</div>
+        ${stepsHtml(0, false)}${logHtml()}</div>` : ''}`;
+  }
+
   function viewProcessing(progress) {
     const total = stepCount();
     const shown = Math.min(progress.stage + 1, total);
@@ -235,11 +248,16 @@
     const recording = state && (state.recorder === 'recording' || state.recorder === 'stopping');
     const progress = !state || recording ? null : progressOf(state.activity, followingJob);
     const following = progress && followingJob !== dismissedJob;
+    // stage 0 = ยังไม่มีเหตุการณ์จาก watcher เลย ถ้า watcher ไม่ได้รันด้วย
+    // แปลว่ามันไม่ได้ "กำลังทำ" อะไร แต่กำลัง "รอ"
+    const queuedNoWorker = following && !progress.failed
+      && progress.stage === 0 && state.worker_ready === false;
     const view = !state ? (seenService ? 'waiting' : 'absent')
       : recording ? 'recording'
       : !following ? 'idle'
       : progress.failed ? 'failed'
       : progress.stage >= 4 ? 'done'
+      : queuedNoWorker ? 'queued'
       : 'processing';
 
     const sig = [view, seenService, state && state.room, state && state.model, model, modelsOpen, stopping,
@@ -251,6 +269,7 @@
       root.innerHTML = view === 'absent' ? ''
         : view === 'waiting' ? viewWaiting()
         : view === 'recording' ? viewRecording()
+        : view === 'queued' ? viewQueued()
         : view === 'processing' ? viewProcessing(progress)
         : view === 'done' ? viewDone()
         : view === 'failed' ? viewFailed(progress)
@@ -333,6 +352,9 @@
       cls = 'proc';
       html = `<span class="d"></span>${esc(STEPS[progress.stage] || '')} `
         + `${Math.min(progress.stage + 1, total)}/${total}`;
+    } else if (view === 'queued') {
+      cls = 'wait';
+      html = '<span class="d"></span>รอตัวประมวลผล';
     } else if (view === 'done') {
       cls = 'done';
       html = '<span class="d"></span>เสร็จแล้ว';

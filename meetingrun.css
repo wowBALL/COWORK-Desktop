@@ -8,11 +8,15 @@
 .mrun::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line)}
 .mrun[data-s="recording"]::before,.mrun[data-s="failed"]::before{background:var(--rose)}
 .mrun[data-s="processing"]::before{background:var(--cyan)}
+/* รอตัวประมวลผล = ยังไม่มีอะไรเดิน ใช้ amber เดียวกับคำเตือน ไม่ใช่ cyan ของ
+   "กำลังทำอยู่" -- สีที่บอกว่ากำลังทำงานทั้งที่ไม่มีอะไรทำคือการโกหกเงียบ ๆ */
+.mrun[data-s="queued"]::before{background:var(--amber)}
 .mrun[data-s="done"]::before{background:var(--green)}
 
 .mrun .sd{width:7px;height:7px;border-radius:50%;background:var(--dim);flex-shrink:0}
 .mrun[data-s="recording"] .sd{background:var(--rose);animation:mrunPulse 1.6s infinite}
 .mrun[data-s="processing"] .sd{background:var(--cyan)}
+.mrun[data-s="queued"] .sd{background:var(--amber)}
 .mrun[data-s="done"] .sd{background:var(--green)}
 .mrun[data-s="failed"] .sd{background:var(--rose)}
 @keyframes mrunPulse{0%,100%{opacity:1}50%{opacity:.22}}
@@ -106,6 +110,8 @@
 .mrunlive.rec .d{animation:mrunPulse 1.6s infinite}
 .mrunlive.proc{color:var(--cyan);background:color-mix(in srgb,var(--cyan) 13%,transparent);
   border-color:color-mix(in srgb,var(--cyan) 32%,transparent)}
+.mrunlive.wait{color:var(--amber);background:color-mix(in srgb,var(--amber) 13%,transparent);
+  border-color:color-mix(in srgb,var(--amber) 32%,transparent)}
 .mrunlive.done{color:var(--green);background:color-mix(in srgb,var(--green) 13%,transparent);
   border-color:color-mix(in srgb,var(--green) 32%,transparent)}
 .mrunlive:hover{filter:brightness(1.18)}

@@ -34,6 +34,8 @@
       "util.js",
       "datefilter.js",
       "tab-workspace.js",
+      "tab-qatest.js",
+      "tab-qatest.css",
       "workspace.js",
       "meetings.js",
       "qatest.js",

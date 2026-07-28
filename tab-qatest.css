@@ -1,0 +1,69 @@
+/* แท็บ QA test — คู่กับ tab-qatest.js
+ *
+ * โหลด "หลัง" <style> ก้อนหลักของ widget.html โดยตั้งใจ เพราะเดิมกฎชุดนี้อยู่ท้ายก้อนนั้น
+ * (meetingrun.css โหลดก่อน <style> เป็นคนละกติกา ของมันตั้งใจให้ก้อนหลักทับได้)
+ *
+ * พึ่งคลาสที่ยังอยู่ใน widget.html: .sp0-7 (ชุดสีผู้พูดที่ .qa-src ยืม --sc มาใช้)
+ * และ .mt-back (ปุ่มย้อนกลับ ใช้โครงเดียวกับแท็บ Meeting) — สองตัวนี้เป็นของใช้ร่วม
+ * ตอนแยก tab-meeting.css ต้องไม่ยกมันตามไป ไม่งั้นแท็บนี้พัง
+ */
+
+/* จอแคบ: qaRows กับ qaReader ผลัดกันโชว์ (list ↔ reader แบบ Meeting)
+   จอกว้างพอ (maximize) มีที่ว่างพอโชว์คู่กันแบบ mock ที่เลือกไว้ — container query ตัดสินจากความกว้างจริง
+   container-type ต้องอยู่ที่ #qaView (พ่อ) ไม่ใช่ #qaStage เอง — @container สั่งได้เฉพาะ "ลูก" ของ container
+   ถ้าตั้งไว้ที่ #qaStage แล้วสั่ง #qaStage กฎจะไม่ทำงานเลย (เคยพลาดมาแล้ว) */
+#qaView{container-type:inline-size}
+@container (min-width:760px){
+  #qaStage{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,40%);gap:16px;align-items:start}
+  /* วิวเวอร์ UI hierarchy แน่นกว่าแท็บอื่นมาก (มีทั้ง wireframe + tree + attributes)
+     บีบคอลัมน์รายการรันให้แคบลงตอนเปิดแท็บนี้ ยังสลับรันได้อยู่แต่วิวเวอร์ได้ที่เต็มที่ */
+  #qaStage.ui-wide{grid-template-columns:minmax(0,230px) minmax(0,1fr)}
+  #qaRows.hidden,#qaReader.hidden{display:block}
+  #qaBack{display:none}
+  #qaReader{position:sticky;top:-6px;max-height:calc(100vh - 200px);overflow-y:auto}
+}
+.qa-row{-webkit-app-region:no-drag;display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--panel);
+  border:1px solid var(--line-soft);border-radius:10px;cursor:pointer;transition:.13s;margin-bottom:6px}
+.qa-row:hover{border-color:var(--accent);background:var(--panel-2)}
+.qa-row.sel{border-color:var(--accent);background:var(--panel-2)}
+.qa-badge{font-size:9px;font-weight:700;letter-spacing:.04em;padding:3px 8px;border-radius:6px;flex-shrink:0;
+  width:44px;text-align:center;text-transform:uppercase}
+.qa-b-pass{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+.qa-b-fail{background:color-mix(in srgb,var(--rose) 18%,transparent);color:var(--rose)}
+.qa-b-crash{background:color-mix(in srgb,var(--amber) 18%,transparent);color:var(--amber)}
+/* แท็บสีต่อ source ยืมโทนเดียวกับ .sp0-7 ของหน้าถอดเสียง ไม่ต้องคิดชุดสีใหม่ */
+.qa-src{--sbg:color-mix(in srgb,var(--sc) 16%,transparent);font-size:10px;font-weight:600;padding:2px 8px;
+  border-radius:6px;flex-shrink:0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--sc);background:var(--sbg)}
+.qa-row .qa-name{font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qa-row .qa-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);flex-shrink:0}
+.qa-reader-head{display:flex;align-items:center;gap:9px;margin-bottom:4px;flex-wrap:wrap}
+.qa-reader-sub{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);margin-bottom:10px}
+.qa-toggle{-webkit-app-region:no-drag;font-size:11px;font-weight:600;color:var(--accent);cursor:pointer;
+  display:inline-block;margin-bottom:8px}
+.qa-log{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:var(--muted);
+  background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;
+  white-space:pre-wrap;word-break:break-word;max-height:min(52vh,420px);overflow:auto}
+.qa-log .ok{color:var(--green)}
+.qa-log .bad{color:var(--rose)}
+.qa-log .info{color:var(--cyan)}
+.qa-xml{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.6;color:var(--dim);
+  background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;
+  white-space:pre-wrap;word-break:break-all;max-height:min(52vh,420px);overflow:auto}
+/* แถบแท็บในหน้าอ่านรัน — โครงเดียวกับ .mt-seg ของแท็บ Meeting */
+.qa-seg{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;
+  margin:0 0 11px;max-width:440px}
+.qa-seg button{-webkit-app-region:no-drag;flex:1;font-family:inherit;font-size:11.5px;font-weight:600;
+  color:var(--muted);background:transparent;border:none;border-radius:7px;padding:7px 8px;cursor:pointer}
+.qa-seg button:hover{color:var(--ink)}
+.qa-seg button.on{background:var(--accent);color:var(--on-accent)}
+/* วิวเวอร์ failure.xml — iframe แยก document กัน CSS ชนกับแอป (ดู uidump.js) */
+.qa-ui{display:block;width:100%;height:min(72vh,760px);border:1px solid var(--line);
+  border-radius:10px;background:var(--panel)}
+/* การ์ดตั้งค่า: หนึ่งแถวต่อหนึ่ง source (label + path + ลบ) */
+.qa-src-row{display:flex;gap:6px;margin-bottom:8px;align-items:center}
+.qa-src-row input{flex:1;min-width:0}
+.qa-src-row .qa-src-label{flex:0 0 34%}
+.qa-src-row .qa-src-rm{-webkit-app-region:no-drag;flex-shrink:0;width:30px;height:30px;border-radius:8px;
+  border:1px solid var(--line);background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px}
+.qa-src-row .qa-src-rm:hover{color:var(--rose);border-color:var(--rose)}

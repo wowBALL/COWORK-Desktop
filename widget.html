@@ -467,68 +467,11 @@
   .mt-file .fs{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);flex-shrink:0}
   mark{background:color-mix(in srgb,var(--amber) 30%,transparent);color:var(--amber);border-radius:3px;padding:0 2px}
 
-  /* ---- QA test tab ---- */
-  /* จอแคบ: qaRows กับ qaReader ผลัดกันโชว์ (list ↔ reader แบบ Meeting)
-     จอกว้างพอ (maximize) มีที่ว่างพอโชว์คู่กันแบบ mock ที่เลือกไว้ — container query ตัดสินจากความกว้างจริง
-     container-type ต้องอยู่ที่ #qaView (พ่อ) ไม่ใช่ #qaStage เอง — @container สั่งได้เฉพาะ "ลูก" ของ container
-     ถ้าตั้งไว้ที่ #qaStage แล้วสั่ง #qaStage กฎจะไม่ทำงานเลย (เคยพลาดมาแล้ว) */
-  #qaView{container-type:inline-size}
-  @container (min-width:760px){
-    #qaStage{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,40%);gap:16px;align-items:start}
-    /* วิวเวอร์ UI hierarchy แน่นกว่าแท็บอื่นมาก (มีทั้ง wireframe + tree + attributes)
-       บีบคอลัมน์รายการรันให้แคบลงตอนเปิดแท็บนี้ ยังสลับรันได้อยู่แต่วิวเวอร์ได้ที่เต็มที่ */
-    #qaStage.ui-wide{grid-template-columns:minmax(0,230px) minmax(0,1fr)}
-    #qaRows.hidden,#qaReader.hidden{display:block}
-    #qaBack{display:none}
-    #qaReader{position:sticky;top:-6px;max-height:calc(100vh - 200px);overflow-y:auto}
-  }
-  .qa-row{-webkit-app-region:no-drag;display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--panel);
-    border:1px solid var(--line-soft);border-radius:10px;cursor:pointer;transition:.13s;margin-bottom:6px}
-  .qa-row:hover{border-color:var(--accent);background:var(--panel-2)}
-  .qa-row.sel{border-color:var(--accent);background:var(--panel-2)}
-  .qa-badge{font-size:9px;font-weight:700;letter-spacing:.04em;padding:3px 8px;border-radius:6px;flex-shrink:0;
-    width:44px;text-align:center;text-transform:uppercase}
-  .qa-b-pass{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
-  .qa-b-fail{background:color-mix(in srgb,var(--rose) 18%,transparent);color:var(--rose)}
-  .qa-b-crash{background:color-mix(in srgb,var(--amber) 18%,transparent);color:var(--amber)}
-  /* แท็บสีต่อ source ยืมโทนเดียวกับ .sp0-7 ของหน้าถอดเสียง ไม่ต้องคิดชุดสีใหม่ */
-  .qa-src{--sbg:color-mix(in srgb,var(--sc) 16%,transparent);font-size:10px;font-weight:600;padding:2px 8px;
-    border-radius:6px;flex-shrink:0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    color:var(--sc);background:var(--sbg)}
-  .qa-row .qa-name{font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .qa-row .qa-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);flex-shrink:0}
-  .qa-reader-head{display:flex;align-items:center;gap:9px;margin-bottom:4px;flex-wrap:wrap}
-  .qa-reader-sub{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);margin-bottom:10px}
-  .qa-toggle{-webkit-app-region:no-drag;font-size:11px;font-weight:600;color:var(--accent);cursor:pointer;
-    display:inline-block;margin-bottom:8px}
-  .qa-log{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:var(--muted);
-    background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;
-    white-space:pre-wrap;word-break:break-word;max-height:min(52vh,420px);overflow:auto}
-  .qa-log .ok{color:var(--green)}
-  .qa-log .bad{color:var(--rose)}
-  .qa-log .info{color:var(--cyan)}
-  .qa-xml{font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.6;color:var(--dim);
-    background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;
-    white-space:pre-wrap;word-break:break-all;max-height:min(52vh,420px);overflow:auto}
-  /* แถบแท็บในหน้าอ่านรัน — โครงเดียวกับ .mt-seg ของแท็บ Meeting */
-  .qa-seg{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;
-    margin:0 0 11px;max-width:440px}
-  .qa-seg button{-webkit-app-region:no-drag;flex:1;font-family:inherit;font-size:11.5px;font-weight:600;
-    color:var(--muted);background:transparent;border:none;border-radius:7px;padding:7px 8px;cursor:pointer}
-  .qa-seg button:hover{color:var(--ink)}
-  .qa-seg button.on{background:var(--accent);color:var(--on-accent)}
-  /* วิวเวอร์ failure.xml — iframe แยก document กัน CSS ชนกับแอป (ดู uidump.js) */
-  .qa-ui{display:block;width:100%;height:min(72vh,760px);border:1px solid var(--line);
-    border-radius:10px;background:var(--panel)}
-  /* การ์ดตั้งค่า: หนึ่งแถวต่อหนึ่ง source (label + path + ลบ) */
-  .qa-src-row{display:flex;gap:6px;margin-bottom:8px;align-items:center}
-  .qa-src-row input{flex:1;min-width:0}
-  .qa-src-row .qa-src-label{flex:0 0 34%}
-  .qa-src-row .qa-src-rm{-webkit-app-region:no-drag;flex-shrink:0;width:30px;height:30px;border-radius:8px;
-    border:1px solid var(--line);background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px}
-  .qa-src-row .qa-src-rm:hover{color:var(--rose);border-color:var(--rose)}
+  /* ---- QA test tab ---- ย้ายไป tab-qatest.css ทั้งก้อน
+     ลิงก์ไว้ท้าย head หลังก้อนนี้ เพื่อให้ลำดับการทับกันเหมือนตอนที่มันอยู่ท้ายก้อนนี้ */
   .hidden{display:none}
 </style>
+<link rel="stylesheet" href="tab-qatest.css">
 </head>
 <body>
   <div class="shell">
@@ -708,6 +651,7 @@
 <script src="meetingrun.js"></script>
 <!-- โมดูลแท็บ — ลงทะเบียนไว้ที่ COWORK.tabs.* เฉย ๆ เปลือกเป็นคนเรียก mount() ท้ายไฟล์ -->
 <script src="tab-workspace.js"></script>
+<script src="tab-qatest.js"></script>
 <script>
   // ตัวช่วยที่ใช้ร่วมกันทุกแท็บ อยู่ใน util.js — ตั้งนามแฝงไว้ที่นี่เพื่อให้โค้ดข้างล่างเรียกสั้นเหมือนเดิม
   // ต้องอยู่บรรทัดแรกสุดของสคริปต์ เพราะ const ไม่ hoist แบบ function declaration ที่มันมาแทน
@@ -745,19 +689,20 @@
   // ธีม — เก็บใน localStorage ไม่ใช่ config.json เพราะอ่านได้ทันทีแบบ synchronous
   // ตอนเปิดแอป ถ้าไปอ่านผ่าน IPC (async) หน้าต่างจะวาดด้วยธีมเก่าก่อนแล้วค่อยกระพริบ
   const themeBtn=document.getElementById('themeBtn');
-  // แท็บที่ต้องวาดตัวเองใหม่เมื่อธีมเปลี่ยน ลงทะเบียนไว้ที่นี่ แทนที่จะให้ applyTheme
-  // เอื้อมไปเรียกฟังก์ชันของแท็บนั้นตรง ๆ — ตอนแยกไฟล์ shell จะเรียกข้ามไฟล์ไม่ได้
-  // ตัวที่ลงทะเบียนต้องทนถูกเรียกตอนที่แท็บยังไม่มีข้อมูลได้ (เช็คจาก DOM ไม่ใช่ตัวแปร)
-  const themeListeners=[];
+  // แท็บที่ต้องวาดตัวเองใหม่เมื่อธีมเปลี่ยนใส่ onTheme ไว้ในสัญญา แทนที่จะให้ applyTheme
+  // เอื้อมไปเรียกฟังก์ชันของแท็บนั้นตรง ๆ — พอแยกไฟล์แล้ว shell เรียกข้ามไฟล์ไม่ได้
+  // onTheme ต้องทนถูกเรียกตอนที่แท็บยังไม่มีข้อมูลได้ (เช็คจาก DOM ไม่ใช่ตัวแปร)
   function applyTheme(t){
     document.documentElement.dataset.theme=t;
     const dark = t!=='sand';
     themeBtn.textContent = dark ? '☀' : '🌙';                      // ไอคอน = โหมดที่จะสลับไป
     themeBtn.title = dark ? 'สลับ Light Mode' : 'สลับ Dark Mode';
     try{ localStorage.setItem('cowork.theme',t); }catch{}
-    themeListeners.forEach(fn=>fn(t));
+    TABS.forEach(name=>{
+      const mod=window.COWORK.tabs[name];
+      if(mod && mod.onTheme) mod.onTheme(t);
+    });
   }
-  applyTheme(document.documentElement.dataset.theme==='sand'?'sand':'carbon');
   themeBtn.onclick=()=>applyTheme(document.documentElement.dataset.theme==='sand'?'carbon':'sand');
 
   // Redmine tasks, grouped by status, filtered by a multi-select project set
@@ -1405,254 +1350,7 @@
   };
 
   // ===== QA test tab =====
-  // payload = { runs:[{id,dir,sourceLabel,name,status,startedAt,endedAt,log,hasXml}], sources:[label,...], error }
-  // failure.xml is never in the payload (can be tens of KB) — loaded on demand via getQaFailureXml and cached.
-  let qaData=null, qaFilter='all', qaSrcFilter=null, qaOpen=null, qaXmlCache=new Map();
-  const qaDateSel={y:null,m:null,d:null};
-  let qaTab='log';                 // log = ข้อความ log, ui = วิวเวอร์ failure.xml, xml = XML ดิบ
-
-  function qaSrcIdx(label){
-    let h=0; for(let i=0;i<label.length;i++) h=(h*31+label.charCodeAt(i))>>>0;
-    return h%8; // reuse the .sp0-7 speaker-color rotation from the transcript view
-  }
-  function qaBadge(status){
-    const cls={PASS:'qa-b-pass',FAIL:'qa-b-fail',CRASH:'qa-b-crash'}[status]||'qa-b-crash';
-    const label={PASS:'PASS',FAIL:'FAIL',CRASH:'ไม่จบ'}[status]||status;
-    return `<span class="qa-badge ${cls}">${label}</span>`;
-  }
-  function qaSrcTag(label){
-    return `<span class="qa-src sp${qaSrcIdx(label)}">${esc(label)}</span>`;
-  }
-  function qaDur(r){
-    if(!r.startedAt||!r.endedAt) return '';
-    const a=new Date(r.startedAt.replace(' ','T')), b=new Date(r.endedAt.replace(' ','T'));
-    const s=Math.max(0,Math.round((b-a)/1000));
-    return s<60?`${s}s`:`${Math.floor(s/60)}m ${s%60}s`;
-  }
-  // ทุกบรรทัดใน log ขึ้นต้นด้วย [YYYY-MM-DD HH:MM:SS] — ตัดวันที่ทิ้งเหลือแค่เวลา
-  // เพราะวันเต็มโชว์อยู่แล้วในหัวข้อด้านบน (qa-reader-sub) ซ้ำทุกบรรทัดกินที่เปล่าๆ
-  // (รันนึงยาวไม่กี่นาที ไม่ต้องห่วงข้ามวัน — ถ้าข้ามจริงก็ยังเห็นเวลาวิ่ง 23:59 → 00:0x อยู่ดี)
-  function qaStripDate(t){
-    return String(t).replace(/^\[\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2})\]/gm,'[$1]');
-  }
-  function qaColorLog(t){
-    return esc(t).split('\n').map(l=>{
-      if(/RESULT:\s*PASS|🎉|DONE_OK/.test(l)) return `<span class="ok">${l}</span>`;
-      if(/RESULT:\s*FAIL|❌/.test(l)) return `<span class="bad">${l}</span>`;
-      // ห้ามใส่ ^ — มันจะ anchor แค่ alternative แรก ทำให้บรรทัด 📁 ไม่ติดสีทั้งที่ 🔗/ℹ️/⏳ ติด
-      if(/📁|🔗|ℹ️|⏳/.test(l)) return `<span class="info">${l}</span>`;
-      return l;
-    }).join('\n');
-  }
-  // วันที่ของรัน: ปกติมาจากบรรทัดแรกของ log แต่ log ที่ไม่มี timestamp เลย (adb ล้มก่อนเริ่ม)
-  // จะไม่มี startedAt — ถอยไปใช้ชื่อโฟลเดอร์ YYYYMMDDHHMMSS ซึ่งมีเสมอ
-  function qaDateOf(r){
-    if(r.startedAt) return r.startedAt.slice(0,10);
-    const m=/^(\d{4})(\d{2})(\d{2})/.exec(r.id||'');
-    return m?`${m[1]}-${m[2]}-${m[3]}`:null;
-  }
-  // รันที่ผ่านตัวกรอง "ทุกแถวยกเว้นแถวที่ระบุ" — ใช้นับเลขบนชิปให้ตรงกับที่เห็นในลิสต์จริง
-  function qaExcept(skip){
-    const runs=(qaData&&qaData.runs)||[];
-    return runs.filter(r=>
-      (skip==='status'||qaFilter==='all'||r.status===qaFilter) &&
-      (skip==='src'||qaSrcFilter===null||r.sourceLabel===qaSrcFilter) &&
-      (skip==='date'||dateMatch(qaDateSel,qaDateOf(r))));
-  }
-  function qaList(){
-    if(!qaData||!qaData.runs) return [];
-    return qaExcept(null);
-  }
-  function renderQaStats(){
-    const runs=(qaData&&qaData.runs)||[];
-    const cells=[['ทั้งหมด',runs.length,'var(--accent)'],
-                 ['PASS',runs.filter(r=>r.status==='PASS').length,'var(--green)'],
-                 ['FAIL',runs.filter(r=>r.status==='FAIL').length,'var(--rose)'],
-                 ['ไม่จบ',runs.filter(r=>r.status==='CRASH').length,'var(--amber)']];
-    document.getElementById('qaStats').innerHTML=cells.map(([l,n,c])=>
-      `<div class="stat" style="--sc:${c}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
-  }
-  function renderQaChips(){
-    const sources=(qaData&&qaData.sources)||[];
-    // ล้าง qaSrcFilter ที่ค้างอยู่ก่อนนับเลข — ถ้า source ที่กรองไว้ถูกลบทิ้งในหน้าตั้งค่า
-    // แล้วปล่อยค้าง ชิปจะนับได้ 0 ทุกอันทั้งที่ลิสต์ข้างล่างยังมีรันอยู่ (renderQaRows
-    // รันทีหลังและเห็นค่าที่ล้างแล้ว) — ต้องล้างตรงนี้ ไม่ใช่ท้ายฟังก์ชัน
-    if(qaSrcFilter!==null && !sources.includes(qaSrcFilter)) qaSrcFilter=null;
-    if(sources.length<=1) qaSrcFilter=null;
-
-    // แถว ปี/เดือน/วัน ต้องวาดก่อน เพราะ dateFilterHtml เป็นตัวล้าง qaDateSel ที่ค้างอยู่
-    // ถ้าไปวาดทีหลัง เลขบนชิปสถานะ/source ข้างล่างจะนับด้วยค่าที่ค้างและออกมาเป็น 0 ทั้งแถว
-    const dEl=document.getElementById('qaDateRows');
-    dEl.innerHTML=dateFilterHtml(qaExcept('date'),qaDateOf,qaDateSel);
-    wireDateFilter(dEl,qaDateSel,()=>{ renderQaChips(); renderQaRows(); });
-
-    // ตัวเลขบนชิปแต่ละแถวต้องนับ "หลังหักตัวกรองแถวอื่นแล้ว" ไม่งั้นเลขโกหก —
-    // เช่นกรอง source เหลือ 3 รัน แต่ชิป FAIL ยังขึ้น 4 ทั้งที่ในลิสต์เห็นแค่ 1
-    const inSrc=qaExcept('status'), inStatus=qaExcept('src');
-    const counts={all:inSrc.length,PASS:0,FAIL:0,CRASH:0};
-    inSrc.forEach(r=>counts[r.status]=(counts[r.status]||0)+1);
-    const defs=[['all','ทั้งหมด'],['PASS','PASS'],['FAIL','FAIL'],['CRASH','ไม่จบ']];
-    document.getElementById('qaChips').innerHTML=defs.map(([k,l])=>
-      `<div class="chip${qaFilter===k?' active':''}" data-k="${k}">${l}<span class="n">${counts[k]||0}</span></div>`).join('');
-    document.querySelectorAll('#qaChips .chip').forEach(c=>c.onclick=()=>{qaFilter=c.dataset.k;renderQaChips();renderQaRows()});
-
-    // ชิปกรอง source โผล่เฉพาะตอนมีมากกว่า 1 source (sources ประกาศไว้ข้างบนแล้ว)
-    const srcLabelEl=document.getElementById('qaSrcLabel'), srcEl=document.getElementById('qaSrcChips');
-    if(sources.length>1){
-      srcLabelEl.style.display=''; srcEl.style.display='';
-      srcEl.innerHTML=`<div class="chip${qaSrcFilter===null?' active':''}" data-s="">ทุก source<span class="n">${inStatus.length}</span></div>`+
-        sources.map(s=>`<div class="chip${qaSrcFilter===s?' active':''}" data-s="${esc(s)}">${esc(s)}<span class="n">${inStatus.filter(r=>r.sourceLabel===s).length}</span></div>`).join('');
-      srcEl.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{qaSrcFilter=c.dataset.s||null;renderQaChips();renderQaRows()});
-    } else {
-      srcLabelEl.style.display='none'; srcEl.style.display='none'; srcEl.innerHTML=''; qaSrcFilter=null;
-    }
-  }
-  function renderQaRows(){
-    const el=document.getElementById('qaRows');
-    if(qaData && qaData.error){
-      const notSetUp=qaData.error.startsWith('ไม่พบโฟลเดอร์ QA test');
-      el.innerHTML=`<div class="not-configured">
-        <p>${notSetUp?'ยังไม่ได้ตั้งค่าโฟลเดอร์ผล QA test':esc(qaData.error)}</p>
-        <button id="qaNotConfiguredBtn">ตั้งค่าเลย</button>
-      </div>`;
-      document.getElementById('qaNotConfiguredBtn').onclick=()=>openSettings('cardQa');
-      return;
-    }
-    const list=qaList();
-    if(!list.length){
-      el.innerHTML='<div class="empty">ไม่พบรันทดสอบที่ตรงกับตัวกรอง</div>';
-      qaOpen=null; renderQaReader();   // อย่าปล่อย reader ค้างโชว์รันที่ถูกกรองออกไปแล้ว
-      return;
-    }
-    // ตัวกรองอาจตัดรันที่เลือกอยู่ออกจากลิสต์ — เด้งไปเลือกอันแรกที่ยังเห็นแทน
-    // ไม่งั้นจอกว้างจะเหลือ reader โชว์รันที่ไม่มีในลิสต์ โดยไม่มีแถวไหนไฮไลต์เลย
-    if(!list.some(r=>r.id===qaOpen)){ qaOpen=list[0].id; renderQaReader(); }
-    // .sel ไฮไลต์แถวที่เลือกอยู่ — มีผลตอนจอกว้างที่ qaRows กับ qaReader โชว์คู่กัน (ดู container query ด้านบน)
-    el.innerHTML=list.map(r=>`
-      <div class="qa-row${r.id===qaOpen?' sel':''}" data-id="${esc(r.id)}">
-        ${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}
-        <span class="qa-name">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span>
-        <span class="qa-time">${esc(r.endedAt?r.endedAt.slice(11):r.id)}</span>
-      </div>`).join('');
-    el.querySelectorAll('.qa-row').forEach(row=>row.onclick=()=>{
-      const r=qaData.runs.find(x=>x.id===row.dataset.id);
-      if(r) qaOpenRun(r);
-    });
-  }
-  function qaOpenRun(r){
-    qaOpen=r.id; qaTab='log';   // เปิดรันใหม่เริ่มที่ log เสมอ ไม่ให้ค้างแท็บวิวเวอร์ของรันก่อนหน้า
-    document.getElementById('qaRows').classList.add('hidden');
-    document.getElementById('qaReader').classList.remove('hidden');
-    renderQaRows();   // รีเฟรชไฮไลต์ .sel (ไม่มีผลตอนจอแคบเพราะแถวถูกซ่อนไปแล้ว)
-    renderQaReader();
-    document.querySelector('.body').scrollTop=0;
-  }
-  function qaBackToList(){
-    // ไม่ล้าง qaOpen — ถ้าขยายจอกว้างขึ้นทีหลัง reader (ที่โชว์คู่กับ list) จะมีเนื้อหาให้ดูทันที ไม่ต้องเลือกใหม่
-    document.getElementById('qaReader').classList.add('hidden');
-    document.getElementById('qaRows').classList.remove('hidden');
-  }
-  // สีของวิวเวอร์ (iframe) ต้องส่งเป็นค่าจริง ไม่ใช่ var(--x) เพราะ iframe คนละ document
-  // ไม่เห็น :root ของแอป — อ่านค่าที่ resolve แล้วตอนสร้าง แล้ว re-render ใหม่เมื่อสลับธีม
-  function qaViewerPalette(){
-    const cs=getComputedStyle(document.documentElement);
-    const v=n=>cs.getPropertyValue(n).trim();
-    return {
-      bg:v('--bg'), panel:v('--panel'), panelSoft:v('--panel'), line:v('--line'),
-      lineSoft:v('--line-soft'), edge:v('--line'), ink:v('--ink'), muted:v('--muted'),
-      deep:v('--dim'), accent:v('--accent'), amber:v('--amber'), rose:v('--rose'),
-      clsInk:v('--cyan'), ridInk:v('--muted'), bdInk:v('--dim'),
-      fitInk:v('--ink'), fitClkInk:v('--amber'), onAccent:v('--on-accent'),
-      grid:'color-mix(in srgb,'+v('--accent')+' 7%,transparent)', shadow:v('--shadow'),
-    };
-  }
-  // โหลด failure.xml (lazy + cache ต่อรัน) แล้วเรียก cb — ใช้ร่วมกันทั้งแท็บวิวเวอร์และแท็บ XML ดิบ
-  function qaLoadXml(r, box, cb){
-    if(qaXmlCache.has(r.dir)){ cb(qaXmlCache.get(r.dir)); return; }
-    box.innerHTML='<div class="hint">กำลังโหลด...</div>';
-    api.getQaFailureXml(r.dir).then(res=>{
-      if(qaOpen!==r.id) return;               // เปลี่ยนไปดูรันอื่นก่อนโหลดเสร็จ
-      if(res && res.xml!=null){ qaXmlCache.set(r.dir,res.xml); cb(res.xml); }
-      else box.innerHTML=`<div class="empty">อ่าน failure.xml ไม่สำเร็จ: ${esc(res&&res.error||'unknown error')}</div>`;
-    });
-  }
-  function renderQaPane(r, logText, collapsedDefault){
-    const box=document.getElementById('qaPane');
-    if(!box) return;
-    if(qaTab==='ui'){
-      qaLoadXml(r, box, xml=>{
-        let html;
-        try{ html=uidumpHtml(xml,{label:'failure.xml',palette:qaViewerPalette()}); }
-        catch(e){ box.innerHTML=`<div class="empty">แปลง failure.xml ไม่สำเร็จ: ${esc(e.message)}</div>`; return; }
-        // sandbox allow-scripts (ไม่ให้ allow-same-origin) — วิวเวอร์รัน JS ของตัวเองได้
-        // แต่แตะ DOM/ข้อมูลของแอปไม่ได้ และ CSS ก็ไม่ชนกัน
-        const f=document.createElement('iframe');
-        f.className='qa-ui'; f.setAttribute('sandbox','allow-scripts'); f.srcdoc=html;
-        box.innerHTML=''; box.appendChild(f);
-      });
-      return;
-    }
-    if(qaTab==='xml'){
-      qaLoadXml(r, box, xml=>{ box.innerHTML=`<div class="qa-xml">${qaColorLog(xml)}</div>`; });
-      return;
-    }
-    const lines=logText.split('\n');
-    box.innerHTML=`
-      <span class="qa-toggle" id="qaToggle">${collapsedDefault?'▸ ขยาย log เต็ม':'▾ ย่อ log'}</span>
-      <div class="qa-log" id="qaLog">${collapsedDefault?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(logText)}</div>`;
-    let collapsed=collapsedDefault;
-    document.getElementById('qaToggle').onclick=()=>{
-      collapsed=!collapsed;
-      document.getElementById('qaLog').innerHTML=collapsed?qaColorLog(lines.slice(-3).join('\n')):qaColorLog(logText);
-      document.getElementById('qaToggle').textContent=collapsed?'▸ ขยาย log เต็ม':'▾ ย่อ log';
-    };
-  }
-  function renderQaReader(){
-    const r=qaData && qaData.runs.find(x=>x.id===qaOpen); const el=document.getElementById('qaReader');
-    // ต้องล้าง innerHTML ด้วย ไม่ใช่แค่ .hidden — จอกว้าง container query สั่ง display:block ทับ .hidden อยู่
-    if(!r){
-      el.innerHTML=''; document.getElementById('qaStage').classList.remove('ui-wide');
-      qaBackToList(); return;
-    }
-    if(!r.hasXml) qaTab='log';          // รันที่ไม่มี failure.xml มีแค่แท็บ Log ให้ดู
-    const collapsedDefault=r.status==='PASS'; // FAIL/ไม่จบ ขึ้นเต็มทันที เพราะเป็นอันที่ต้องอ่าน
-    const logText=qaStripDate(r.log);   // วันเต็มอยู่ใน qa-reader-sub ด้านล่างแล้ว
-    const seg=[['log','📄 Log'],['ui','🧩 UI hierarchy'],['xml','⟨⟩ XML ดิบ']];
-    el.innerHTML=`
-      <button class="mt-back" id="qaBack">← กลับไปรายการรัน</button>
-      <div class="qa-reader-head">${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}
-        <span class="mt-title" style="font-size:14.5px">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span></div>
-      <div class="qa-reader-sub">${esc(r.id)}${r.startedAt?' · '+esc(r.startedAt):''}${qaDur(r)?' · '+qaDur(r):''}</div>
-      ${r.hasXml?`<div class="qa-seg" id="qaSeg">${seg.map(([k,l])=>
-        `<button data-t="${k}" class="${qaTab===k?'on':''}">${l}</button>`).join('')}</div>`:''}
-      <div id="qaPane"></div>`;
-    document.getElementById('qaBack').onclick=qaBackToList;
-    document.getElementById('qaStage').classList.toggle('ui-wide', qaTab==='ui');
-    const segEl=document.getElementById('qaSeg');
-    if(segEl) segEl.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-      qaTab=b.dataset.t; renderQaReader();
-    });
-    renderQaPane(r, logText, collapsedDefault);
-  }
-  // วิวเวอร์ failure.xml อยู่ใน iframe คนละ document — สีถูก inline ไปตอนสร้าง ไม่ได้สืบทอด :root
-  // ของแอป จึงต้องสร้างใหม่เองเมื่อธีมเปลี่ยน
-  // เช็คจาก DOM ไม่ใช่ตัวแปร qaTab เพราะ applyTheme ถูกเรียกตอน init ก่อนที่ let qaTab จะถูกประกาศ
-  // (typeof ก็กันไม่ได้ ตัวแปร let ที่ยังไม่ถึงบรรทัดประกาศอยู่ใน TDZ แตะเมื่อไหร่ throw ทันที)
-  themeListeners.push(()=>{
-    const onTab=document.querySelector('#qaSeg button.on');
-    if(onTab && onTab.dataset.t==='ui') renderQaReader();
-  });
-  function renderQaTests(payload){
-    qaData=payload;
-    const stillThere=qaOpen && payload && !payload.error && payload.runs.find(x=>x.id===qaOpen);
-    if(!stillThere){
-      // เลือกรันล่าสุดให้อัตโนมัติ เผื่อจอกว้างพอที่ reader โชว์คู่กับ list อยู่แล้วตั้งแต่แรก — ไม่ต้องรอคลิก
-      // ไม่กระทบจอแคบ เพราะที่นั่น reader ยังซ่อนด้วย .hidden จนกว่าจะมีคนคลิกแถวจริงๆ
-      qaOpen=(payload && payload.runs && payload.runs[0]) ? payload.runs[0].id : null;
-    }
-    renderQaStats(); renderQaChips(); renderQaRows(); renderQaReader();
-  }
-  api && api.onQaTests && api.onQaTests(renderQaTests);
+  // ย้ายไป tab-qatest.js + tab-qatest.css ทั้งก้อนแล้ว
 
   // tab switching
   const navR=document.getElementById('navRedmine'), navW=document.getElementById('navWorkspace'),
@@ -1682,8 +1380,7 @@
   navW.onclick=()=>showTab('ws');
   navQ.onclick=()=>showTab('qa');
   navM.onclick=()=>showTab('mt');
-  // wsRefresh.onclick ผูกใน tab-workspace.js — เปลือกเหลือแค่ซ่อน/แสดงปุ่มตามแท็บที่เปิด
-  qaRefresh.onclick=()=>api&&api.refreshQaTests&&api.refreshQaTests();
+  // wsRefresh/qaRefresh .onclick ผูกในโมดูลของแท็บนั้น — เปลือกเหลือแค่ซ่อน/แสดงปุ่มตามแท็บที่เปิด
   mtRefresh.onclick=()=>api&&api.refreshMeetings&&api.refreshMeetings();
 
   // settings view — collapsible per-tab cards (defaults to collapsed; more cards can be
@@ -1816,6 +1513,9 @@
     const mod=window.COWORK.tabs[name];
     if(mod && mod.mount) mod.mount();
   });
+  // ธีมครั้งแรกต้องมาหลัง mount ครบทุกโมดูล — applyTheme วน onTheme ของทุกแท็บ
+  // ถ้าเรียกก่อน จะยิงเข้าโมดูลที่ยังไม่พร้อม (ทั้งไฟล์นี้รันแบบ synchronous จอจึงไม่กระพริบ)
+  applyTheme(document.documentElement.dataset.theme==='sand'?'sand':'carbon');
 </script>
 </body>
 </html>

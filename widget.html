@@ -706,6 +706,8 @@
 <!-- แปลง failure.xml เป็นวิวเวอร์ interactive (พอร์ตจาก uidump2html.py) — แยกไฟล์เพราะเทมเพลตยาว -->
 <script src="uidump.js"></script>
 <script src="meetingrun.js"></script>
+<!-- โมดูลแท็บ — ลงทะเบียนไว้ที่ COWORK.tabs.* เฉย ๆ เปลือกเป็นคนเรียก mount() ท้ายไฟล์ -->
+<script src="tab-workspace.js"></script>
 <script>
   // ตัวช่วยที่ใช้ร่วมกันทุกแท็บ อยู่ใน util.js — ตั้งนามแฝงไว้ที่นี่เพื่อให้โค้ดข้างล่างเรียกสั้นเหมือนเดิม
   // ต้องอยู่บรรทัดแรกสุดของสคริปต์ เพราะ const ไม่ hoist แบบ function declaration ที่มันมาแทน
@@ -723,6 +725,17 @@
 
   // window controls (guard if opened in plain browser)
   const api=window.cowork;
+
+  // ทะเบียนแท็บ — ลำดับมาจากที่เดียว ใช้เป็นลำดับ mount ตอน boot (ท้ายไฟล์)
+  // แท็บที่ยังไม่ได้แยกเป็นโมดูลจะไม่มีชื่อในทะเบียน ลูป mount ข้ามให้เงียบ ๆ
+  const TABS=['redmine','workspace','qatest','meeting'];
+
+  // เปิดไฟล์ในโปรแกรมประจำเครื่อง — ทั้ง Workspace และ Meeting ใช้ จึงอยู่ที่เปลือก
+  function openFile(p){ api&&api.openFile&&api.openFile(p); }
+
+  // สิ่งที่เปลือกเปิดให้โมดูลแท็บใช้ ต้องประกาศหลัง api (const ไม่ hoist)
+  // ส่วน openSettings/openFile เป็น function declaration จึง hoist มาถึงตรงนี้ได้
+  window.COWORK.shell={ api, openSettings, openFile };
   api && api.getVersion && api.getVersion().then(v=>{ document.getElementById('appVer').textContent='v'+v; });
   document.getElementById('close').onclick=()=>api&&api.close();
   let pinned=false;
@@ -1088,185 +1101,8 @@
   api && api.onTasks && api.onTasks(renderTasks);
 
   // ===== Workspace tab =====
-  const ST_META={
-    active:{c:'var(--green)',t:'🟢 กำลังทำ',label:'กำลังทำ'},
-    pause :{c:'var(--amber)',t:'🟡 พัก',   label:'พัก'},
-    done  :{c:'var(--dim)',  t:'✅ จบแล้ว',label:'จบแล้ว'},
-    unknown:{c:'var(--dim)', t:'– ไม่ระบุ',label:'ไม่ระบุ'},
-  };
-  const PROJ_HUES=['var(--accent)','var(--green)','var(--amber)','var(--rose)','var(--cyan)','var(--violet)'];
-  function hueOf(key){ let h=0; for(const c of String(key)) h=(h*31+c.charCodeAt(0))>>>0; return PROJ_HUES[h%PROJ_HUES.length]; }
-
-  let wsData=null;
-  const wsVisSel=new Set();     // empty = all visibilities
-  const wsStatSel=new Set();    // empty = all statuses
-  let wsQuery='';               // project search text
-  function openFile(p){ api&&api.openFile&&api.openFile(p); }
-
-  function wsProjectsFiltered(){
-    if(!wsData||!wsData.projects) return [];
-    const terms=wsQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return wsData.projects.filter(p=>{
-      const hay=(p.name+' '+(p.path||'')+' '+(p.desc||'')).toLowerCase();
-      return (wsVisSel.size===0 || wsVisSel.has(p.visibility)) &&
-        (wsStatSel.size===0 || wsStatSel.has(p.status)) &&
-        terms.every(t=>hay.includes(t));   // all words must match (AND)
-    });
-  }
-  function renderWsStats(){
-    const s=wsData.stats||{};
-    const cells=[
-      ['โปรเจกต์',s.projects,'var(--accent)'],
-      ['public',s.public,'var(--cyan)'],
-      ['private',s.private,'var(--violet)'],
-      ['lessons',s.lessons,'var(--amber)'],
-      ['playbooks',s.playbooks,'var(--green)'],
-    ];
-    document.getElementById('wsStats').innerHTML=cells.map(([l,n,c])=>
-      `<div class="stat" style="--sc:${c}"><div class="n">${n||0}</div><div class="l">${l}</div></div>`).join('');
-  }
-  function renderWsFilters(){
-    const ps=wsData.projects||[];
-    const visEl=document.getElementById('wsVis');
-    const visList=[['Public','var(--cyan)'],['Private','var(--violet)']];
-    visEl.innerHTML=`<div class="chip${wsVisSel.size===0?' active':''}" data-all="1">ทั้งหมด<span class="n">${ps.length}</span></div>`+
-      visList.map(([v,c])=>{
-        const n=ps.filter(p=>p.visibility===v).length;
-        return `<div class="chip${wsVisSel.has(v)?' active':''}" data-vis="${v}"><span class="dot" style="--cc:${c}"></span>${v}<span class="n">${n}</span></div>`;
-      }).join('');
-    const stEl=document.getElementById('wsStatus');
-    const order=['active','pause','done','unknown'];
-    stEl.innerHTML=`<div class="chip${wsStatSel.size===0?' active':''}" data-all="1">ทั้งหมด<span class="n">${ps.length}</span></div>`+
-      order.filter(k=>ps.some(p=>p.status===k)).map(k=>{
-        const n=ps.filter(p=>p.status===k).length;
-        return `<div class="chip${wsStatSel.has(k)?' active':''}" data-stat="${k}"><span class="dot" style="--cc:${ST_META[k].c}"></span>${ST_META[k].label}<span class="n">${n}</span></div>`;
-      }).join('');
-    // single-select: pick one, or click the active one again to reset to "ทั้งหมด"
-    visEl.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{
-      const v=ch.dataset.vis;
-      const only=v!==undefined && wsVisSel.size===1 && wsVisSel.has(v);
-      wsVisSel.clear();
-      if(v!==undefined && !only) wsVisSel.add(v);
-      renderWsFilters(); renderWsProjects();
-    });
-    stEl.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{
-      const k=ch.dataset.stat;
-      const only=k!==undefined && wsStatSel.size===1 && wsStatSel.has(k);
-      wsStatSel.clear();
-      if(k!==undefined && !only) wsStatSel.add(k);
-      renderWsFilters(); renderWsProjects();
-    });
-  }
-  function renderWsProjects(){
-    const el=document.getElementById('wsProjects');
-    const list=wsProjectsFiltered();
-    if(!list.length){
-      el.innerHTML=`<div class="empty">${wsQuery.trim()?'ไม่พบโปรเจกต์ที่ตรงกับ "'+esc(wsQuery.trim())+'"':'ไม่มีโปรเจกต์ตามตัวกรองนี้'}</div>`;
-      return;
-    }
-    el.innerHTML='';
-    list.forEach(p=>{
-      const m=ST_META[p.status]||ST_META.unknown;
-      const card=document.createElement('div');
-      card.className='card'; card.style.setProperty('--sc',m.c);
-      card.title='เปิดหน้าสรุปโปรเจกต์';
-      card.innerHTML=`
-        <div class="ctop">
-          <span class="sdot"></span>
-          <span class="name" title="${esc(p.name)}">${esc(p.name)}</span>
-          <span class="vis ${p.visibility==='Public'?'pub':'prv'}">${p.visibility}</span>
-        </div>
-        <div class="path" title="${esc(p.path)}">${esc(p.path)}</div>
-        <div class="desc${p.desc?'':' none'}">${p.desc?esc(p.desc):'ยังไม่มีภาพรวม'}</div>
-        <div class="foot">
-          <span class="stag">${m.t}</span>
-          <span class="upd">${p.updated?'↻ '+esc(p.updated):''}</span>
-        </div>`;
-      card.onclick=()=>openFile(p.file);
-      el.appendChild(card);
-    });
-  }
-  function renderWsFeed(){
-    const el=document.getElementById('wsFeed');
-    const files=(wsData.daily||[]).filter(d=>d.entries&&d.entries.length);
-    if(!files.length){ el.innerHTML='<div class="empty">ยังไม่มีบันทึกรายวัน</div>'; return; }
-    // group by date, then by project — merges Public+Private daily files of the same day
-    const byDate=new Map();
-    files.forEach(d=>d.entries.forEach(e=>{
-      if(!byDate.has(d.date)) byDate.set(d.date,new Map());
-      const projs=byDate.get(d.date);
-      if(!projs.has(e.project)) projs.set(e.project,[]);
-      const arr=projs.get(e.project);
-      if(!arr.some(x=>x.text===e.text)) arr.push({text:e.text,file:d.file,visibility:d.visibility});
-    }));
-    const dates=[...byDate.keys()].sort((a,b)=>b.localeCompare(a)).slice(0,6);
-    el.innerHTML='';
-    dates.forEach(date=>{
-      const projs=byDate.get(date);
-      const day=document.createElement('div'); day.className='day';
-      day.innerHTML=`<div class="dhead"><span class="ddate">${esc(date)}</span>
-        <span class="dsub">${projs.size} โปรเจกต์อัปเดต</span></div>`;
-      projs.forEach((items,project)=>{
-        const en=document.createElement('div'); en.className='entry';
-        en.style.setProperty('--pc',hueOf(project));
-        const texts=items.map(it=>
-          `<div class="ptext" data-file="${esc(it.file)}" title="เปิดไฟล์บันทึกรายวัน (${esc(it.visibility)})">${esc(it.text)}</div>`).join('');
-        en.innerHTML=`<div class="rail"><span class="pin"></span><span class="ln"></span></div>
-          <div class="content"><div class="pname">${esc(project)}</div>${texts}</div>`;
-        en.querySelectorAll('.ptext').forEach(t=>t.onclick=()=>openFile(t.dataset.file));
-        day.appendChild(en);
-      });
-      el.appendChild(day);
-    });
-  }
-  function renderWsKnow(){
-    const el=document.getElementById('wsKnow');
-    const items=[
-      ...(wsData.lessons||[]).map(x=>({...x,type:'les'})),
-      ...(wsData.playbooks||[]).map(x=>({...x,type:'pbk'})),
-    ].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-    if(!items.length){ el.innerHTML='<div class="empty">ยังไม่มีบทเรียน/แผนรับมือ (มีแต่ template)</div>'; return; }
-    el.innerHTML='';
-    items.forEach(k=>{
-      const c=document.createElement('div'); c.className='lcard'+(k.type==='pbk'?' pb':'');
-      c.title='เปิดไฟล์';
-      c.innerHTML=`<div class="lt"><span class="badge ${k.type==='les'?'les':'pbk'}">${k.type==='les'?'Lesson':'Playbook'}</span>
-        <span class="ldate">${esc(k.date||'')}</span></div>
-        <div class="lname">${esc(k.name)}</div>
-        ${k.meta?`<div class="lmeta">${esc(k.meta)}</div>`:''}`;
-      c.onclick=()=>openFile(k.file);
-      el.appendChild(c);
-    });
-  }
-  function renderWorkspace(payload){
-    wsData=payload;
-    const proj=document.getElementById('wsProjects');
-    if(!payload || payload.error){
-      const notSetUp=payload && payload.error && payload.error.startsWith('ไม่พบโฟลเดอร์ A_Workspace');
-      if(notSetUp){
-        proj.innerHTML=`<div class="not-configured">
-          <p>ยังไม่ได้ตั้งค่าตำแหน่ง Workspace vault</p>
-          <button id="wsNotConfiguredBtn">ตั้งค่าเลย</button>
-        </div>`;
-        document.getElementById('wsNotConfiguredBtn').onclick=()=>openSettings('cardWorkspace');
-      } else {
-        proj.innerHTML=`<div class="empty">โหลด Workspace ไม่สำเร็จ: ${esc((payload&&payload.error)||'ไม่ทราบสาเหตุ')}</div>`;
-      }
-      document.getElementById('wsStats').innerHTML='';
-      document.getElementById('wsVis').innerHTML='';
-      document.getElementById('wsStatus').innerHTML='';
-      document.getElementById('wsFeed').innerHTML='';
-      document.getElementById('wsKnow').innerHTML='';
-      return;
-    }
-    // drop selections no longer present
-    const vises=new Set((payload.projects||[]).map(p=>p.visibility));
-    const stats=new Set((payload.projects||[]).map(p=>p.status));
-    [...wsVisSel].forEach(v=>{ if(!vises.has(v)) wsVisSel.delete(v); });
-    [...wsStatSel].forEach(s=>{ if(!stats.has(s)) wsStatSel.delete(s); });
-    renderWsStats(); renderWsFilters(); renderWsProjects(); renderWsFeed(); renderWsKnow();
-  }
-  api && api.onWorkspace && api.onWorkspace(renderWorkspace);
+  // ย้ายไป tab-workspace.js ทั้งก้อนแล้ว (โมดูลแท็บตัวแรกตามสัญญาของ v1.8.3)
+  // เปลือกเหลือแค่ปุ่ม nav / การซ่อน-แสดง view / การ์ดตั้งค่า ซึ่งยังอยู่ในไฟล์นี้
 
   // ===== ตัวกรอง ปี / เดือน / วัน (ใช้ร่วมกันทั้ง Meeting และ QA test) =====
   // ตัวจริงอยู่ใน datefilter.js — กฎทั้งหมด (ข้ามแถวที่มีค่าเดียว / ล้างค่าค้าง) อธิบายไว้ที่นั่น
@@ -1846,7 +1682,7 @@
   navW.onclick=()=>showTab('ws');
   navQ.onclick=()=>showTab('qa');
   navM.onclick=()=>showTab('mt');
-  wsRefresh.onclick=()=>api&&api.refreshWorkspace&&api.refreshWorkspace();
+  // wsRefresh.onclick ผูกใน tab-workspace.js — เปลือกเหลือแค่ซ่อน/แสดงปุ่มตามแท็บที่เปิด
   qaRefresh.onclick=()=>api&&api.refreshQaTests&&api.refreshQaTests();
   mtRefresh.onclick=()=>api&&api.refreshMeetings&&api.refreshMeetings();
 
@@ -1974,9 +1810,12 @@
     });
   };
 
-  // project search
-  const wsSearch=document.getElementById('wsSearch');
-  wsSearch.oninput=()=>{ wsQuery=wsSearch.value; if(wsData) renderWsProjects(); };
+  // boot โมดูลแท็บตามลำดับในทะเบียน — ต้องอยู่ท้ายสุด เพราะ mount() ของโมดูลอาจเรียก
+  // อะไรที่เปลือกประกาศไว้ด้วย const ซึ่งยังอยู่ใน TDZ ถ้าไปเรียกกลางไฟล์
+  TABS.forEach(name=>{
+    const mod=window.COWORK.tabs[name];
+    if(mod && mod.mount) mod.mount();
+  });
 </script>
 </body>
 </html>

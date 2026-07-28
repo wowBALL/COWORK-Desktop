@@ -33,6 +33,7 @@
       "preload.js",
       "util.js",
       "datefilter.js",
+      "tab-workspace.js",
       "workspace.js",
       "meetings.js",
       "qatest.js",

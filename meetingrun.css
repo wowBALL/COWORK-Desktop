@@ -93,6 +93,23 @@
 .mrunlog pre .warn{color:var(--amber)}
 .mrunlog pre .error{color:var(--rose)}
 
+/* ตัวชี้บนแถบบน -- เห็นทุกแท็บ ประชุมที่อัดค้างแล้วลืมปิดคือค่าเสียหายจริง
+   .bar เป็น drag region ทั้งแถบ ปุ่มในนั้นจึงต้องประกาศ no-drag เอง */
+.mrunlive{-webkit-app-region:no-drag;display:inline-flex;align-items:center;gap:5px;
+  font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:3px 8px;
+  border-radius:20px;cursor:pointer;margin-left:8px;white-space:nowrap;transition:.13s;
+  border:1px solid transparent;background:transparent;letter-spacing:0;text-transform:none}
+.mrunlive.hidden{display:none}
+.mrunlive .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.mrunlive.rec{color:var(--rose);background:color-mix(in srgb,var(--rose) 13%,transparent);
+  border-color:color-mix(in srgb,var(--rose) 32%,transparent)}
+.mrunlive.rec .d{animation:mrunPulse 1.6s infinite}
+.mrunlive.proc{color:var(--cyan);background:color-mix(in srgb,var(--cyan) 13%,transparent);
+  border-color:color-mix(in srgb,var(--cyan) 32%,transparent)}
+.mrunlive.done{color:var(--green);background:color-mix(in srgb,var(--green) 13%,transparent);
+  border-color:color-mix(in srgb,var(--green) 32%,transparent)}
+.mrunlive:hover{filter:brightness(1.18)}
+
 /* modal ยืนยันปิดห้อง */
 .mrunscrim{position:absolute;inset:0;background:var(--shadow);display:flex;align-items:center;
   justify-content:center;padding:22px;z-index:20}

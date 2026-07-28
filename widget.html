@@ -533,7 +533,7 @@
 <body>
   <div class="shell">
     <div class="bar">
-      <span class="title">◈ COWORK<span id="appVer" class="ver"></span></span>
+      <span class="title">◈ COWORK<span id="appVer" class="ver"></span><span id="mrunLive" class="mrunlive hidden"></span></span>
       <div class="ctrls">
         <button id="themeBtn" title="สลับ Light Mode">☀</button>
         <button id="settingsBtn" title="ตั้งค่า Redmine">⚙</button>
@@ -1618,6 +1618,9 @@
   const mtRunner = window.COWORK && window.COWORK.tabs && window.COWORK.tabs.meetingRunner;
   if(mtRunner){
     mtRunner.mount(document.getElementById('mtRunSlot'));
+    // showTab ประกาศอยู่ล่างกว่านี้ แต่เป็น function declaration จึง hoist
+    // และ callback นี้ถูกเรียกตอนคลิกเท่านั้น ไม่ใช่ตอน mount
+    mtRunner.mountBar(document.getElementById('mrunLive'), ()=>showTab('mt'));
     api && api.onRunnerState && api.onRunnerState(s=>mtRunner.onData(s));
     api && api.getRunnerState && api.getRunnerState().then(s=>mtRunner.onData(s));
   }

@@ -242,6 +242,7 @@
     // จะดีดเคอร์เซอร์ออกจากช่องชื่อห้องระหว่างที่ผู้ใช้พิมพ์อยู่
     const clock = root.querySelector('#mrunClock');
     if (clock && state) clock.textContent = fmtClock(state.elapsed_seconds);
+    drawBar(view, progress);
   }
 
   function confirmStop() {
@@ -286,6 +287,40 @@
 
   function onInput(e) {
     if (e.target && e.target.id === 'mrunRoom') roomDraft = e.target.value;
+  }
+
+  let barEl = null;
+  let onJump = null;
+
+  // ปุ่มปิดห้องไม่อยู่บนแถบบนโดยตั้งใจ -- ปุ่มที่ทำงานย้อนไม่ได้ต้องอยู่ที่เดียว
+  // และมีบริบทรอบตัว กดที่นี่แค่พากลับไปแท็บ Meeting
+  function drawBar(view, progress) {
+    if (!barEl) return;
+    let cls = null;
+    let html = '';
+    if (view === 'recording') {
+      cls = 'rec';
+      html = `<span class="d"></span>${fmtClock(state.elapsed_seconds)}`;
+    } else if (view === 'processing') {
+      const total = stepCount();
+      cls = 'proc';
+      html = `<span class="d"></span>${esc(STEPS[progress.stage] || '')} `
+        + `${Math.min(progress.stage + 1, total)}/${total}`;
+    } else if (view === 'done') {
+      cls = 'done';
+      html = '<span class="d"></span>เสร็จแล้ว';
+    } else if (view === 'failed') {
+      cls = 'rec';
+      html = '<span class="d"></span>ล้มเหลว';
+    }
+    barEl.className = cls ? `mrunlive ${cls}` : 'mrunlive hidden';
+    barEl.innerHTML = html;
+  }
+
+  function mountBar(el, jump) {
+    barEl = el;
+    onJump = jump;
+    barEl.onclick = () => { if (onJump) onJump(); };
   }
 
   function mount(el) {
@@ -340,7 +375,7 @@
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
   global.COWORK.meetingRunCore = core;
-  global.COWORK.tabs.meetingRunner = { mount, onData, onShow, onHide };
+  global.COWORK.tabs.meetingRunner = { mount, mountBar, onData, onShow, onHide };
 
   // เปิดทาง node --test ให้เทส logic ได้โดยไม่ต้องมี DOM
   if (typeof module !== 'undefined' && module.exports) module.exports = core;

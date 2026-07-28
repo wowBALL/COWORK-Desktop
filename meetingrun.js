@@ -283,6 +283,7 @@
     if (act.dataset.act === 'stop') confirmStop();
     if (act.dataset.act === 'detail') { detailOpen = !detailOpen; draw(); }
     if (act.dataset.act === 'dismiss') { dismissedJob = followingJob; detailOpen = false; draw(); }
+    if (act.dataset.act === 'read' && onRead) onRead(followingJob);
   }
 
   function onInput(e) {
@@ -291,6 +292,9 @@
 
   let barEl = null;
   let onJump = null;
+  let onRead = null;
+
+  function mountRead(handler) { onRead = handler; }
 
   // ปุ่มปิดห้องไม่อยู่บนแถบบนโดยตั้งใจ -- ปุ่มที่ทำงานย้อนไม่ได้ต้องอยู่ที่เดียว
   // และมีบริบทรอบตัว กดที่นี่แค่พากลับไปแท็บ Meeting
@@ -375,7 +379,7 @@
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
   global.COWORK.meetingRunCore = core;
-  global.COWORK.tabs.meetingRunner = { mount, mountBar, onData, onShow, onHide };
+  global.COWORK.tabs.meetingRunner = { mount, mountBar, mountRead, onData, onShow, onHide };
 
   // เปิดทาง node --test ให้เทส logic ได้โดยไม่ต้องมี DOM
   if (typeof module !== 'undefined' && module.exports) module.exports = core;

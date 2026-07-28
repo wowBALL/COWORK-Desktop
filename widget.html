@@ -744,7 +744,11 @@
   themeBtn.onclick=()=>applyTheme(document.documentElement.dataset.theme==='sand'?'carbon':'sand');
 
   // Redmine tasks, grouped by status, filtered by a multi-select project set
-  function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+  // textContent→innerHTML แปลง & < > ให้ แต่ไม่แตะ " — และ esc() ถูกใช้ใน attribute หลายที่
+  // (title=, data-g=, value=) พิมพ์ " ในช่องค้นหาบทถอดเสียงแล้ว value ขาดกลางคัน
+  // แถมงอก attribute ขยะขึ้นมาจริง ๆ จึงต้อง escape " ต่อท้ายอีกชั้น
+  // ไม่ต้องแตะ ' เพราะทุก attribute ในไฟล์นี้ครอบด้วย " ทั้งหมด
+  function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML.replace(/"/g,'&quot;'); }
   const STATUS_COLOR={'In Progress':'var(--accent)','New':'var(--cyan)','Test':'var(--amber)',
     'Backlog':'var(--dim)','Resolved':'var(--green)','Closed':'var(--dim)'};
   function hashN(key,n){ let h=0; for(const c of String(key)) h=(h*31+c.charCodeAt(0))>>>0; return h%n; }

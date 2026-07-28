@@ -181,9 +181,14 @@ function installUpdate(installerPath) {
   // spawn ใน 'quit' จึงยิงตอนหน้าต่างปิดหมดและอิเล็กตรอนกำลังลงแล้ว ตัวติดตั้งยังต้องแตกไฟล์
   // อีกหลายวินาทีกว่าจะแตะไฟล์จริง โพรเซสเราหมดไปก่อนแน่นอน
   //
+  // --force-run ให้ตัวติดตั้งเปิดแอปคืนให้เมื่อลงเสร็จ ปุ่มในกล่องเขียนว่า "รีสตาร์ทตอนนี้"
+  // แต่เราไม่เคยส่งธงนี้เลย มันจึงปิดแล้วเงียบไปทุกครั้ง ผู้ใช้ต้องไปกดไอคอนเอง
+  // (installSection.nsh:106 -- ตัวติดตั้งแบบมีหน้าต่างจะเปิดแอปคืนก็ต่อเมื่อได้ทั้ง
+  //  --force-run และ /S มาคู่กัน)
+  //
   // /D= ต้องอยู่ท้ายสุดเสมอ
   app.once('quit', () => {
-    spawn(installerPath, ['/S', '/D="' + installDir + '"'],
+    spawn(installerPath, ['/S', '--force-run', '/D="' + installDir + '"'],
       { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
   });
   app.quit();

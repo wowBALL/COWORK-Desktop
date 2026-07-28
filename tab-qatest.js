@@ -315,5 +315,5 @@
 
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.qatest = { key:'qa', mount, mountSettings, loadSettings, onData, onTheme };
+  global.COWORK.tabs.qatest = { key:'qa', settingsCard:'cardQa', mount, mountSettings, loadSettings, onData, onTheme };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -363,6 +363,16 @@
             <div class="set-actions"><button id="setWsSave" class="set-save">บันทึก</button></div>
           </div>
         </div>
+        <div class="set-card" id="cardQa">
+          <div class="set-card-header" data-card="cardQa"><span>◈ QA test</span><span class="chev">›</span></div>
+          <div class="set-card-body">
+            <div class="hint" style="margin:-2px 0 10px">แต่ละ source คือหนึ่งโฟลเดอร์ผลเทส (ข้างในมีโฟลเดอร์ย่อยชื่อ timestamp แต่ละอันคือหนึ่งรัน) — เพิ่มได้หลาย source เผื่อผล QA ของงานอื่น</div>
+            <div id="setQaRows"></div>
+            <button id="setQaAdd" type="button" class="set-cancel" style="width:100%;margin:2px 0 10px">➕ เพิ่ม source</button>
+            <div id="setQaStatus" class="set-status"></div>
+            <div class="set-actions"><button id="setQaSave" class="set-save">บันทึก</button></div>
+          </div>
+        </div>
         <div class="set-card" id="cardMeetings">
           <div class="set-card-header" data-card="cardMeetings"><span>◈ Meeting</span><span class="chev">›</span></div>
           <div class="set-card-body">
@@ -374,16 +384,6 @@
             <div class="hint" style="margin:-4px 0 12px">ต้องตรงกับ <code>UI_PORT</code> ใน <code>.env</code> ของ meeting-notes · ปล่อยว่าง = 8765 · แถบเปิด/ปิดห้องจะไม่แสดงเลยถ้าตัวรันไม่ตอบ</div>
             <div id="setMtStatus" class="set-status"></div>
             <div class="set-actions"><button id="setMtSave" class="set-save">บันทึก</button></div>
-          </div>
-        </div>
-        <div class="set-card" id="cardQa">
-          <div class="set-card-header" data-card="cardQa"><span>◈ QA test</span><span class="chev">›</span></div>
-          <div class="set-card-body">
-            <div class="hint" style="margin:-2px 0 10px">แต่ละ source คือหนึ่งโฟลเดอร์ผลเทส (ข้างในมีโฟลเดอร์ย่อยชื่อ timestamp แต่ละอันคือหนึ่งรัน) — เพิ่มได้หลาย source เผื่อผล QA ของงานอื่น</div>
-            <div id="setQaRows"></div>
-            <button id="setQaAdd" type="button" class="set-cancel" style="width:100%;margin:2px 0 10px">➕ เพิ่ม source</button>
-            <div id="setQaStatus" class="set-status"></div>
-            <div class="set-actions"><button id="setQaSave" class="set-save">บันทึก</button></div>
           </div>
         </div>
         <button id="setCancel" class="set-cancel" style="width:100%">ปิด</button>
@@ -549,6 +549,10 @@
     if(!mod) return;
     if(mod.mount) mod.mount();
     if(mod.mountSettings) mod.mountSettings();
+    // เรียงการ์ดตั้งค่าตามทะเบียนไปเลย ลำดับใน markup จึงไม่ใช่สิ่งที่ต้องคอยจำให้ตรง
+    // (ปุ่มปิดอยู่ท้ายสุดเสมอ จึงแทรกก่อนมัน) — ตอนนี้ markup เรียงถูกอยู่แล้ว บรรทัดนี้กันไม่ให้มันเพี้ยนทีหลัง
+    const card=mod.settingsCard && document.getElementById(mod.settingsCard);
+    if(card) viewS.insertBefore(card, document.getElementById('setCancel'));
   });
   // ธีมครั้งแรกต้องมาหลัง mount ครบทุกโมดูล — applyTheme วน onTheme ของทุกแท็บ
   // ถ้าเรียกก่อน จะยิงเข้าโมดูลที่ยังไม่พร้อม (ทั้งไฟล์นี้รันแบบ synchronous จอจึงไม่กระพริบ)

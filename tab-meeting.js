@@ -347,5 +347,5 @@
 
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.meeting = { key:"mt", mount, mountSettings, loadSettings, onData, onShow };
+  global.COWORK.tabs.meeting = { key:"mt", settingsCard:'cardMeetings', mount, mountSettings, loadSettings, onData, onShow };
 })(typeof window !== 'undefined' ? window : globalThis);

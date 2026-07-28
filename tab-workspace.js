@@ -226,5 +226,5 @@
 
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.workspace = { key:'ws', mount, mountSettings, loadSettings, onData };
+  global.COWORK.tabs.workspace = { key:'ws', settingsCard:'cardWorkspace', mount, mountSettings, loadSettings, onData };
 })(typeof window !== 'undefined' ? window : globalThis);

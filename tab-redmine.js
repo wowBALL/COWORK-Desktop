@@ -394,5 +394,5 @@
 
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.redmine = { key:"rm", mount, mountSettings, loadSettings, onData };
+  global.COWORK.tabs.redmine = { key:"rm", settingsCard:'cardRedmine', mount, mountSettings, loadSettings, onData };
 })(typeof window !== 'undefined' ? window : globalThis);

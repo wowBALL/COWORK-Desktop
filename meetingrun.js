@@ -92,6 +92,9 @@
   let modelsOpen = false;
   let stopping = false;     // กันกดปิดซ้ำระหว่างรอ service ตอบ
   let signature = null;     // วาดใหม่เฉพาะตอนสถานะเปลี่ยนจริง
+  // เครื่องนี้เคยติดต่อ service ได้ไหม -- ตัวตัดสินว่าจะโชว์ "รอตัวรัน" หรือไม่โชว์
+  // อะไรเลย เครื่องที่ไม่เคยมีตัวอัดต้องเห็นแท็บ Meeting เหมือน v1.8.1 เป๊ะ
+  let seenService = false;
 
   function esc(s) {
     const d = document.createElement('div');
@@ -136,6 +139,15 @@
         <button class="sbtn" data-act="open">เปิดห้อง</button>
         <button class="smore" data-act="models" title="เลือกโมเดลสรุป (${esc(modelTitle(model))})">⋯</button>
       </div>${modelsHtml()}${workerHtml()}${warnHtml()}`;
+  }
+
+  // ไม่มีคำตอบจาก service บนเครื่องที่เคยใช้ได้ = บอกว่ากำลังรออะไรอยู่
+  // เงียบไปเฉย ๆ แย่กว่า เพราะผู้ใช้ไม่รู้ว่าต้องไปเปิดอะไร
+  function viewWaiting() {
+    return `<div class="mrun" data-s="waiting">
+        <span class="sd"></span>
+        <span class="stxt">รอตัวรันประชุม… <em>· เปิด start-ui.bat ที่ meeting-notes ถ้ายังไม่ขึ้น</em></span>
+      </div>`;
   }
 
   function viewRecording() {
@@ -223,20 +235,21 @@
     const recording = state && (state.recorder === 'recording' || state.recorder === 'stopping');
     const progress = !state || recording ? null : progressOf(state.activity, followingJob);
     const following = progress && followingJob !== dismissedJob;
-    const view = !state ? 'absent'
+    const view = !state ? (seenService ? 'waiting' : 'absent')
       : recording ? 'recording'
       : !following ? 'idle'
       : progress.failed ? 'failed'
       : progress.stage >= 4 ? 'done'
       : 'processing';
 
-    const sig = [view, state && state.room, state && state.model, model, modelsOpen, stopping,
+    const sig = [view, seenService, state && state.room, state && state.model, model, modelsOpen, stopping,
       detailOpen, followingJob, state && state.worker_ready,
       progress ? `${progress.stage}:${progress.failed}` : '',
       state ? (state.warnings || []).map((w) => w.code).join(',') : ''].join('|');
     if (sig !== signature) {
       // service ไม่ตอบ = ไม่วาดอะไรเลย ไม่ใช่ปุ่มเทาที่กดแล้วพัง
       root.innerHTML = view === 'absent' ? ''
+        : view === 'waiting' ? viewWaiting()
         : view === 'recording' ? viewRecording()
         : view === 'processing' ? viewProcessing(progress)
         : view === 'done' ? viewDone()
@@ -343,7 +356,12 @@
     root.addEventListener('click', onClick);
     root.addEventListener('input', onInput);
     if (api && api.getRunnerConfig) {
-      api.getRunnerConfig().then((cfg) => { if (cfg && cfg.model) { model = cfg.model; draw(); } });
+      api.getRunnerConfig().then((cfg) => {
+        if (!cfg) return;
+        if (cfg.model) model = cfg.model;
+        if (cfg.seen) seenService = true;
+        draw();
+      });
     }
     const yes = document.getElementById('mrunYes');
     const no = document.getElementById('mrunNo');
@@ -359,6 +377,9 @@
 
   function onData(next) {
     state = next;
+    // ติดต่อได้ครั้งเดียวก็พอที่จะรู้ว่าเครื่องนี้มีตัวอัด -- ครั้งต่อไปที่ติดต่อ
+    // ไม่ได้จึงบอกว่า "รออยู่" แทนที่จะหายไปเงียบ ๆ
+    if (state) seenService = true;
     if (state && state.recorder === 'recording') stopping = false;
     // เริ่มตามงานตั้งแต่วินาทีที่ service บอกว่าได้ไฟล์แล้ว -- last_result ถูกล้าง
     // เมื่อเปิดห้องถัดไป จึงต้องจำไว้เอง ไม่ใช่อ่านจาก state ทุกรอบ
@@ -372,7 +393,11 @@
     if (root) draw();
   }
 
-  function onShow() {}
+  // ถามสถานะทันทีที่เข้าแท็บ แทนที่จะรอรอบ poll ถัดไป -- เปิด service ทีหลัง
+  // แล้วต้องนั่งรอถึง 30 วิโดยไม่มีอะไรบอกว่ารออะไร คือสิ่งที่เจอจริงตอนเทส
+  function onShow() {
+    if (api && api.getRunnerState) api.getRunnerState().then(onData);
+  }
   function onHide() {}
 
   const core = {

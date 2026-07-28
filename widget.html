@@ -1903,6 +1903,9 @@
     wsRefresh.classList.toggle('hidden',!ws);
     qaRefresh.classList.toggle('hidden',!qa);
     mtRefresh.classList.toggle('hidden',!mt);
+    // ถามสถานะตัวรันทันทีที่เข้าแท็บ Meeting ไม่ต้องรอรอบ poll (นานได้ถึง 30 วิ
+    // ตอนที่ยังติดต่อไม่ได้) — เปิด start-ui.bat ทีหลังแล้วต้องนั่งรอคือของจริงที่เจอ
+    if(mt && mtRunner && mtRunner.onShow) mtRunner.onShow();
   }
   navR.onclick=()=>showTab('rm');
   navW.onclick=()=>showTab('ws');

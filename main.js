@@ -51,6 +51,11 @@ let qaSources = [];
 let runnerPort = 8765;
 // Last summary model picked, remembered so opening a room is a single click.
 let runnerModel = 'GLM-5.2';
+// Has this machine ever reached the service? Only then may the Meeting tab show
+// a "waiting for the runner" state. On the 8 installed machines that never had a
+// recorder, a permanent red light would be noise about a feature they never asked
+// for — the tab has to stay exactly as it was.
+let runnerSeen = false;
 
 // ---- private per-issue notes, local-only — never written back to Redmine ----
 // See docs/superpowers/specs/2026-07-27-private-issue-notes-design.md
@@ -87,6 +92,7 @@ function loadAppConfig() {
   qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
   runnerPort = Number(saved.meetingRunnerPort) || 8765;
   runnerModel = saved.meetingRunnerModel || 'GLM-5.2';
+  runnerSeen = saved.meetingRunnerSeen === true;
   // dev convenience only: unpackaged runs may still use a local .env; never packaged
   if (!app.isPackaged) {
     if (!redmineConfig.url) redmineConfig.url = ENV.REDMINE_URL || '';
@@ -341,7 +347,7 @@ async function fetchRunnerState() {
 // without the service at all — hammering 127.0.0.1 once a second all day there
 // buys nothing.
 function runnerInterval(state) {
-  if (!state) return 30000;
+  if (!state) return Date.now() < runnerWarmUntil ? 2000 : 30000;
   if (state.recorder !== 'idle') return 1000;
   // Room closed but the watcher's pipeline is still running: keep up the pace
   // while fresh events keep arriving, then ease off once it goes quiet.
@@ -354,8 +360,52 @@ function runnerInterval(state) {
   return age < 90000 ? 1000 : 5000;
 }
 
+// The repo root is the parent of the configured meetings/ folder, and the venv
+// inside it is the gate: no venv, no spawn, so machines without meeting-notes do
+// nothing at all and need no extra setting to say so.
+function runnerVenvPython() {
+  if (!meetingsDir) return null;
+  const exe = path.join(path.dirname(meetingsDir), '.venv', 'Scripts', 'python.exe');
+  return fs.existsSync(exe) ? exe : null;
+}
+
+let runnerSpawnTried = false;
+let runnerWarmUntil = 0;   // poll fast for a moment after spawning, see runnerInterval
+
+// Starts ONLY session_service, never the watcher. The watcher loads Whisper and
+// pyannote into VRAM, and the widget opens at Windows login on installed builds —
+// paying that on every login would be a bad trade for a service that is idle most
+// of the time. A missing watcher already has a graceful path: worker_ready comes
+// back false and the bar says the file will wait in the queue.
+//
+// Detached and unref'd on purpose. As a child it would die with the widget, and
+// killing a live recording by closing a window is exactly what session_service
+// exists to prevent.
+function startRunnerService() {
+  if (runnerSpawnTried) return;   // once per app run: a service that crashes on
+  runnerSpawnTried = true;        // boot must not be respawned every 30s forever
+  const python = runnerVenvPython();
+  if (!python) return;
+  try {
+    spawn(python, ['-m', 'src.session_service'], {
+      cwd: path.dirname(meetingsDir),
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    }).unref();
+    // Flask needs a few seconds to bind. Without this the next look would be 30s
+    // away and the bar would sit hidden long after the service was actually up.
+    runnerWarmUntil = Date.now() + 25000;
+  } catch { /* no recorder on this machine is a normal state, not an error */ }
+}
+
 async function pollRunner() {
   const state = await fetchRunnerState();
+  if (state && !runnerSeen) {
+    runnerSeen = true;
+    writeConfigMerge({ meetingRunnerSeen: true });
+  }
+  if (!state) startRunnerService();
   if (win) win.webContents.send('runner-update', state);
   // setTimeout rather than setInterval: the gap changes with the state
   runnerTimer = setTimeout(pollRunner, runnerInterval(state));
@@ -602,7 +652,9 @@ ipcMain.handle('runner-stop', async () => {
     return { error: body.error || `http_${res.status}` };
   } catch { return { error: 'unreachable' }; }
 });
-ipcMain.handle('get-runner-config', () => ({ port: runnerPort, model: runnerModel }));
+ipcMain.handle('get-runner-config', () => ({
+  port: runnerPort, model: runnerModel, seen: runnerSeen,
+}));
 ipcMain.handle('save-runner-config', (_e, cfg) => {
   const patch = {};
   if (cfg && cfg.port) { runnerPort = Number(cfg.port) || 8765; patch.meetingRunnerPort = runnerPort; }

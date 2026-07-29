@@ -5,6 +5,7 @@ const fs = require('fs');
 const { readWorkspace } = require('./workspace');
 const { readMeetings, readTranscript } = require('./meetings');
 const { readQaResults } = require('./qatest');
+const { registry, decideQuit, matchOrphan } = require('./children');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -378,6 +379,15 @@ async function fetchRunnerState() {
   } catch { return null; }   // no answer = no recorder on this machine, not an error to show
 }
 
+// อายุของเหตุการณ์ล่าสุด ใช้เป็นตัวชี้ว่า pipeline หลังปิดห้องยังเดินอยู่หรือเงียบไปแล้ว
+// ts เป็น datetime.now().isoformat() ของ Python ไม่มี timezone ต่อท้าย JS อ่านค่าแบบนั้น
+// เป็นเวลาท้องถิ่น ซึ่งถูกต้องตรงนี้เพราะ Python กับ Electron อยู่เครื่องเดียวกัน
+function runnerActivityAge(state) {
+  const activity = (state && state.activity) || [];
+  const last = activity[activity.length - 1];
+  return last && last.ts ? Date.now() - Date.parse(last.ts) : Infinity;
+}
+
 // Poll cadence follows the situation. The installer goes to 8 machines, most
 // without the service at all — hammering 127.0.0.1 once a second all day there
 // buys nothing.
@@ -386,26 +396,43 @@ function runnerInterval(state) {
   if (state.recorder !== 'idle') return 1000;
   // Room closed but the watcher's pipeline is still running: keep up the pace
   // while fresh events keep arriving, then ease off once it goes quiet.
-  const activity = state.activity || [];
-  const last = activity[activity.length - 1];
-  // ts is Python's datetime.now().isoformat() — no timezone suffix. JS reads a
-  // date-time without one as local time, which is right here: Python and
-  // Electron are on the same machine.
-  const age = last && last.ts ? Date.now() - Date.parse(last.ts) : Infinity;
-  return age < 90000 ? 1000 : 5000;
+  return runnerActivityAge(state) < 90000 ? 1000 : 5000;
 }
 
 // The repo root is the parent of the configured meetings/ folder, and the venv
 // inside it is the gate: no venv, no spawn, so machines without meeting-notes do
 // nothing at all and need no extra setting to say so.
+//
+// เลือก pythonw.exe ก่อนเสมอ มันเป็นไบนารีคนละตัวที่คอมไพล์มาเป็น GUI subsystem จึงไม่มี
+// คอนโซลให้ Windows Terminal คว้าไปเปิดเป็นหน้าต่างดำ -- windowsHide ที่ส่งตอน spawn
+// เอาไม่อยู่ เพราะวินโดวส์ 11 ส่งต่อคอนโซลให้ Windows Terminal (defterm) ข้าม
+// CREATE_NO_WINDOW ไป วัดมาแล้วบนเครื่องนี้: python.exe ใส่หรือไม่ใส่ windowsHide
+// ได้หน้าต่างเหมือนกันเป๊ะ ส่วน pythonw.exe ไม่มีหน้าต่างและยังรอดหลัง parent ตายเหมือนเดิม
+//
+// stdio:'ignore' ทำให้ node ผูก handle ไปที่ NUL ให้ sys.stdout/sys.stderr ของ pythonw
+// จึงเป็นไฟล์ปกติ ไม่ใช่ None -- logging.basicConfig ใน session_service.py จึงไม่พัง
 function runnerVenvPython() {
   if (!meetingsDir) return null;
-  const exe = path.join(path.dirname(meetingsDir), '.venv', 'Scripts', 'python.exe');
-  return fs.existsSync(exe) ? exe : null;
+  const dir = path.join(path.dirname(meetingsDir), '.venv', 'Scripts');
+  for (const exe of ['pythonw.exe', 'python.exe']) {
+    const p = path.join(dir, exe);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
 }
 
 let runnerSpawnTried = false;
 let runnerWarmUntil = 0;   // poll fast for a moment after spawning, see runnerInterval
+
+// ยุ่ง = กำลังอัดอยู่ หรือปิดห้องแล้วแต่ pipeline ของ watcher ยังเดินอยู่
+//
+// เรียกไม่ติด = ไม่ยุ่ง ไม่ใช่ยุ่ง -- /api/state ที่ไม่ตอบแปลว่ามันตายไปแล้ว ตีเป็นยุ่งเมื่อไหร่
+// ผู้ใช้จะโดนถามทุกครั้งที่ปิดแอปทั้งที่ไม่มีอะไรทำงานอยู่จริง
+async function runnerIsBusy() {
+  const state = await fetchRunnerState();
+  if (!state) return false;
+  return state.recorder !== 'idle' || runnerActivityAge(state) < 90000;
+}
 
 // Starts ONLY session_service, never the watcher. The watcher loads Whisper and
 // pyannote into VRAM, and the widget opens at Windows login on installed builds —
@@ -422,12 +449,12 @@ function startRunnerService() {
   const python = runnerVenvPython();
   if (!python) return;
   try {
-    spawn(python, ['-m', 'src.session_service'], {
+    registry.spawnTracked(python, ['-m', 'src.session_service'], {
       cwd: path.dirname(meetingsDir),
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
-    }).unref();
+    }, { name: 'ตัวประมวลผลประชุม (session_service)', isBusy: runnerIsBusy });
     // Flask needs a few seconds to bind. Without this the next look would be 30s
     // away and the bar would sit hidden long after the service was actually up.
     runnerWarmUntil = Date.now() + 25000;

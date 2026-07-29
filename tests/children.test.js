@@ -98,6 +98,14 @@ test('registry: ลูกที่ spawn ไม่ขึ้น (error event) ต
   assert.deepStrictEqual(reg.list(), []);
 });
 
+test('registry: spawn ที่ล้มเหลวตั้งแต่ต้น (ไม่มี pid เลย) ยิง error ต้องไม่ระเบิดและทะเบียนต้องว่าง', () => {
+  const child = fakeChild(undefined); // เลียนแบบ ENOENT บน Windows: spawn() คืนมาโดย pid ยังไม่ถูกตั้งค่า
+  const reg = children.createRegistry({ spawnFn: () => child, killFn: async () => true });
+  assert.strictEqual(reg.spawnTracked('this-exe-does-not-exist-xyz.exe', [], {}, { name: 'x' }), null);
+  assert.doesNotThrow(() => child.emit('error', new Error('ENOENT')));
+  assert.deepStrictEqual(reg.list(), []);
+});
+
 test('registry: adopt เพิ่มตัวเดิมซ้ำไม่ได้', () => {
   const reg = children.createRegistry({ killFn: async () => true });
   assert.strictEqual(reg.adopt(201, { name: 'orphan' }), true);

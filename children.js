@@ -73,17 +73,18 @@ function createRegistry(deps) {
 
   function spawnTracked(exe, args, opts, meta) {
     const child = spawnFn(exe, args, opts);
+    // ต้องผูก 'error' ก่อนเช็ค pid เสมอ -- ตอน spawn ล้มเหลว (ENOENT/EACCES/EPERM) บน Windows
+    // child.pid ยังเป็น undefined ตอนนี้ ถ้าเช็คแล้ว return ก่อนผูก listener โพรเซสจะยิง 'error'
+    // แบบ async ภายหลังโดยไม่มีใครฟัง กลายเป็น uncaught exception ที่ทำ main process ของ Electron ล่มทั้งตัว
+    if (child && child.on) child.on('error', (err) => {
+      console.log('[children] spawn failed', exe, err && err.message);
+      // pid อาจยังไม่เคยถูกตั้งค่า (ล้มเหลวตั้งแต่ spawn) จึงต้องเช็คก่อนลบ ไม่งั้นจะลบ key undefined ทิ้งเปล่า ๆ
+      if (child.pid) kids.delete(child.pid);
+    });
     if (!child || !child.pid) return null;
     put(child.pid, meta);
     // ลูกที่ตายเองต้องหลุดออกจากทะเบียน ไม่งั้นตอนปิดจะไปไล่ฆ่า pid ที่คนอื่นใช้ต่อไปแล้ว
     if (child.on) child.on('exit', () => kids.delete(child.pid));
-    // spawn ที่ล้มเหลว (เช่น EACCES/EPERM) ยิง 'error' แบบ async โดยไม่มี exit ตามมา
-    // ถ้าไม่ดักไว้ Node จะโยนเป็น uncaught exception ซึ่งใน main process ของ Electron คือแอปทั้งตัวล่ม
-    // และ pid นี้ไม่เคยรันจริง จึงต้องลบออกจากทะเบียนด้วย ไม่งั้นตอนปิดแอปจะพยายามฆ่า pid ที่ไม่มีอยู่
-    if (child.on) child.on('error', (err) => {
-      console.log('[children] spawn failed', exe, err && err.message);
-      kids.delete(child.pid);
-    });
     if (child.unref) child.unref();
     return child;
   }

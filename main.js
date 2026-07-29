@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, dialog } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { readWorkspace } = require('./workspace');
@@ -464,6 +464,39 @@ function startRunnerService() {
   } catch { /* no recorder on this machine is a normal state, not an error */ }
 }
 
+// รับเลี้ยง session_service ที่รอบก่อนทิ้งไว้ (แอปโดนฆ่าจาก Task Manager, ล็อกเอาต์, ไฟดับ)
+// ไม่งั้นทะเบียนจะรู้จักเฉพาะตัวที่ spawn ในรอบนี้ แล้ว orphan จะค้างสะสมไปเรื่อย ๆ
+//
+// ใช้ powershell + Get-CimInstance ไม่ใช่ wmic -- wmic ถูกถอดออกจากวินโดวส์ 11 รุ่นนี้แล้ว
+// execFile แบบไม่ detached จึงไม่มีหน้าต่างโผล่ (วัดมาแล้ว) และ powershell ตายไปกับแอปอยู่แล้ว
+// จึงไม่ต้องเข้าทะเบียน
+//
+// ผลข้างเคียงที่ยอมรับแล้ว: ถ้าผู้ใช้เปิด session_service เองจาก terminal ด้วย venv ตัวเดียวกัน
+// มันจะถูกนับเป็นลูกและถูกปิดพร้อมวิดเจ็ต
+function adoptOrphanRunner() {
+  const python = runnerVenvPython();
+  if (!python) return;                  // เครื่องนี้ไม่มี meeting-notes ไม่ต้องไปส่องอะไรเลย
+  const dir = path.dirname(python);
+  const exePaths = ['pythonw.exe', 'python.exe'].map(e => path.join(dir, e));
+  const ps = "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" "
+    + "| Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
+  execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps],
+    { windowsHide: true, timeout: 10000 }, (err, stdout) => {
+      if (err || !stdout) return;       // ส่องไม่ได้ก็ไม่ใช่เรื่องคอขาดบาดตาย ข้ามไป
+      let procs;
+      try { procs = JSON.parse(stdout); } catch { return; }
+      // ConvertTo-Json คืน object เดี่ยว ๆ ไม่ใช่ array เมื่อเจอผลลัพธ์เดียว
+      if (!Array.isArray(procs)) procs = [procs];
+      for (const pid of matchOrphan(procs, { exePaths, needle: 'src.session_service' })) {
+        if (pid === process.pid) continue;
+        if (registry.adopt(pid, { name: 'ตัวประมวลผลประชุม (session_service)', isBusy: runnerIsBusy })) {
+          console.log('[children] adopted orphan session_service', pid);
+          runnerSpawnTried = true;      // มีตัวรันอยู่แล้ว ไม่ต้องไป spawn ซ้อน
+        }
+      }
+    });
+}
+
 async function pollRunner() {
   const state = await fetchRunnerState();
   if (state && !runnerSeen) {
@@ -790,7 +823,7 @@ ipcMain.handle('get-qa-failure-xml', (_e, runDir) => {
 if (gotLock) app.whenReady().then(() => {
   loadAppConfig();
   MODE === 'screensaver' ? createScreensaver() : createWidget();
-  if (MODE === 'widget') setupAutoUpdate();
+  if (MODE === 'widget') { setupAutoUpdate(); adoptOrphanRunner(); }
 });
 
 // กดไอคอนซ้ำตอนเปิดอยู่แล้ว ให้ดึงบานเดิมขึ้นมาแทนที่จะเปิดบานใหม่

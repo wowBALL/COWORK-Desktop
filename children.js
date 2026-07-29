@@ -77,6 +77,13 @@ function createRegistry(deps) {
     put(child.pid, meta);
     // ลูกที่ตายเองต้องหลุดออกจากทะเบียน ไม่งั้นตอนปิดจะไปไล่ฆ่า pid ที่คนอื่นใช้ต่อไปแล้ว
     if (child.on) child.on('exit', () => kids.delete(child.pid));
+    // spawn ที่ล้มเหลว (เช่น EACCES/EPERM) ยิง 'error' แบบ async โดยไม่มี exit ตามมา
+    // ถ้าไม่ดักไว้ Node จะโยนเป็น uncaught exception ซึ่งใน main process ของ Electron คือแอปทั้งตัวล่ม
+    // และ pid นี้ไม่เคยรันจริง จึงต้องลบออกจากทะเบียนด้วย ไม่งั้นตอนปิดแอปจะพยายามฆ่า pid ที่ไม่มีอยู่
+    if (child.on) child.on('error', (err) => {
+      console.log('[children] spawn failed', exe, err && err.message);
+      kids.delete(child.pid);
+    });
     if (child.unref) child.unref();
     return child;
   }

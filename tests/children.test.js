@@ -90,6 +90,14 @@ test('registry: spawn ที่ล้มเหลว (ไม่มี pid) ต�
   assert.deepStrictEqual(reg.list(), []);
 });
 
+test('registry: ลูกที่ spawn ไม่ขึ้น (error event) ต้องหลุดออกจากทะเบียนโดยไม่ระเบิด', () => {
+  const child = fakeChild(103);
+  const reg = children.createRegistry({ spawnFn: () => child, killFn: async () => true });
+  reg.spawnTracked('x.exe', [], {}, { name: 'x' });
+  assert.doesNotThrow(() => child.emit('error', new Error('EACCES')));
+  assert.deepStrictEqual(reg.list(), []);
+});
+
 test('registry: adopt เพิ่มตัวเดิมซ้ำไม่ได้', () => {
   const reg = children.createRegistry({ killFn: async () => true });
   assert.strictEqual(reg.adopt(201, { name: 'orphan' }), true);

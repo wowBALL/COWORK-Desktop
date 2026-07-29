@@ -162,6 +162,7 @@ async function downloadUpdate(update) {
 
 function installUpdate(installerPath) {
   const installDir = path.dirname(process.execPath);
+  updating = true;   // ระหว่างอัปเดตห้ามถาม -- ตัวที่ว่างยังถูกปิด ตัวที่ยุ่งปล่อยไว้ทำงานต่อ
   console.log('[updater] installing to', installDir);
   // Generic NSIS docs say /D= must be unquoted even with spaces in the path — tested against
   // this actual electron-builder-generated installer, that's wrong: unquoted truncates the
@@ -188,6 +189,8 @@ function installUpdate(installerPath) {
   //  --force-run และ /S มาคู่กัน)
   //
   // /D= ต้องอยู่ท้ายสุดเสมอ
+  // ตัวนี้ต้องไม่เข้าทะเบียน children.js -- มันตั้งใจให้รอดหลังแอปปิด ถ้าจดทะเบียนไว้
+  // เราจะฆ่าตัวติดตั้งของตัวเองทิ้งตอนปิดแอปพอดี
   app.once('quit', () => {
     spawn(installerPath, ['/S', '--force-run', '/D="' + installDir + '"'],
       { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
@@ -494,6 +497,47 @@ function pushQaTests() {
   win.webContents.send('qatest-update', payload);
 }
 
+// ---- ปิดโพรเซสลูกก่อนปิดแอป --------------------------------------------------
+// ด่านอยู่ที่ win.on('close') ไม่ใช่ app.on('before-quit') เพราะ before-quit ยิงหลังหน้าต่าง
+// ถูกทำลายไปแล้ว (เส้นทางจริง: ipc 'win-close' -> win.close() -> window-all-closed -> app.quit())
+// ถ้าไปดักตรงนั้น ปุ่ม "ยกเลิก" จะเหลือแอปที่รันอยู่โดยไม่มีหน้าต่างให้กดอะไรได้เลย
+let quitConfirmed = false;
+let updating = false;      // ตั้งโดย installUpdate() -- ห้ามเด้งกล่องกลางทางอัปเดต
+
+async function handleQuit() {
+  let states = [];
+  try { states = await registry.states(); } catch { states = []; }
+  const action = decideQuit(states, { updating });
+  const idlePids = states.filter(s => !s.busy).map(s => s.pid);
+
+  if (action === 'kill') {
+    await registry.stopAll();
+  } else if (action === 'quiet') {
+    await registry.stopAll(idlePids);
+  } else {
+    const busy = states.filter(s => s.busy).map(s => s.name).join(', ');
+    const parent = win && !win.isDestroyed() ? win : null;
+    const opts = {
+      type: 'warning',
+      title: 'COWORK Desktop',
+      message: 'มีงานที่ยังทำอยู่',
+      detail: `${busy} กำลังอัดเสียงหรือประมวลผลอยู่ ถ้าปิดตอนนี้งานรอบนี้จะหาย`,
+      buttons: ['ปิดทั้งหมด', 'ปิดแค่วิดเจ็ต', 'ยกเลิก'],
+      defaultId: 1,
+      cancelId: 2,
+      noLink: true,
+    };
+    const r = parent ? await dialog.showMessageBox(parent, opts)
+                     : await dialog.showMessageBox(opts);
+    if (r.response === 2) return;                     // ยกเลิก: หน้าต่างยังอยู่ ไม่ปิดอะไรทั้งนั้น
+    if (r.response === 0) await registry.stopAll();
+    else await registry.stopAll(idlePids);
+  }
+
+  quitConfirmed = true;
+  app.quit();
+}
+
 function createWidget() {
   const { width, height: availH } = screen.getPrimaryDisplay().workAreaSize;
   const W = 420, Y = 60;
@@ -523,6 +567,12 @@ function createWidget() {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
   }
   win.loadFile('widget.html');
+  win.on('close', (e) => {
+    // ผ่านด่านมาแล้ว หรือไม่มีลูกให้จัดการ ก็ปล่อยปิดตามปกติ
+    if (quitConfirmed || registry.list().length === 0) return;
+    e.preventDefault();
+    handleQuit();
+  });
   win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); pushMeetings(); pushQaTests(); });
   setInterval(pushTasks, 5 * 60 * 1000);
   setInterval(pushWorkspace, 5 * 60 * 1000);

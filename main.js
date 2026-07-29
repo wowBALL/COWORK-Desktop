@@ -502,9 +502,11 @@ function pushQaTests() {
 // ถูกทำลายไปแล้ว (เส้นทางจริง: ipc 'win-close' -> win.close() -> window-all-closed -> app.quit())
 // ถ้าไปดักตรงนั้น ปุ่ม "ยกเลิก" จะเหลือแอปที่รันอยู่โดยไม่มีหน้าต่างให้กดอะไรได้เลย
 let quitConfirmed = false;
+let quitting = false;      // ผ่านด่านแล้วกำลังรอ await อยู่ (states/stopAll/dialog) กันกดปิดซ้ำแล้วเข้า handleQuit() ซ้อนกัน
 let updating = false;      // ตั้งโดย installUpdate() -- ห้ามเด้งกล่องกลางทางอัปเดต
 
 async function handleQuit() {
+  quitting = true;
   let states = [];
   try { states = await registry.states(); } catch { states = []; }
   const action = decideQuit(states, { updating });
@@ -529,7 +531,7 @@ async function handleQuit() {
     };
     const r = parent ? await dialog.showMessageBox(parent, opts)
                      : await dialog.showMessageBox(opts);
-    if (r.response === 2) return;                     // ยกเลิก: หน้าต่างยังอยู่ ไม่ปิดอะไรทั้งนั้น
+    if (r.response === 2) { quitting = false; return; } // ยกเลิก: หน้าต่างยังอยู่ ไม่ปิดอะไรทั้งนั้น เปิดด่านใหม่ให้ปิดซ้ำได้
     if (r.response === 0) await registry.stopAll();
     else await registry.stopAll(idlePids);
   }
@@ -571,7 +573,12 @@ function createWidget() {
     // ผ่านด่านมาแล้ว หรือไม่มีลูกให้จัดการ ก็ปล่อยปิดตามปกติ
     if (quitConfirmed || registry.list().length === 0) return;
     e.preventDefault();
-    handleQuit();
+    // รอบก่อนยัง await ไม่จบ (states/stopAll/dialog ค้างอยู่) กันไม่ให้กดซ้ำแล้ว handleQuit() เข้าซ้อนกัน
+    if (quitting) return;
+    handleQuit().catch(err => {
+      console.log('[quit] handleQuit failed:', err);
+      quitting = false;   // เคลียร์ด่านให้ผู้ใช้กดปิดใหม่ได้ ไม่งั้นหน้าต่างจะค้างปิดไม่ได้อีกเลย
+    });
   });
   win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); pushMeetings(); pushQaTests(); });
   setInterval(pushTasks, 5 * 60 * 1000);

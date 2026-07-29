@@ -30,6 +30,7 @@
     "productName": "COWORK Desktop",
     "files": [
       "main.js",
+      "children.js",
       "preload.js",
       "util.js",
       "datefilter.js",

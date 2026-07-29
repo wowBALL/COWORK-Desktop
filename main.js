@@ -427,6 +427,10 @@ function runnerVenvPython() {
 let runnerSpawnTried = false;
 let runnerWarmUntil = 0;   // poll fast for a moment after spawning, see runnerInterval
 
+// true ระหว่างที่ adoptOrphanRunner() กำลังส่อง process อยู่ (execFile ยังไม่ callback กลับมา)
+// กัน pollRunner spawn ตัวใหม่ซ้อนทับ orphan ที่ยังไม่ตายแค่ตอบ /api/state ไม่ทันภายใน 1.5s
+let orphanScanPending = false;
+
 // ยุ่ง = กำลังอัดอยู่ หรือปิดห้องแล้วแต่ pipeline ของ watcher ยังเดินอยู่
 //
 // เรียกไม่ติด = ไม่ยุ่ง ไม่ใช่ยุ่ง -- /api/state ที่ไม่ตอบแปลว่ามันตายไปแล้ว ตีเป็นยุ่งเมื่อไหร่
@@ -447,6 +451,9 @@ async function runnerIsBusy() {
 // killing a live recording by closing a window is exactly what session_service
 // exists to prevent.
 function startRunnerService() {
+  // scan ยังไม่จบ อาจเจอ orphan ที่แค่ตอบ /api/state ไม่ทันใน 1.5s ไม่ใช่ตายจริง
+  // return ก่อนเซ็ต runnerSpawnTried เพื่อให้ pollRunner รอบถัดไปยังลอง spawn ได้
+  if (orphanScanPending) return;
   if (runnerSpawnTried) return;   // once per app run: a service that crashes on
   runnerSpawnTried = true;        // boot must not be respawned every 30s forever
   const python = runnerVenvPython();
@@ -476,23 +483,36 @@ function startRunnerService() {
 function adoptOrphanRunner() {
   const python = runnerVenvPython();
   if (!python) return;                  // เครื่องนี้ไม่มี meeting-notes ไม่ต้องไปส่องอะไรเลย
+  orphanScanPending = true;             // กัน pollRunner spawn ซ้อนจนกว่า scan นี้จะจบ (ทุก exit path ข้างล่างต้องเคลียร์)
   const dir = path.dirname(python);
   const exePaths = ['pythonw.exe', 'python.exe'].map(e => path.join(dir, e));
   const ps = "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" "
     + "| Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
   execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps],
     { windowsHide: true, timeout: 10000 }, (err, stdout) => {
-      if (err || !stdout) return;       // ส่องไม่ได้ก็ไม่ใช่เรื่องคอขาดบาดตาย ข้ามไป
+      if (err || !stdout) {             // ส่องไม่ได้ก็ไม่ใช่เรื่องคอขาดบาดตาย ข้ามไป
+        orphanScanPending = false;
+        return;
+      }
       let procs;
-      try { procs = JSON.parse(stdout); } catch { return; }
+      try { procs = JSON.parse(stdout); }
+      catch { orphanScanPending = false; return; }
       // ConvertTo-Json คืน object เดี่ยว ๆ ไม่ใช่ array เมื่อเจอผลลัพธ์เดียว
       if (!Array.isArray(procs)) procs = [procs];
+      let adopted = false;
       for (const pid of matchOrphan(procs, { exePaths, needle: 'src.session_service' })) {
-        if (pid === process.pid) continue;
         if (registry.adopt(pid, { name: 'ตัวประมวลผลประชุม (session_service)', isBusy: runnerIsBusy })) {
           console.log('[children] adopted orphan session_service', pid);
           runnerSpawnTried = true;      // มีตัวรันอยู่แล้ว ไม่ต้องไป spawn ซ้อน
+          adopted = true;
         }
+      }
+      orphanScanPending = false;
+      // scan จบแล้วไม่เจออะไรให้ adopt เลย -- เร่ง poll รอบถัดไปทันที ไม่งั้นเครื่องที่ไม่มี
+      // service เลยจะรอ 30s เปล่า ๆ ทั้งที่ startRunnerService ถูกกันไว้แค่ระหว่าง scan เท่านั้น
+      if (!adopted) {
+        clearTimeout(runnerTimer);
+        pollRunner();
       }
     });
 }

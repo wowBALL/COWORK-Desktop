@@ -113,8 +113,13 @@ test('registry: adopt เพิ่มตัวเดิมซ้ำไม่ไ�
   assert.deepStrictEqual(reg.list(), [{ pid: 201, name: 'orphan' }]);
 });
 
+// pid สมมติในเทสต์ไม่ได้มีอยู่จริงบนเครื่อง จึงต้องฉีด aliveFn เข้าไปทุกที่ที่ทดสอบ
+// states()/stopAll() ไม่งั้นด่านเช็คชีพจะถอดมันทิ้งก่อนถึงสิ่งที่เทสต์นั้นตั้งใจวัด
+const ALIVE = () => true;
+const DEAD = () => false;
+
 test('registry: states() อ่าน isBusy ของแต่ละตัว', async () => {
-  const reg = children.createRegistry({ killFn: async () => true });
+  const reg = children.createRegistry({ killFn: async () => true, aliveFn: ALIVE });
   reg.adopt(1, { name: 'busy one', isBusy: async () => true });
   reg.adopt(2, { name: 'idle one', isBusy: async () => false });
   reg.adopt(3, { name: 'no probe' });
@@ -125,15 +130,40 @@ test('registry: states() อ่าน isBusy ของแต่ละตัว',
   ]);
 });
 
-test('registry: isBusy ที่พังแปลว่าไม่ยุ่ง ไม่ใช่ยุ่ง', async () => {
-  const reg = children.createRegistry({ killFn: async () => true });
-  reg.adopt(1, { name: 'dead', isBusy: async () => { throw new Error('ECONNREFUSED'); } });
-  assert.deepStrictEqual(await reg.states(), [{ pid: 1, name: 'dead', busy: false }]);
+test('registry: isBusy ตอบ false จริง ๆ = ว่าง และยังอยู่ในทะเบียน', async () => {
+  const reg = children.createRegistry({ killFn: async () => true, aliveFn: ALIVE });
+  reg.adopt(1, { name: 'idle', isBusy: async () => false });
+  assert.deepStrictEqual(await reg.states(), [{ pid: 1, name: 'idle', busy: false }]);
+  assert.deepStrictEqual(reg.list(), [{ pid: 1, name: 'idle' }]);
+});
+
+test('registry: isBusy คืน null ทั้งที่ pid ยังอยู่ = ถือว่ายุ่ง', async () => {
+  const reg = children.createRegistry({ killFn: async () => true, aliveFn: ALIVE });
+  reg.adopt(1, { name: 'slow probe', isBusy: async () => null });
+  reg.adopt(2, { name: 'undefined probe', isBusy: async () => undefined });
+  assert.deepStrictEqual(await reg.states(), [
+    { pid: 1, name: 'slow probe', busy: true },
+    { pid: 2, name: 'undefined probe', busy: true },
+  ]);
+});
+
+test('registry: isBusy ที่โยน error ทั้งที่ pid ยังอยู่ = ถือว่ายุ่ง', async () => {
+  const reg = children.createRegistry({ killFn: async () => true, aliveFn: ALIVE });
+  reg.adopt(1, { name: 'unreachable', isBusy: async () => { throw new Error('ECONNREFUSED'); } });
+  assert.deepStrictEqual(await reg.states(), [{ pid: 1, name: 'unreachable', busy: true }]);
+});
+
+test('registry: isBusy คืน null และ pid ตายแล้ว = หลุดออกจากทะเบียน', async () => {
+  const reg = children.createRegistry({ killFn: async () => true, aliveFn: DEAD });
+  reg.adopt(1, { name: 'gone', isBusy: async () => null });
+  assert.deepStrictEqual(await reg.states(), []);
+  assert.deepStrictEqual(reg.list(), []);
 });
 
 test('registry: stopAll ฆ่าทุกตัวแล้วล้างทะเบียน', async () => {
   const killed = [];
-  const reg = children.createRegistry({ killFn: async (pid) => { killed.push(pid); return true; } });
+  const reg = children.createRegistry({
+    killFn: async (pid) => { killed.push(pid); return true; }, aliveFn: ALIVE });
   reg.adopt(1, { name: 'a' });
   reg.adopt(2, { name: 'b' });
   await reg.stopAll();
@@ -143,10 +173,35 @@ test('registry: stopAll ฆ่าทุกตัวแล้วล้างท�
 
 test('registry: stopAll(pids) ฆ่าเฉพาะที่ระบุ', async () => {
   const killed = [];
-  const reg = children.createRegistry({ killFn: async (pid) => { killed.push(pid); return true; } });
+  const reg = children.createRegistry({
+    killFn: async (pid) => { killed.push(pid); return true; }, aliveFn: ALIVE });
   reg.adopt(1, { name: 'a' });
   reg.adopt(2, { name: 'b' });
   await reg.stopAll([2]);
   assert.deepStrictEqual(killed, [2]);
   assert.deepStrictEqual(reg.list(), [{ pid: 1, name: 'a' }]);
+});
+
+test('registry: stopAll ข้าม pid ที่ตายไปแล้ว ไม่ยิง kill แต่ล้างออกจากทะเบียน', async () => {
+  const killed = [];
+  const reg = children.createRegistry({
+    killFn: async (pid) => { killed.push(pid); return true; }, aliveFn: (pid) => pid !== 1 });
+  reg.adopt(1, { name: 'ตายเองไปแล้ว' });
+  reg.adopt(2, { name: 'ยังอยู่' });
+  await reg.stopAll();
+  assert.deepStrictEqual(killed, [2]);   // pid 1 อาจถูกวินโดวส์เอาไปใช้ซ้ำแล้ว ห้ามแตะ
+  assert.deepStrictEqual(reg.list(), []);
+});
+
+test('registry: stopAll ที่ฆ่าไม่สำเร็จต้องมีร่องรอย ไม่ใช่เงียบหาย', async () => {
+  const logged = [];
+  const orig = console.log;
+  console.log = (...a) => logged.push(a.join(' '));
+  try {
+    const reg = children.createRegistry({ killFn: async () => false, aliveFn: ALIVE });
+    reg.adopt(1, { name: 'ฆ่าไม่ลง' });
+    await reg.stopAll();
+  } finally { console.log = orig; }
+  assert.ok(logged.some(l => l.includes('[children]') && l.includes('1')),
+    'ต้อง log ว่าฆ่าไม่สำเร็จ ได้: ' + JSON.stringify(logged));
 });

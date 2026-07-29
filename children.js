@@ -41,9 +41,13 @@ function alive(pid) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// timeout ไม่ใช่ของประดับ: taskkill() ตั้งใจไม่ reject เพื่อให้ stopAll เดินต่อได้เสมอ
+// ถ้ามันค้าง (โพรเซสอยู่ในสถานะที่ไม่ตอบ) โพรมิสนี้จะไม่ settle เลย handleQuit จึงค้างคา
+// quitting = true ตลอดชีพของโพรเซส และการกดปิดครั้งต่อ ๆ ไปจะถูกกลืนหายเงียบ ๆ
+// เหลือทางเดียวคือไปฆ่าจาก Task Manager
 function taskkill(args) {
   return new Promise(resolve => {
-    execFile('taskkill', args, { windowsHide: true }, () => resolve());
+    execFile('taskkill', args, { windowsHide: true, timeout: 10000 }, () => resolve());
   });
 }
 
@@ -61,6 +65,7 @@ async function defaultKill(pid) {
 function createRegistry(deps) {
   const spawnFn = (deps && deps.spawnFn) || realSpawn;
   const killFn = (deps && deps.killFn) || defaultKill;
+  const aliveFn = (deps && deps.aliveFn) || alive;
   const kids = new Map();   // pid -> { pid, name, isBusy }
 
   function put(pid, meta) {
@@ -100,19 +105,52 @@ function createRegistry(deps) {
     return [...kids.values()].map(k => ({ pid: k.pid, name: k.name }));
   }
 
-  // isBusy ที่เรียกไม่ติดแปลว่าโพรเซสตายไปแล้ว ไม่ใช่ว่ามันยุ่ง -- ถ้าตีเป็นยุ่ง
-  // ผู้ใช้จะโดนถามทุกครั้งที่ปิดแอปโดยที่ไม่มีอะไรทำงานอยู่จริง
+  // สัญญาของ isBusy มีสามค่า ไม่ใช่สอง:
+  //   true       = ยุ่งแน่ ๆ
+  //   false      = ตอบแล้วว่าว่าง
+  //   null/undef = ถามไม่ได้ ยังไม่รู้ (รวมถึงกรณีโยน error ออกมา)
+  //
+  // "ถามไม่ได้" ห้ามตีเป็นว่าง -- probe ที่ตอบช้าเกิน timeout กับโพรเซสที่ตายไปแล้วหน้าตา
+  // เหมือนกันเป๊ะจากฝั่งคนถาม ถ้าเดาผิดทางว่าว่าง แอปจะข้ามกล่องถามแล้ว taskkill /F ทับ
+  // งานที่กำลังอัดเสียงอยู่ ซึ่งคือความเสียหายที่ทะเบียนนี้มีไว้กันตั้งแต่แรก
+  // จึงตัดสินด้วยของจริงที่เชื่อได้แทน คือ pid ยังมีชีวิตอยู่ไหม:
+  //   ยังอยู่แต่ถามไม่ได้ = ถือว่ายุ่ง (เสียอย่างมากแค่โดนถามเกิน ดีกว่าเสียงหาย)
+  //   ตายจริง            = ไม่ยุ่ง และถอดออกจากทะเบียนเลย
+  //
+  // การถอด pid ที่ตายแล้วสำคัญพอ ๆ กัน: ตัวที่ adopt มาไม่มี event 'exit' ให้ฟัง มันจึงค้าง
+  // ในทะเบียนทั้งรอบการทำงานของแอป แล้ววินโดวส์เอา pid นั้นไปใช้ซ้ำกับโพรเซสอื่นได้
+  // (แค่ worker probe ของ session_service ก็ปั่น pid ใหม่ทุก 10 วินาทีแล้ว) ตอนปิดแอป
+  // taskkill /T /F จะไปฆ่าต้นไม้ของคนอื่นทิ้งแทน
   async function states() {
-    return Promise.all([...kids.values()].map(async k => {
-      let busy = false;
-      if (k.isBusy) { try { busy = !!(await k.isBusy()); } catch { busy = false; } }
-      return { pid: k.pid, name: k.name, busy };
+    const rows = await Promise.all([...kids.values()].map(async k => {
+      if (!aliveFn(k.pid)) return { pid: k.pid, gone: true };
+      let answer = false;
+      if (k.isBusy) { try { answer = await k.isBusy(); } catch { answer = null; } }
+      if (answer == null) {
+        // เช็คชีพซ้ำหลัง probe เพราะ probe กินเวลาได้หลายวินาที โพรเซสอาจตายไประหว่างนั้น
+        if (!aliveFn(k.pid)) return { pid: k.pid, gone: true };
+        return { pid: k.pid, name: k.name, busy: true };
+      }
+      return { pid: k.pid, name: k.name, busy: !!answer };
     }));
+    const live = [];
+    for (const r of rows) {
+      if (r.gone) kids.delete(r.pid);
+      else live.push(r);
+    }
+    return live;
   }
 
   async function stopAll(pids) {
     for (const pid of (pids || [...kids.keys()])) {
-      await killFn(pid);
+      // ตายไปเองแล้ว ห้ามยิง taskkill ใส่ -- pid เดิมอาจถูกวินโดวส์เอาไปใช้กับโพรเซสอื่นแล้ว
+      if (!aliveFn(pid)) { kids.delete(pid); continue; }
+      const ok = await killFn(pid);
+      // taskkill ล้มเงียบได้ตอน access denied (service ที่รันด้วยสิทธิ์อื่นหรือของ user อื่น --
+      // การ scan อ่านทั้งเครื่องโดยไม่กรองเจ้าของ) ผู้ใช้กด "ปิดทั้งหมด" แล้วแอปหายไปโดยที่
+      // ตัวอัดเสียงยังยึดไมค์อยู่ ต้องมีร่องรอยไว้ตามเรื่องได้
+      if (!ok) console.log('[children] kill failed, process may still be running', pid);
+      // ถึงฆ่าไม่สำเร็จก็ยังต้องถอดออก แอปกำลังจะปิดแล้ว ไม่มีอะไรทำต่อได้อีก
       kids.delete(pid);
     }
   }

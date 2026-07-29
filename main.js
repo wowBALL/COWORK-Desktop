@@ -433,11 +433,18 @@ let orphanScanPending = false;
 
 // ยุ่ง = กำลังอัดอยู่ หรือปิดห้องแล้วแต่ pipeline ของ watcher ยังเดินอยู่
 //
-// เรียกไม่ติด = ไม่ยุ่ง ไม่ใช่ยุ่ง -- /api/state ที่ไม่ตอบแปลว่ามันตายไปแล้ว ตีเป็นยุ่งเมื่อไหร่
-// ผู้ใช้จะโดนถามทุกครั้งที่ปิดแอปทั้งที่ไม่มีอะไรทำงานอยู่จริง
+// ตอบไม่ได้ต้องคืน null ห้ามคืน false -- /api/state ที่เงียบ "ไม่ได้" แปลว่าโพรเซสตายแล้ว:
+// session_service รีเฟรช worker probe แบบ sync คาอยู่ในรีเควสต์ /api/state นั้นเอง (แคช 10 วิ)
+// และ probe ตัวนั้นคือ powershell + Get-CimInstance Win32_Process ไล่ทั้งเครื่องแบบไม่กรอง
+// ซึ่งกินเวลา 1-3 วินาทีเป็นเรื่องปกติ ส่วน fetchRunnerState ตัดที่ 1.5 วินาที
+// พอร์ตก็เป็นอีกทาง: เราถาม runnerPort ของวิดเจ็ต แต่ตัวที่ adopt มาจับคู่ด้วย path + command line
+// ไม่เคยยืนยันว่ามันถือพอร์ตนี้จริง ตั้งค่าคนละพอร์ตเมื่อไหร่ก็เงียบทุกครั้ง
+//
+// ทั้งสองทางจบเหมือนกันคือ "ถามไม่ได้" ปล่อยให้ children.js ตัดสินต่อด้วยการมีชีวิตของ pid
+// (ยังอยู่ = ถือว่ายุ่ง จึงมีกล่องถามเสมอ / ตายจริง = ไม่ยุ่ง ผู้ใช้ไม่โดนถามฟรี)
 async function runnerIsBusy() {
   const state = await fetchRunnerState();
-  if (!state) return false;
+  if (!state) return null;
   return state.recorder !== 'idle' || runnerActivityAge(state) < 90000;
 }
 
@@ -447,9 +454,14 @@ async function runnerIsBusy() {
 // of the time. A missing watcher already has a graceful path: worker_ready comes
 // back false and the bar says the file will wait in the queue.
 //
-// Detached and unref'd on purpose. As a child it would die with the widget, and
-// killing a live recording by closing a window is exactly what session_service
-// exists to prevent.
+// detached + unref ตั้งใจไว้เพื่อ "อายุขัย" ไม่ใช่เพื่อกันไม่ให้ถูกปิด: ถ้าเป็นลูกธรรมดา
+// มันจะตายตามวิดเจ็ตทุกกรณี รวมทั้งตอนวิดเจ็ตแครช โดนสั่งจบจาก Task Manager หรือตอนผู้ใช้
+// เลือก "ปิดแค่วิดเจ็ต" เพราะยังอัดเสียงอยู่ -- ทั้งสามอย่างนี้ต้องไม่ทำให้เสียงประชุมหาย
+//
+// การปิดตอนแอปจบอย่างสวยเป็นคนละเรื่องและตั้งใจให้เกิด: มันผ่านด่าน handleQuit() ที่ win.on('close')
+// (ดูหัวข้อ "ปิดโพรเซสลูกก่อนปิดแอป" ข้างล่าง) ซึ่งอ่าน isBusy ของทุกตัวในทะเบียนก่อน
+// ตัวที่ว่างถึงจะถูกฆ่าเงียบ ๆ ตัวที่ยุ่งต้องให้ผู้ใช้ตอบก่อนเสมอ กฎคือ
+// "ไม่มีวันฆ่างานที่กำลังทำอยู่โดยที่เจ้าของยังไม่รู้ตัว" ไม่ใช่ "ไม่มีวันฆ่า"
 function startRunnerService() {
   // scan ยังไม่จบ อาจเจอ orphan ที่แค่ตอบ /api/state ไม่ทันใน 1.5s ไม่ใช่ตายจริง
   // return ก่อนเซ็ต runnerSpawnTried เพื่อให้ pollRunner รอบถัดไปยังลอง spawn ได้
@@ -490,13 +502,19 @@ function adoptOrphanRunner() {
     + "| Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
   execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps],
     { windowsHide: true, timeout: 10000 }, (err, stdout) => {
-      if (err || !stdout) {             // ส่องไม่ได้ก็ไม่ใช่เรื่องคอขาดบาดตาย ข้ามไป
+      if (err) {                        // ส่องไม่ได้ก็ไม่ใช่เรื่องคอขาดบาดตาย ข้ามไป
         orphanScanPending = false;
         return;
       }
-      let procs;
-      try { procs = JSON.parse(stdout); }
-      catch { orphanScanPending = false; return; }
+      // stdout ว่างเปล่า = ไม่เจอโพรเซสตรงเงื่อนไขสักตัว ไม่ใช่ scan พัง -- powershell จบด้วย
+      // exit 0 แล้วไม่พิมพ์อะไรเลยเมื่อ filter ไม่แมตช์ (วัดมาแล้ว) ซึ่งคือเครื่องปกติที่ยังไม่ได้
+      // เปิด service เลย เป็นเคสที่พบบ่อยที่สุดตอนเปิดแอป ถ้าไปลงทางเดียวกับ error จะข้าม
+      // การเร่ง poll ข้างล่าง แล้วบริการจะไม่ถูก spawn ไปอีก 30 วินาทีเต็ม ๆ
+      let procs = [];
+      if (String(stdout).trim()) {
+        try { procs = JSON.parse(stdout); }
+        catch { orphanScanPending = false; return; }
+      }
       // ConvertTo-Json คืน object เดี่ยว ๆ ไม่ใช่ array เมื่อเจอผลลัพธ์เดียว
       if (!Array.isArray(procs)) procs = [procs];
       let adopted = false;
@@ -631,6 +649,10 @@ function createWidget() {
     handleQuit().catch(err => {
       console.log('[quit] handleQuit failed:', err);
       quitting = false;   // เคลียร์ด่านให้ผู้ใช้กดปิดใหม่ได้ ไม่งั้นหน้าต่างจะค้างปิดไม่ได้อีกเลย
+      // อัปเดตรอบนี้ไม่ได้ไปต่อแล้ว ต้องปลด updating ด้วย ไม่งั้นมันค้าง true ตลอดชีพโพรเซส
+      // แล้วการปิดครั้งต่อ ๆ ไปจะไหลไปทาง 'quiet' ทุกครั้ง คือไม่ถามอะไรเลยแล้วทิ้งตัวที่กำลัง
+      // อัดเสียงให้รันต่อหลังวิดเจ็ตหายไปจากจอ
+      updating = false;
     });
   });
   win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); pushMeetings(); pushQaTests(); });

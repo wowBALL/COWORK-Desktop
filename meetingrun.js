@@ -92,9 +92,11 @@
   let modelsOpen = false;
   let stopping = false;     // กันกดปิดซ้ำระหว่างรอ service ตอบ
   let signature = null;     // วาดใหม่เฉพาะตอนสถานะเปลี่ยนจริง
-  // เครื่องนี้เคยติดต่อ service ได้ไหม -- ตัวตัดสินว่าจะโชว์ "รอตัวรัน" หรือไม่โชว์
-  // อะไรเลย เครื่องที่ไม่เคยมีตัวอัดต้องเห็นแท็บ Meeting เหมือน v1.8.1 เป๊ะ
+  // เครื่องนี้เคยอ่าน /api/state ได้จริงไหม (รอบนี้ หรือรอบก่อนที่จดไว้ใน config) --
+  // ประตูชั้นแรกของแถบทั้งอัน ไม่ผ่านคือไม่วาดอะไรเลย เครื่องที่ไม่เคยมีตัวอัดต้องเห็น
+  // แท็บ Meeting เหมือน v1.8.1 เป๊ะ ต่อให้มีแอปอื่นถือพอร์ต 8765 อยู่ก็ตาม
   let seenService = false;
+  let ready = false;        // service ตอบอยู่ไหม -- แยกจาก state ซึ่งมาจาก /api/state ที่ช้าได้
 
   // esc ตัวเดียวของแอปอยู่ที่ util.js -- ตรงนี้เคยมีก๊อปส่วนตัวที่ไม่ escape " ซึ่งเป็นบั๊กจริง:
   // พิมพ์ " ในชื่อห้องแล้ว value="${esc(roomDraft)}" ขาดกลางคัน เหลือข้อความแค่ถึงตัว " แรก
@@ -140,6 +142,7 @@
   function viewIdle() {
     return `<div class="mrun" data-s="idle">
         <span class="sd"></span>
+        <span class="stag">STANDBY</span>
         <input class="sin" id="mrunRoom" type="text" placeholder="ชื่อห้อง (ไม่ใส่ก็ได้)"
                value="${esc(roomDraft)}" autocomplete="off">
         <button class="sbtn" data-act="open">เปิดห้อง</button>
@@ -152,14 +155,48 @@
   function viewWaiting() {
     return `<div class="mrun" data-s="waiting">
         <span class="sd"></span>
-        <span class="stxt">รอตัวรันประชุม… <em>· เปิด start-ui.bat ที่ meeting-notes ถ้ายังไม่ขึ้น</em></span>
+        <span class="stag">OFF AIR</span>
+        <span class="stxt"><em>· เปิด start-ui.bat ที่ meeting-notes ถ้ายังไม่ขึ้น</em></span>
       </div>`;
+  }
+
+  // GET / ตอบแล้ว (service มีจริง) แต่ /api/state ยังไม่มา -- ยังไม่รู้ว่ามีห้องที่กำลัง
+  // บันทึกอยู่หรือเปล่า จึงยังไม่โชว์ปุ่มเปิดห้อง: กดตอนนี้อาจไปเปิดทับห้องที่กำลังอัด
+  // แล้วได้ 409 กลับมา รอ 1-2 วินาทีเพื่อพูดความจริงถูกกว่า
+  function viewConnecting() {
+    return `<div class="mrun" data-s="connecting">
+        <span class="sd"></span>
+        <span class="stxt">รอความพร้อม ก่อน On Air…</span>
+      </div>`;
+  }
+
+  // ON AIR = เสียงกำลังเข้าจริงเท่านั้น (ตัดสินใจแล้วโดยเจ้าของงาน)
+  //
+  // 'stopping' ถูกตั้งตั้งแต่วินาทีที่สั่งปิดห้อง แล้วค้างอยู่จนไฟล์ถูก drain และ encode
+  // เสร็จ -- เป็นสิบวินาทีถึงเป็นนาทีในประชุมยาว และไม่มีเสียงเข้าเลยในช่วงนั้น ป้าย
+  // ON AIR กับไฟแดงกะพริบตอนนั้นจึงหมายถึงคนละเรื่องกับที่มันสัญญาไว้
+  //
+  // ค่าที่ไม่รู้จักไม่นับเป็นออกอากาศโดยตั้งใจ: ไฟแดงต้องมาจากหลักฐานเดียวคือ
+  // recorder === 'recording' ไม่ใช่จากการเดา
+  //
+  // ทุกที่ที่ต้องรู้ว่า "ออกอากาศอยู่จริงไหม" อ่านจากตัวนี้ตัวเดียว -- ป้ายบนแถบ
+  // (airTagOf) · สีจุดบนแถบ (data-air) · คลาสของ pill บนแถบหัวข้อ (drawBar)
+  // สามที่ที่เทียบ 'recording' เองคือสามที่ที่รอวันพูดไม่ตรงกัน
+  function isOnAir(recorder) {
+    return recorder === 'recording';
+  }
+
+  function airTagOf(recorder) {
+    return isOnAir(recorder) ? 'ON AIR' : 'กำลังปิด';
   }
 
   function viewRecording() {
     const closing = state.recorder === 'stopping' || stopping;
-    return `<div class="mrun" data-s="recording">
+    // data-s ยังเป็น recording ทั้งสองช่วง (นาฬิกาและปุ่มปิดห้องอยู่ที่ view นี้ทั้งคู่)
+    // ตัวแยกสีคือ data-air
+    return `<div class="mrun" data-s="recording" data-air="${isOnAir(state.recorder) ? 'on' : 'closing'}">
         <span class="sd"></span>
+        <span class="stag">${airTagOf(state.recorder)}</span>
         <span class="sclock" id="mrunClock">${fmtClock(state.elapsed_seconds)}</span>
         <span class="stxt">${esc(state.room || 'ประชุมไม่ได้ตั้งชื่อ')}
           <em>· ${esc(modelTitle(state.model))}</em></span>
@@ -248,31 +285,57 @@
         ${stepsHtml(progress.stage, true)}${logHtml()}</div>` : ''}`;
   }
 
+  // การเลือก view แยกออกมาเป็น pure function เพื่อให้ node --test เทสบันไดได้
+  // โดยไม่ต้องมี DOM -- draw() ยังเป็นคนคำนวณ progress/following แล้วส่งเข้ามา
+  // ลำดับสำคัญ: failed ชนะทุกขั้น แล้วจึง done, queued, processing
+  function viewOf(opts) {
+    const o = opts || {};
+    const state = o.state;
+    // ไม่มี state: seenService เป็นประตูชั้นแรก ไม่ใช่ ready
+    //
+    // เครื่องที่ไม่เคยเห็น service เลยต้องเงียบสนิทเสมอ ต่อให้ ready เป็น true --
+    // ความพร้อมพิสูจน์ได้แค่ว่า *มีอะไร* ตอบ HTTP บนพอร์ตนั้น แอปอื่นที่ถือพอร์ต 8765
+    // อยู่ก็ตอบได้ ถ้าปล่อยให้ ready ปลุกแถบขึ้นมาได้เอง 8 เครื่องที่ติดตั้งไปซึ่งไม่มี
+    // ตัวอัดจะได้ "รอความพร้อม ก่อน On Air…" ค้างไปตลอดกาล ซึ่งค้านสัญญาของสเปกที่ว่า
+    // แท็บ Meeting บนเครื่องพวกนั้นต้องเหมือน v1.8.1 เป๊ะ
+    //
+    // พอผ่านประตูแรกแล้ว ready จึงเป็นตัวแยก: ตอบอยู่แต่ยังอ่านสถานะไม่ได้ = connecting
+    // ไม่ใช่ waiting (ซึ่งบอกให้ไปเปิด start-ui.bat ทั้งที่มันเปิดอยู่แล้ว)
+    if (!state) {
+      if (!o.seenService) return 'absent';
+      return o.ready ? 'connecting' : 'waiting';
+    }
+    if (state.recorder === 'recording' || state.recorder === 'stopping') return 'recording';
+    if (!o.following) return 'idle';
+    // ไม่มีค่า default ให้ progress โดยตั้งใจ: draw() คำนวณ following *จาก* progress
+    // (following = !!(progress && …)) ดังนั้น following จริง = progress ไม่เป็น null เสมอ
+    // ค่า default จะไม่แก้เคสไหนที่ไปถึงได้ แต่จะกลืนการผิดสัญญาในอนาคตให้กลายเป็น
+    // 'processing' เงียบ ๆ แทนที่จะโยนให้เห็น ซึ่งค้านกับเหตุผลที่แยกฟังก์ชันนี้ออกมา
+    const progress = o.progress;
+    if (progress.failed) return 'failed';
+    if (progress.stage >= 4) return 'done';
+    // stage 0 = ยังไม่มีเหตุการณ์จาก watcher เลย ถ้า watcher ไม่ได้รันด้วย
+    // แปลว่ามันไม่ได้ "กำลังทำ" อะไร แต่กำลัง "รอ"
+    if (progress.stage === 0 && state.worker_ready === false) return 'queued';
+    return 'processing';
+  }
+
   function draw() {
     // ขั้น "บีบอัดไฟล์เสียง" ไม่ได้มาจาก activity[] -- ตอน encode ยังไม่มี
     // last_result ให้ตาม จึงอ่านจาก recorder === 'stopping' แทน ซึ่งกินช่วงนั้นพอดี
     const recording = state && (state.recorder === 'recording' || state.recorder === 'stopping');
     const progress = !state || recording ? null : progressOf(state.activity, followingJob);
-    const following = progress && followingJob !== dismissedJob;
-    // stage 0 = ยังไม่มีเหตุการณ์จาก watcher เลย ถ้า watcher ไม่ได้รันด้วย
-    // แปลว่ามันไม่ได้ "กำลังทำ" อะไร แต่กำลัง "รอ"
-    const queuedNoWorker = following && !progress.failed
-      && progress.stage === 0 && state.worker_ready === false;
-    const view = !state ? (seenService ? 'waiting' : 'absent')
-      : recording ? 'recording'
-      : !following ? 'idle'
-      : progress.failed ? 'failed'
-      : progress.stage >= 4 ? 'done'
-      : queuedNoWorker ? 'queued'
-      : 'processing';
+    const following = !!(progress && followingJob !== dismissedJob);
+    const view = viewOf({ ready, state, seenService, progress, following });
 
-    const sig = [view, seenService, state && state.room, state && state.model, model, modelsOpen, stopping,
+    const sig = [view, ready, seenService, state && state.room, state && state.model, model, modelsOpen, stopping,
       detailOpen, followingJob, state && state.worker_ready,
       progress ? `${progress.stage}:${progress.failed}` : '',
       state ? (state.warnings || []).map((w) => w.code).join(',') : ''].join('|');
     if (sig !== signature) {
       // service ไม่ตอบ = ไม่วาดอะไรเลย ไม่ใช่ปุ่มเทาที่กดแล้วพัง
       root.innerHTML = view === 'absent' ? ''
+        : view === 'connecting' ? viewConnecting()
         : view === 'waiting' ? viewWaiting()
         : view === 'recording' ? viewRecording()
         : view === 'queued' ? viewQueued()
@@ -351,7 +414,11 @@
     let cls = null;
     let html = '';
     if (view === 'recording') {
-      cls = 'rec';
+      // pill แดงกะพริบต้องหมายถึงสิ่งเดียวกับป้าย ON AIR บนแถบ ไม่ใช่ "view เป็น
+      // recording" ซึ่งกินช่วง encode หลังปิดห้องด้วย -- ช่วงนั้นใช้ wait (amber
+      // ไม่กะพริบ) ซึ่งมีอยู่แล้วสำหรับ queued จึงไม่ต้องเพิ่มสีหรือคลาสใหม่
+      // นาฬิกายังเดินอยู่ทั้งสองช่วง คนที่ลืมปิดห้องยังต้องเห็นเวลา
+      cls = isOnAir(state.recorder) ? 'rec' : 'wait';
       html = `<span class="d"></span>${fmtClock(state.elapsed_seconds)}`;
     } else if (view === 'processing') {
       const total = stepCount();
@@ -404,9 +471,17 @@
   }
 
   function onData(next) {
-    state = next;
+    // payload คือ { ready, state } ไม่ใช่ state เปล่า ๆ -- ready มาจาก GET / ซึ่งเร็ว
+    // และเชื่อได้ ส่วน state มาจาก /api/state ซึ่งช้าได้และเป็น null ได้
+    const payload = next || {};
+    ready = !!payload.ready;
+    state = payload.state || null;
     // ติดต่อได้ครั้งเดียวก็พอที่จะรู้ว่าเครื่องนี้มีตัวอัด -- ครั้งต่อไปที่ติดต่อ
     // ไม่ได้จึงบอกว่า "รออยู่" แทนที่จะหายไปเงียบ ๆ
+    // ผูกกับ state ที่ parse ผ่าน ไม่ใช่ ready -- ต้องเป็นหลักฐานชุดเดียวกับที่ main.js
+    // ใช้เขียน meetingRunnerSeen ลง config ไม่งั้นกฎ absent ใน viewOf ไม่มีผลอะไรเลย:
+    // แอปอื่นที่ถือพอร์ต 8765 อยู่จะทำให้ ready เป็น true ในรอบ poll แรก แล้วยกธงนี้
+    // ค้างไว้ตลอดชีพหน้าต่าง แถบก็ติดขึ้นมาอยู่ดี
     if (state) seenService = true;
     if (state && state.recorder === 'recording') stopping = false;
     // เริ่มตามงานตั้งแต่วินาทีที่ service บอกว่าได้ไฟล์แล้ว -- last_result ถูกล้าง
@@ -437,6 +512,11 @@
     fmtClock,
     progressOf,
     finishedMeetingId,
+    isOnAir,
+    airTagOf,
+    viewOf,
+    viewWaiting,
+    viewConnecting,
   };
 
   global.COWORK = global.COWORK || {};

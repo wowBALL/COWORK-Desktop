@@ -114,3 +114,150 @@ test('the five step labels match meeting-notes web/app.js exactly', () => {
   assert.deepStrictEqual(core.STEPS,
     ['บีบอัดไฟล์เสียง', 'ถอดเสียง', 'แยกผู้พูด', 'สรุป', 'เสร็จ']);
 });
+
+// บันไดการเลือก view -- ย้ายออกมาจาก draw() ซึ่งแตะ DOM จึงเทสไม่ได้
+// ชุดนี้คือ baseline ของพฤติกรรมเดิม ต้องผ่านทั้งก่อนและหลังเปลี่ยนข้อความเป็น On Air
+const IDLE = { recorder: 'idle', activity: [], worker_ready: true };
+
+test('viewOf: ไม่มี state และเครื่องนี้ไม่เคยเห็น service = ไม่วาดอะไร', () => {
+  assert.strictEqual(core.viewOf({ state: null, seenService: false }), 'absent');
+});
+
+test('viewOf: ไม่มี state แต่เคยเห็น service = บอกว่ากำลังรอ', () => {
+  assert.strictEqual(core.viewOf({ state: null, seenService: true }), 'waiting');
+});
+
+test('viewOf: กำลังอัด และกำลังปิดห้อง ถือเป็น recording ทั้งคู่', () => {
+  assert.strictEqual(core.viewOf({ state: { recorder: 'recording' } }), 'recording');
+  assert.strictEqual(core.viewOf({ state: { recorder: 'stopping' } }), 'recording');
+});
+
+test('viewOf: ว่างและไม่ได้ตามงานอยู่ = idle', () => {
+  assert.strictEqual(core.viewOf({ state: IDLE, following: false }), 'idle');
+});
+
+test('viewOf: งานล้มชนะทุกขั้น', () => {
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: true, progress: { stage: 3, failed: true },
+  }), 'failed');
+});
+
+test('viewOf: ถึงขั้น 4 = done', () => {
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: true, progress: { stage: 4, failed: false },
+  }), 'done');
+});
+
+test('viewOf: ขั้น 0 และ worker ไม่พร้อม = queued ไม่ใช่ processing', () => {
+  assert.strictEqual(core.viewOf({
+    state: { recorder: 'idle', activity: [], worker_ready: false },
+    following: true,
+    progress: { stage: 0, failed: false },
+  }), 'queued');
+});
+
+test('viewOf: ขั้น 0 แต่ worker พร้อม = processing', () => {
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: true, progress: { stage: 0, failed: false },
+  }), 'processing');
+});
+
+test('viewOf: state ที่ไม่มีฟิลด์ worker_ready เลย = processing ไม่ใช่ queued', () => {
+  // โค้ดเทียบด้วย === false โดยตั้งใจ: service เวอร์ชันที่ยังไม่ส่งฟิลด์นี้มา ต้องไม่ถูก
+  // อ่านว่า "ตัวประมวลผลไม่พร้อม" แล้วค้างเป็น queued ทั้งที่ไปป์ไลน์เดินอยู่
+  assert.strictEqual(core.viewOf({
+    state: { recorder: 'idle', activity: [] },
+    following: true,
+    progress: { stage: 0, failed: false },
+  }), 'processing');
+});
+
+test('viewOf: เลิกตามงานแล้ว (กด ✕) แต่ progress ยังมีค่า = idle', () => {
+  // เส้นทางจริงหลังผู้ใช้กด ✕: draw() ยังคำนวณ progress ได้ตามเดิม แต่ following
+  // เป็น false เพราะ followingJob === dismissedJob -- ต้องกลับไปที่แถบว่าง
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: false, progress: { stage: 4, failed: false },
+  }), 'idle');
+});
+
+test('viewOf: กลางไปป์ไลน์ = processing', () => {
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: true, progress: { stage: 2, failed: false },
+  }), 'processing');
+});
+
+test('viewOf: พร้อมแล้วแต่ยังอ่านสถานะไม่ได้ = connecting ไม่ใช่ waiting', () => {
+  assert.strictEqual(core.viewOf({ ready: true, state: null, seenService: true }), 'connecting');
+});
+
+test('viewOf: เครื่องที่ไม่เคยเห็น service ต้องเงียบ แม้พอร์ตจะมีอะไรตอบอยู่', () => {
+  // กฎนี้กลับด้านจากแผนเดิม ซึ่งให้ connecting ชนะ absent ด้วยเหตุผลว่า "GET / ตอบแล้ว
+  // คือเห็นแล้ว" -- เหตุผลนั้นผิด: ความพร้อมพิสูจน์ได้แค่ว่า *มีอะไร* ตอบ HTTP บนพอร์ตนั้น
+  // แอปอื่นที่ถือพอร์ต 8765 อยู่ก็ตอบได้ ปลุกแท็บที่สเปกสัญญาว่าจะไม่แตะขึ้นมาด้วยหลักฐาน
+  // เท่านั้นไม่ได้ -- 8 เครื่องที่ติดตั้งไปซึ่งไม่มีตัวอัดจะได้แถบค้างไปตลอดกาล
+  //
+  // "เคยเห็นจริง" = /api/state ตอบและ parse ผ่าน (หรือ flag ที่บันทึกไว้ใน config แล้ว)
+  assert.strictEqual(core.viewOf({ ready: true, state: null, seenService: false }), 'absent');
+});
+
+test('viewOf: ไม่พร้อมและไม่มี state ยังตัดสินด้วย seenService เหมือนเดิม', () => {
+  assert.strictEqual(core.viewOf({ ready: false, state: null, seenService: true }), 'waiting');
+  assert.strictEqual(core.viewOf({ ready: false, state: null, seenService: false }), 'absent');
+});
+
+test('viewOf: มี state แล้ว ready ไม่มีผลต่อการเลือก view', () => {
+  // ความพร้อมเป็นเรื่องของ "คุยได้ไหม" สถานะจริงมาจาก /api/state เท่านั้น
+  assert.strictEqual(core.viewOf({ ready: true, state: { recorder: 'recording' } }), 'recording');
+  assert.strictEqual(core.viewOf({ ready: false, state: { recorder: 'recording' } }), 'recording');
+});
+
+test('viewWaiting บอก OFF AIR และยังบอกวิธีเปิด service', () => {
+  const html = core.viewWaiting();
+  assert.match(html, /OFF AIR/);
+  assert.match(html, /start-ui\.bat/);
+  assert.match(html, /data-s="waiting"/);
+});
+
+// ON AIR = เสียงกำลังเข้าจริงเท่านั้น -- view `recording` กินทั้งช่วงอัดและช่วงปิด
+// (นาฬิกาและปุ่มปิดห้องอยู่ที่นั้นทั้งคู่) ตัวที่ต้องแยกคือป้ายและสี
+//
+// isOnAir เป็นตัวตัดสินตัวเดียวของทั้งไฟล์: ป้ายบนแถบ (airTagOf), สีจุดบนแถบ
+// (data-air) และคลาสของ pill บนแถบหัวข้อ (drawBar) อ่านจากตัวนี้ทั้งหมด สามที่ที่
+// เทียบ recorder === 'recording' เองคือสามที่ที่รอวันพูดไม่ตรงกัน
+test('isOnAir: จริงเฉพาะตอนกำลังอัด', () => {
+  assert.strictEqual(core.isOnAir('recording'), true);
+});
+
+test('isOnAir: สั่งปิดแล้วแต่ยังบีบอัดไฟล์อยู่ = ไม่ได้ออกอากาศ', () => {
+  assert.strictEqual(core.isOnAir('stopping'), false);
+});
+
+test('isOnAir: ค่าที่ไม่คาดคิดต้องไม่นับเป็นออกอากาศ', () => {
+  assert.strictEqual(core.isOnAir('idle'), false);
+  assert.strictEqual(core.isOnAir(undefined), false);
+});
+
+test('airTagOf: กำลังอัดอยู่ = ON AIR', () => {
+  assert.strictEqual(core.airTagOf('recording'), 'ON AIR');
+});
+
+test('airTagOf: สั่งปิดแล้วแต่ยังบีบอัดไฟล์อยู่ = กำลังปิด ไม่ใช่ ON AIR', () => {
+  // 'stopping' ค้างอยู่จนไฟล์ถูก drain และ encode เสร็จ -- เป็นสิบวินาทีถึงเป็นนาที
+  // ในประชุมยาว และไม่มีเสียงเข้าเลยในช่วงนั้น
+  assert.strictEqual(core.airTagOf('stopping'), 'กำลังปิด');
+});
+
+test('airTagOf: ค่าที่ไม่คาดคิดต้องไม่ติดไฟแดง', () => {
+  // ป้าย ON AIR ต้องได้มาจากหลักฐานเดียวคือ recorder === 'recording'
+  assert.strictEqual(core.airTagOf('idle'), 'กำลังปิด');
+  assert.strictEqual(core.airTagOf(undefined), 'กำลังปิด');
+});
+
+test('viewConnecting บอกว่ารอความพร้อม และต้องไม่มีปุ่มเปิดห้อง', () => {
+  const html = core.viewConnecting();
+  assert.match(html, /รอความพร้อม ก่อน On Air/);
+  assert.match(html, /data-s="connecting"/);
+  // assert ที่การไม่มีปุ่ม ไม่ใช่แค่ข้อความ -- ข้อความถูกได้ทั้งที่ปุ่มยังโผล่
+  assert.doesNotMatch(html, /data-act="open"/);
+  assert.doesNotMatch(html, /<button/);
+});

@@ -1,11 +1,10 @@
 const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, dialog } = require('electron');
-const { spawn, execFile } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { readWorkspace } = require('./workspace');
 const { readMeetings, readTranscript } = require('./meetings');
 const { readQaResults } = require('./qatest');
-const { registry, decideQuit, matchOrphan } = require('./children');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -162,7 +161,6 @@ async function downloadUpdate(update) {
 
 function installUpdate(installerPath) {
   const installDir = path.dirname(process.execPath);
-  updating = true;   // ระหว่างอัปเดตห้ามถาม -- ตัวที่ว่างยังถูกปิด ตัวที่ยุ่งปล่อยไว้ทำงานต่อ
   console.log('[updater] installing to', installDir);
   // Generic NSIS docs say /D= must be unquoted even with spaces in the path — tested against
   // this actual electron-builder-generated installer, that's wrong: unquoted truncates the
@@ -189,8 +187,7 @@ function installUpdate(installerPath) {
   //  --force-run และ /S มาคู่กัน)
   //
   // /D= ต้องอยู่ท้ายสุดเสมอ
-  // ตัวนี้ต้องไม่เข้าทะเบียน children.js -- มันตั้งใจให้รอดหลังแอปปิด ถ้าจดทะเบียนไว้
-  // เราจะฆ่าตัวติดตั้งของตัวเองทิ้งตอนปิดแอปพอดี
+  // detached + unref ตั้งใจให้ตัวติดตั้งรอดหลังแอปปิด ไม่ผูกชะตากับโพรเซสหลักที่กำลังจะตายไป
   app.once('quit', () => {
     spawn(installerPath, ['/S', '--force-run', '/D="' + installDir + '"'],
       { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
@@ -371,15 +368,67 @@ function pushWorkspace() {
 // Reads and commands over HTTP, never spawns the recorder itself: the
 // manifest -> encode -> inbox/ ordering lives in session_service.py and nowhere
 // else. Copying it to a second place is how a meeting's audio goes missing.
-let runnerTimer = null;
+
+// ตัวหยั่งความพร้อมแบบถูก ๆ -- คำถามคือ "มีอะไรตอบ HTTP บนพอร์ตนี้ไหม" เท่านั้น
+//
+// index() ของ session_service แค่ส่งไฟล์สแตติก ไม่เรียก worker probe จึงตอบใน ~11 ms
+// เสมอ ต่างจาก /api/state ที่รัน powershell + Get-CimInstance ทั้งเครื่องแบบ sync คาอยู่ใน
+// รีเควสต์ (วัดจริง 2026-07-30: 376 / 1151 / 1171 / 1463 / 2140 ms) แล้วแพ้ timeout เดิม
+// 1500 ms เป็นส่วนใหญ่ ทำให้วิดเจ็ตรายงานว่าไม่มี service ทั้งที่มันรันอยู่และตอบได้ปกติ
+//
+// นับ "ตอบกลับมา" ไม่ใช่ res.ok: 404 ก็คือมีเซิร์ฟเวอร์อยู่ตรงนั้นแล้ว ถ้าผูกไว้กับ 200
+// วันที่ index.html ฝั่ง meeting-notes ถูกเปลี่ยนชื่อ วิดเจ็ตจะค้างที่ OFF AIR และซ่อน
+// ปุ่มอัดหายไป -- คือบั๊กเดิมที่กลับมาทางประตูอื่น
+//
+// สิ่งที่มันไม่ได้พิสูจน์: ว่าคนที่ตอบคือ session_service จริง แอปอะไรก็ตามที่ถือพอร์ตนี้
+// อยู่ก็ตอบได้ คำถาม "เครื่องนี้เคยมี meeting-notes ไหม" จึงตัดสินจาก /api/state ที่
+// parse ผ่านเท่านั้น (ดู readRunner) ไม่ใช่จากค่าที่ฟังก์ชันนี้คืน
+async function fetchRunnerReady() {
+  try {
+    await fetch(`http://127.0.0.1:${runnerPort}/`, { signal: AbortSignal.timeout(1500) });
+    return true;
+  } catch { return false; }   // พอร์ตปิด = ยังไม่ได้เปิด meeting-notes ไม่ใช่ error ที่ต้องโชว์
+}
 
 async function fetchRunnerState() {
   try {
+    // 5000 ไม่ใช่ 1500: /api/state รัน worker probe แบบ sync ได้ถึง ~2.1 วินาที
+    // ค่านี้ตรงกับที่ runner-start/runner-stop ใช้อยู่แล้ว ไม่ใช่ค่าที่คิดขึ้นใหม่
+    // ความพร้อมไม่ถูก endpoint นี้ *กั้น* อีกแล้ว (ดู fetchRunnerReady ซึ่งเป็นเส้นทางเร็ว)
+    // การรอนานขึ้นจึงไม่ทำให้ผู้ใช้เห็นแถบค้าง -- ทางกลับกันคำตอบที่ parse ผ่านของ
+    // endpoint นี้ *ยืนยัน* ความพร้อมได้เองด้วย (ดู readRunner)
     const res = await fetch(`http://127.0.0.1:${runnerPort}/api/state?lang=th`,
-      { signal: AbortSignal.timeout(1500) });
+      { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     return await res.json();
-  } catch { return null; }   // no answer = no recorder on this machine, not an error to show
+  } catch { return null; }   // อ่านสถานะไม่ทัน -- ไม่ได้แปลว่า service ไม่มี
+}
+
+// อ่านความพร้อม + สถานะเป็นก้อนเดียว -- ทั้งฝั่ง push (รอบ poll) และฝั่ง pull
+// (runner-get-state ที่ onShow/openRoom/stopRoom เรียก) ต้องได้รูป { ready, state }
+// เดียวกันเป๊ะ ไม่งั้น onShow() กับรอบ poll เห็นโลกไม่เหมือนกัน จึงมีที่เดียว
+//
+// สถานะเป็นใหญ่กว่าตัวหยั่ง: /api/state ตอบและ parse ผ่าน = service ติดต่อได้ *โดยนิยาม*
+// ไม่ว่า GET / จะทันหรือไม่ทัน ตัวหยั่งพลาดครั้งเดียวเคยทำให้แถบตกไป OFF AIR (ไม่มีปุ่ม
+// หยุด ไม่มีไฟแดง) แล้วรอ 30 วินาทีก่อนถามใหม่ ทั้งที่กำลังอัดอยู่ -- pushMeetings /
+// pushWorkspace / pushQaTests เป็น fs walk แบบ sync บนเธรดเดียวกันและยิงทุก 5 นาที
+// วอลต์ที่อยู่บน network share ตัวเดียวก็หยุด event loop ได้นานพอให้ตัวนับ 1500 ms ชนะ
+//
+// แต่เครื่องที่ไม่เคยเห็น service เลย (runnerSeen เป็น false ตลอดชีพเครื่อง) ยังไม่ถาม
+// /api/state แม้แต่ครั้งเดียว -- 8 เครื่องที่ติดตั้งไปซึ่งไม่มีตัวอัดจึงไม่ไปจุด worker
+// probe (powershell หนึ่งตัวต่อหนึ่งครั้ง) ให้ service ฟรี ๆ และแท็บ Meeting ยังเงียบ
+async function readRunner() {
+  const probe = await fetchRunnerReady();
+  const state = probe || runnerSeen ? await fetchRunnerState() : null;
+  // ผูก "เครื่องนี้เคยมี meeting-notes ไหม" กับหลักฐานที่แข็งที่สุดที่มี: JSON จาก
+  // /api/state ที่ parse ผ่าน ค่านี้ถูกเขียนลง config แบบถาวร -- GET / ที่ตอบ 200
+  // เฉย ๆ พิสูจน์ไม่ได้ว่าเป็น service ของเรา เครื่องที่มีแอปอื่นถือพอร์ตนี้อยู่จะได้
+  // บันไดสถานะติดค้างไปตลอดกาลทั้งที่แท็บ Meeting ควรเงียบสนิท
+  if (state && !runnerSeen) {
+    runnerSeen = true;
+    writeConfigMerge({ meetingRunnerSeen: true });
+  }
+  return { ready: probe || !!state, state };
 }
 
 // อายุของเหตุการณ์ล่าสุด ใช้เป็นตัวชี้ว่า pipeline หลังปิดห้องยังเดินอยู่หรือเงียบไปแล้ว
@@ -394,157 +443,25 @@ function runnerActivityAge(state) {
 // Poll cadence follows the situation. The installer goes to 8 machines, most
 // without the service at all — hammering 127.0.0.1 once a second all day there
 // buys nothing.
-function runnerInterval(state) {
-  if (!state) return Date.now() < runnerWarmUntil ? 2000 : 30000;
+function runnerInterval(ready, state) {
+  // ไม่มี service ตอบบนเครื่องนี้
+  if (!ready) return 30000;
+  // พร้อมแล้วแต่ยังอ่านสถานะไม่ได้: รีบถามซ้ำเพื่อปิดช่อง connecting ให้เร็ว
+  if (!state) return 2000;
   if (state.recorder !== 'idle') return 1000;
   // Room closed but the watcher's pipeline is still running: keep up the pace
   // while fresh events keep arriving, then ease off once it goes quiet.
   return runnerActivityAge(state) < 90000 ? 1000 : 5000;
 }
 
-// The repo root is the parent of the configured meetings/ folder, and the venv
-// inside it is the gate: no venv, no spawn, so machines without meeting-notes do
-// nothing at all and need no extra setting to say so.
-//
-// เลือก pythonw.exe ก่อนเสมอ มันเป็นไบนารีคนละตัวที่คอมไพล์มาเป็น GUI subsystem จึงไม่มี
-// คอนโซลให้ Windows Terminal คว้าไปเปิดเป็นหน้าต่างดำ -- windowsHide ที่ส่งตอน spawn
-// เอาไม่อยู่ เพราะวินโดวส์ 11 ส่งต่อคอนโซลให้ Windows Terminal (defterm) ข้าม
-// CREATE_NO_WINDOW ไป วัดมาแล้วบนเครื่องนี้: python.exe ใส่หรือไม่ใส่ windowsHide
-// ได้หน้าต่างเหมือนกันเป๊ะ ส่วน pythonw.exe ไม่มีหน้าต่างและยังรอดหลัง parent ตายเหมือนเดิม
-//
-// stdio:'ignore' ทำให้ node ผูก handle ไปที่ NUL ให้ sys.stdout/sys.stderr ของ pythonw
-// จึงเป็นไฟล์ปกติ ไม่ใช่ None -- logging.basicConfig ใน session_service.py จึงไม่พัง
-function runnerVenvPython() {
-  if (!meetingsDir) return null;
-  const dir = path.join(path.dirname(meetingsDir), '.venv', 'Scripts');
-  for (const exe of ['pythonw.exe', 'python.exe']) {
-    const p = path.join(dir, exe);
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
-}
-
-let runnerSpawnTried = false;
-let runnerWarmUntil = 0;   // poll fast for a moment after spawning, see runnerInterval
-
-// true ระหว่างที่ adoptOrphanRunner() กำลังส่อง process อยู่ (execFile ยังไม่ callback กลับมา)
-// กัน pollRunner spawn ตัวใหม่ซ้อนทับ orphan ที่ยังไม่ตายแค่ตอบ /api/state ไม่ทันภายใน 1.5s
-let orphanScanPending = false;
-
-// ยุ่ง = กำลังอัดอยู่ หรือปิดห้องแล้วแต่ pipeline ของ watcher ยังเดินอยู่
-//
-// ตอบไม่ได้ต้องคืน null ห้ามคืน false -- /api/state ที่เงียบ "ไม่ได้" แปลว่าโพรเซสตายแล้ว:
-// session_service รีเฟรช worker probe แบบ sync คาอยู่ในรีเควสต์ /api/state นั้นเอง (แคช 10 วิ)
-// และ probe ตัวนั้นคือ powershell + Get-CimInstance Win32_Process ไล่ทั้งเครื่องแบบไม่กรอง
-// ซึ่งกินเวลา 1-3 วินาทีเป็นเรื่องปกติ ส่วน fetchRunnerState ตัดที่ 1.5 วินาที
-// พอร์ตก็เป็นอีกทาง: เราถาม runnerPort ของวิดเจ็ต แต่ตัวที่ adopt มาจับคู่ด้วย path + command line
-// ไม่เคยยืนยันว่ามันถือพอร์ตนี้จริง ตั้งค่าคนละพอร์ตเมื่อไหร่ก็เงียบทุกครั้ง
-//
-// ทั้งสองทางจบเหมือนกันคือ "ถามไม่ได้" ปล่อยให้ children.js ตัดสินต่อด้วยการมีชีวิตของ pid
-// (ยังอยู่ = ถือว่ายุ่ง จึงมีกล่องถามเสมอ / ตายจริง = ไม่ยุ่ง ผู้ใช้ไม่โดนถามฟรี)
-async function runnerIsBusy() {
-  const state = await fetchRunnerState();
-  if (!state) return null;
-  return state.recorder !== 'idle' || runnerActivityAge(state) < 90000;
-}
-
-// Starts ONLY session_service, never the watcher. The watcher loads Whisper and
-// pyannote into VRAM, and the widget opens at Windows login on installed builds —
-// paying that on every login would be a bad trade for a service that is idle most
-// of the time. A missing watcher already has a graceful path: worker_ready comes
-// back false and the bar says the file will wait in the queue.
-//
-// detached + unref ตั้งใจไว้เพื่อ "อายุขัย" ไม่ใช่เพื่อกันไม่ให้ถูกปิด: ถ้าเป็นลูกธรรมดา
-// มันจะตายตามวิดเจ็ตทุกกรณี รวมทั้งตอนวิดเจ็ตแครช โดนสั่งจบจาก Task Manager หรือตอนผู้ใช้
-// เลือก "ปิดแค่วิดเจ็ต" เพราะยังอัดเสียงอยู่ -- ทั้งสามอย่างนี้ต้องไม่ทำให้เสียงประชุมหาย
-//
-// การปิดตอนแอปจบอย่างสวยเป็นคนละเรื่องและตั้งใจให้เกิด: มันผ่านด่าน handleQuit() ที่ win.on('close')
-// (ดูหัวข้อ "ปิดโพรเซสลูกก่อนปิดแอป" ข้างล่าง) ซึ่งอ่าน isBusy ของทุกตัวในทะเบียนก่อน
-// ตัวที่ว่างถึงจะถูกฆ่าเงียบ ๆ ตัวที่ยุ่งต้องให้ผู้ใช้ตอบก่อนเสมอ กฎคือ
-// "ไม่มีวันฆ่างานที่กำลังทำอยู่โดยที่เจ้าของยังไม่รู้ตัว" ไม่ใช่ "ไม่มีวันฆ่า"
-function startRunnerService() {
-  // scan ยังไม่จบ อาจเจอ orphan ที่แค่ตอบ /api/state ไม่ทันใน 1.5s ไม่ใช่ตายจริง
-  // return ก่อนเซ็ต runnerSpawnTried เพื่อให้ pollRunner รอบถัดไปยังลอง spawn ได้
-  if (orphanScanPending) return;
-  if (runnerSpawnTried) return;   // once per app run: a service that crashes on
-  runnerSpawnTried = true;        // boot must not be respawned every 30s forever
-  const python = runnerVenvPython();
-  if (!python) return;
-  try {
-    registry.spawnTracked(python, ['-m', 'src.session_service'], {
-      cwd: path.dirname(meetingsDir),
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    }, { name: 'ตัวประมวลผลประชุม (session_service)', isBusy: runnerIsBusy });
-    // Flask needs a few seconds to bind. Without this the next look would be 30s
-    // away and the bar would sit hidden long after the service was actually up.
-    runnerWarmUntil = Date.now() + 25000;
-  } catch { /* no recorder on this machine is a normal state, not an error */ }
-}
-
-// รับเลี้ยง session_service ที่รอบก่อนทิ้งไว้ (แอปโดนฆ่าจาก Task Manager, ล็อกเอาต์, ไฟดับ)
-// ไม่งั้นทะเบียนจะรู้จักเฉพาะตัวที่ spawn ในรอบนี้ แล้ว orphan จะค้างสะสมไปเรื่อย ๆ
-//
-// ใช้ powershell + Get-CimInstance ไม่ใช่ wmic -- wmic ถูกถอดออกจากวินโดวส์ 11 รุ่นนี้แล้ว
-// execFile แบบไม่ detached จึงไม่มีหน้าต่างโผล่ (วัดมาแล้ว) และ powershell ตายไปกับแอปอยู่แล้ว
-// จึงไม่ต้องเข้าทะเบียน
-//
-// ผลข้างเคียงที่ยอมรับแล้ว: ถ้าผู้ใช้เปิด session_service เองจาก terminal ด้วย venv ตัวเดียวกัน
-// มันจะถูกนับเป็นลูกและถูกปิดพร้อมวิดเจ็ต
-function adoptOrphanRunner() {
-  const python = runnerVenvPython();
-  if (!python) return;                  // เครื่องนี้ไม่มี meeting-notes ไม่ต้องไปส่องอะไรเลย
-  orphanScanPending = true;             // กัน pollRunner spawn ซ้อนจนกว่า scan นี้จะจบ (ทุก exit path ข้างล่างต้องเคลียร์)
-  const dir = path.dirname(python);
-  const exePaths = ['pythonw.exe', 'python.exe'].map(e => path.join(dir, e));
-  const ps = "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" "
-    + "| Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
-  execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps],
-    { windowsHide: true, timeout: 10000 }, (err, stdout) => {
-      if (err) {                        // ส่องไม่ได้ก็ไม่ใช่เรื่องคอขาดบาดตาย ข้ามไป
-        orphanScanPending = false;
-        return;
-      }
-      // stdout ว่างเปล่า = ไม่เจอโพรเซสตรงเงื่อนไขสักตัว ไม่ใช่ scan พัง -- powershell จบด้วย
-      // exit 0 แล้วไม่พิมพ์อะไรเลยเมื่อ filter ไม่แมตช์ (วัดมาแล้ว) ซึ่งคือเครื่องปกติที่ยังไม่ได้
-      // เปิด service เลย เป็นเคสที่พบบ่อยที่สุดตอนเปิดแอป ถ้าไปลงทางเดียวกับ error จะข้าม
-      // การเร่ง poll ข้างล่าง แล้วบริการจะไม่ถูก spawn ไปอีก 30 วินาทีเต็ม ๆ
-      let procs = [];
-      if (String(stdout).trim()) {
-        try { procs = JSON.parse(stdout); }
-        catch { orphanScanPending = false; return; }
-      }
-      // ConvertTo-Json คืน object เดี่ยว ๆ ไม่ใช่ array เมื่อเจอผลลัพธ์เดียว
-      if (!Array.isArray(procs)) procs = [procs];
-      let adopted = false;
-      for (const pid of matchOrphan(procs, { exePaths, needle: 'src.session_service' })) {
-        if (registry.adopt(pid, { name: 'ตัวประมวลผลประชุม (session_service)', isBusy: runnerIsBusy })) {
-          console.log('[children] adopted orphan session_service', pid);
-          runnerSpawnTried = true;      // มีตัวรันอยู่แล้ว ไม่ต้องไป spawn ซ้อน
-          adopted = true;
-        }
-      }
-      orphanScanPending = false;
-      // scan จบแล้วไม่เจออะไรให้ adopt เลย -- เร่ง poll รอบถัดไปทันที ไม่งั้นเครื่องที่ไม่มี
-      // service เลยจะรอ 30s เปล่า ๆ ทั้งที่ startRunnerService ถูกกันไว้แค่ระหว่าง scan เท่านั้น
-      if (!adopted) {
-        clearTimeout(runnerTimer);
-        pollRunner();
-      }
-    });
-}
-
 async function pollRunner() {
-  const state = await fetchRunnerState();
-  if (state && !runnerSeen) {
-    runnerSeen = true;
-    writeConfigMerge({ meetingRunnerSeen: true });
-  }
-  if (!state) startRunnerService();
-  if (win) win.webContents.send('runner-update', state);
+  const { ready, state } = await readRunner();
+  // isDestroyed() ไม่ใช่แค่ !win: win ไม่เคยถูกเซ็ตเป็น null ที่ไหนเลย และรอบนี้ await
+  // ได้ถึง 1500 + 5000 ms ก่อนแตะ webContents ถ้าหน้าต่างถูกทำลายกลางทาง send() จะโยน
+  // อยู่ใน async function ที่ไม่มี .catch -- โซ่ poll ตายพร้อม unhandled rejection
+  if (win && !win.isDestroyed()) win.webContents.send('runner-update', { ready, state });
   // setTimeout rather than setInterval: the gap changes with the state
-  runnerTimer = setTimeout(pollRunner, runnerInterval(state));
+  setTimeout(pollRunner, runnerInterval(ready, state));
 }
 
 // meeting-notes vault — path comes from settings (meetingsDir, loaded in loadAppConfig).
@@ -566,49 +483,6 @@ function pushQaTests() {
   try { payload = readQaResults(qaSources); }
   catch (e) { payload = { runs: [], sources: [], error: e.message }; }
   win.webContents.send('qatest-update', payload);
-}
-
-// ---- ปิดโพรเซสลูกก่อนปิดแอป --------------------------------------------------
-// ด่านอยู่ที่ win.on('close') ไม่ใช่ app.on('before-quit') เพราะ before-quit ยิงหลังหน้าต่าง
-// ถูกทำลายไปแล้ว (เส้นทางจริง: ipc 'win-close' -> win.close() -> window-all-closed -> app.quit())
-// ถ้าไปดักตรงนั้น ปุ่ม "ยกเลิก" จะเหลือแอปที่รันอยู่โดยไม่มีหน้าต่างให้กดอะไรได้เลย
-let quitConfirmed = false;
-let quitting = false;      // ผ่านด่านแล้วกำลังรอ await อยู่ (states/stopAll/dialog) กันกดปิดซ้ำแล้วเข้า handleQuit() ซ้อนกัน
-let updating = false;      // ตั้งโดย installUpdate() -- ห้ามเด้งกล่องกลางทางอัปเดต
-
-async function handleQuit() {
-  quitting = true;
-  let states = [];
-  try { states = await registry.states(); } catch { states = []; }
-  const action = decideQuit(states, { updating });
-  const idlePids = states.filter(s => !s.busy).map(s => s.pid);
-
-  if (action === 'kill') {
-    await registry.stopAll();
-  } else if (action === 'quiet') {
-    await registry.stopAll(idlePids);
-  } else {
-    const busy = states.filter(s => s.busy).map(s => s.name).join(', ');
-    const parent = win && !win.isDestroyed() ? win : null;
-    const opts = {
-      type: 'warning',
-      title: 'COWORK Desktop',
-      message: 'มีงานที่ยังทำอยู่',
-      detail: `${busy} กำลังอัดเสียงหรือประมวลผลอยู่ ถ้าปิดตอนนี้งานรอบนี้จะหาย`,
-      buttons: ['ปิดทั้งหมด', 'ปิดแค่วิดเจ็ต', 'ยกเลิก'],
-      defaultId: 1,
-      cancelId: 2,
-      noLink: true,
-    };
-    const r = parent ? await dialog.showMessageBox(parent, opts)
-                     : await dialog.showMessageBox(opts);
-    if (r.response === 2) { quitting = false; return; } // ยกเลิก: หน้าต่างยังอยู่ ไม่ปิดอะไรทั้งนั้น เปิดด่านใหม่ให้ปิดซ้ำได้
-    if (r.response === 0) await registry.stopAll();
-    else await registry.stopAll(idlePids);
-  }
-
-  quitConfirmed = true;
-  app.quit();
 }
 
 function createWidget() {
@@ -640,21 +514,9 @@ function createWidget() {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
   }
   win.loadFile('widget.html');
-  win.on('close', (e) => {
-    // ผ่านด่านมาแล้ว หรือไม่มีลูกให้จัดการ ก็ปล่อยปิดตามปกติ
-    if (quitConfirmed || registry.list().length === 0) return;
-    e.preventDefault();
-    // รอบก่อนยัง await ไม่จบ (states/stopAll/dialog ค้างอยู่) กันไม่ให้กดซ้ำแล้ว handleQuit() เข้าซ้อนกัน
-    if (quitting) return;
-    handleQuit().catch(err => {
-      console.log('[quit] handleQuit failed:', err);
-      quitting = false;   // เคลียร์ด่านให้ผู้ใช้กดปิดใหม่ได้ ไม่งั้นหน้าต่างจะค้างปิดไม่ได้อีกเลย
-      // อัปเดตรอบนี้ไม่ได้ไปต่อแล้ว ต้องปลด updating ด้วย ไม่งั้นมันค้าง true ตลอดชีพโพรเซส
-      // แล้วการปิดครั้งต่อ ๆ ไปจะไหลไปทาง 'quiet' ทุกครั้ง คือไม่ถามอะไรเลยแล้วทิ้งตัวที่กำลัง
-      // อัดเสียงให้รันต่อหลังวิดเจ็ตหายไปจากจอ
-      updating = false;
-    });
-  });
+  // ไม่มีด่านตอนปิดอีกแล้ว: วิดเจ็ตไม่ได้เป็นเจ้าของโพรเซสไหนเลย การอัดเป็นของ
+  // meeting-notes ซึ่งไม่หยุดตามวิดเจ็ต -- ปิดหน้าต่างขณะกำลังอัดจึงปลอดภัยและ
+  // ไม่ต้องถาม ผลพลอยได้คือวิดเจ็ตไม่มีทางฆ่างานที่กำลังทำอยู่ได้อีก
   win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); pushMeetings(); pushQaTests(); });
   setInterval(pushTasks, 5 * 60 * 1000);
   setInterval(pushWorkspace, 5 * 60 * 1000);
@@ -819,7 +681,8 @@ ipcMain.handle('save-qa-sources', (_e, sources) => {
 });
 // renderer's Meeting tab: the recorder controls. The renderer never talks to
 // 127.0.0.1 itself — everything it can do goes through these five handles.
-ipcMain.handle('runner-get-state', () => fetchRunnerState());
+// รูปเดียวกับที่ runner-update ส่งเป๊ะ เพราะเป็นตัวอ่านตัวเดียวกัน
+ipcMain.handle('runner-get-state', () => readRunner());
 ipcMain.handle('runner-start', async (_e, model, name) => {
   try {
     const res = await fetch(`http://127.0.0.1:${runnerPort}/api/session`, {
@@ -865,7 +728,7 @@ ipcMain.handle('get-qa-failure-xml', (_e, runDir) => {
 if (gotLock) app.whenReady().then(() => {
   loadAppConfig();
   MODE === 'screensaver' ? createScreensaver() : createWidget();
-  if (MODE === 'widget') { setupAutoUpdate(); adoptOrphanRunner(); }
+  if (MODE === 'widget') setupAutoUpdate();
 });
 
 // กดไอคอนซ้ำตอนเปิดอยู่แล้ว ให้ดึงบานเดิมขึ้นมาแทนที่จะเปิดบานใหม่

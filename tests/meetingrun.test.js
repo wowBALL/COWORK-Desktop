@@ -114,3 +114,56 @@ test('the five step labels match meeting-notes web/app.js exactly', () => {
   assert.deepStrictEqual(core.STEPS,
     ['บีบอัดไฟล์เสียง', 'ถอดเสียง', 'แยกผู้พูด', 'สรุป', 'เสร็จ']);
 });
+
+// บันไดการเลือก view -- ย้ายออกมาจาก draw() ซึ่งแตะ DOM จึงเทสไม่ได้
+// ชุดนี้คือ baseline ของพฤติกรรมเดิม ต้องผ่านทั้งก่อนและหลังเปลี่ยนข้อความเป็น On Air
+const IDLE = { recorder: 'idle', activity: [], worker_ready: true };
+
+test('viewOf: ไม่มี state และเครื่องนี้ไม่เคยเห็น service = ไม่วาดอะไร', () => {
+  assert.strictEqual(core.viewOf({ state: null, seenService: false }), 'absent');
+});
+
+test('viewOf: ไม่มี state แต่เคยเห็น service = บอกว่ากำลังรอ', () => {
+  assert.strictEqual(core.viewOf({ state: null, seenService: true }), 'waiting');
+});
+
+test('viewOf: กำลังอัด และกำลังปิดห้อง ถือเป็น recording ทั้งคู่', () => {
+  assert.strictEqual(core.viewOf({ state: { recorder: 'recording' } }), 'recording');
+  assert.strictEqual(core.viewOf({ state: { recorder: 'stopping' } }), 'recording');
+});
+
+test('viewOf: ว่างและไม่ได้ตามงานอยู่ = idle', () => {
+  assert.strictEqual(core.viewOf({ state: IDLE, following: false }), 'idle');
+});
+
+test('viewOf: งานล้มชนะทุกขั้น', () => {
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: true, progress: { stage: 3, failed: true },
+  }), 'failed');
+});
+
+test('viewOf: ถึงขั้น 4 = done', () => {
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: true, progress: { stage: 4, failed: false },
+  }), 'done');
+});
+
+test('viewOf: ขั้น 0 และ worker ไม่พร้อม = queued ไม่ใช่ processing', () => {
+  assert.strictEqual(core.viewOf({
+    state: { recorder: 'idle', activity: [], worker_ready: false },
+    following: true,
+    progress: { stage: 0, failed: false },
+  }), 'queued');
+});
+
+test('viewOf: ขั้น 0 แต่ worker พร้อม = processing', () => {
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: true, progress: { stage: 0, failed: false },
+  }), 'processing');
+});
+
+test('viewOf: กลางไปป์ไลน์ = processing', () => {
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: true, progress: { stage: 2, failed: false },
+  }), 'processing');
+});

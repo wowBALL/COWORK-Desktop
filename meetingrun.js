@@ -248,23 +248,31 @@
         ${stepsHtml(progress.stage, true)}${logHtml()}</div>` : ''}`;
   }
 
+  // การเลือก view แยกออกมาเป็น pure function เพื่อให้ node --test เทสบันไดได้
+  // โดยไม่ต้องมี DOM -- draw() ยังเป็นคนคำนวณ progress/following แล้วส่งเข้ามา
+  // ลำดับสำคัญ: failed ชนะทุกขั้น แล้วจึง done, queued, processing
+  function viewOf(opts) {
+    const o = opts || {};
+    const state = o.state;
+    if (!state) return o.seenService ? 'waiting' : 'absent';
+    if (state.recorder === 'recording' || state.recorder === 'stopping') return 'recording';
+    if (!o.following) return 'idle';
+    const progress = o.progress || { stage: 0, failed: false };
+    if (progress.failed) return 'failed';
+    if (progress.stage >= 4) return 'done';
+    // stage 0 = ยังไม่มีเหตุการณ์จาก watcher เลย ถ้า watcher ไม่ได้รันด้วย
+    // แปลว่ามันไม่ได้ "กำลังทำ" อะไร แต่กำลัง "รอ"
+    if (progress.stage === 0 && state.worker_ready === false) return 'queued';
+    return 'processing';
+  }
+
   function draw() {
     // ขั้น "บีบอัดไฟล์เสียง" ไม่ได้มาจาก activity[] -- ตอน encode ยังไม่มี
     // last_result ให้ตาม จึงอ่านจาก recorder === 'stopping' แทน ซึ่งกินช่วงนั้นพอดี
     const recording = state && (state.recorder === 'recording' || state.recorder === 'stopping');
     const progress = !state || recording ? null : progressOf(state.activity, followingJob);
-    const following = progress && followingJob !== dismissedJob;
-    // stage 0 = ยังไม่มีเหตุการณ์จาก watcher เลย ถ้า watcher ไม่ได้รันด้วย
-    // แปลว่ามันไม่ได้ "กำลังทำ" อะไร แต่กำลัง "รอ"
-    const queuedNoWorker = following && !progress.failed
-      && progress.stage === 0 && state.worker_ready === false;
-    const view = !state ? (seenService ? 'waiting' : 'absent')
-      : recording ? 'recording'
-      : !following ? 'idle'
-      : progress.failed ? 'failed'
-      : progress.stage >= 4 ? 'done'
-      : queuedNoWorker ? 'queued'
-      : 'processing';
+    const following = !!(progress && followingJob !== dismissedJob);
+    const view = viewOf({ state, seenService, progress, following });
 
     const sig = [view, seenService, state && state.room, state && state.model, model, modelsOpen, stopping,
       detailOpen, followingJob, state && state.worker_ready,
@@ -437,6 +445,7 @@
     fmtClock,
     progressOf,
     finishedMeetingId,
+    viewOf,
   };
 
   global.COWORK = global.COWORK || {};

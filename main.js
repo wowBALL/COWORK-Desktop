@@ -5,7 +5,7 @@ const fs = require('fs');
 const { readWorkspace } = require('./workspace');
 const { readMeetings, readTranscript } = require('./meetings');
 const { readQaResults } = require('./qatest');
-const { registry, decideQuit, matchOrphan } = require('./children');
+const { registry, decideQuit } = require('./children');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -395,144 +395,13 @@ function runnerActivityAge(state) {
 // without the service at all — hammering 127.0.0.1 once a second all day there
 // buys nothing.
 function runnerInterval(state) {
-  if (!state) return Date.now() < runnerWarmUntil ? 2000 : 30000;
+  // ไม่มี service ตอบบนเครื่องนี้ -- ตัวติดตั้งไป 8 เครื่องซึ่งส่วนใหญ่ไม่มีตัวอัดเลย
+  // การถามถี่กว่านี้ไม่ได้อะไรกลับมา
+  if (!state) return 30000;
   if (state.recorder !== 'idle') return 1000;
   // Room closed but the watcher's pipeline is still running: keep up the pace
   // while fresh events keep arriving, then ease off once it goes quiet.
   return runnerActivityAge(state) < 90000 ? 1000 : 5000;
-}
-
-// The repo root is the parent of the configured meetings/ folder, and the venv
-// inside it is the gate: no venv, no spawn, so machines without meeting-notes do
-// nothing at all and need no extra setting to say so.
-//
-// เลือก pythonw.exe ก่อนเสมอ มันเป็นไบนารีคนละตัวที่คอมไพล์มาเป็น GUI subsystem จึงไม่มี
-// คอนโซลให้ Windows Terminal คว้าไปเปิดเป็นหน้าต่างดำ -- windowsHide ที่ส่งตอน spawn
-// เอาไม่อยู่ เพราะวินโดวส์ 11 ส่งต่อคอนโซลให้ Windows Terminal (defterm) ข้าม
-// CREATE_NO_WINDOW ไป วัดมาแล้วบนเครื่องนี้: python.exe ใส่หรือไม่ใส่ windowsHide
-// ได้หน้าต่างเหมือนกันเป๊ะ ส่วน pythonw.exe ไม่มีหน้าต่างและยังรอดหลัง parent ตายเหมือนเดิม
-//
-// stdio:'ignore' ทำให้ node ผูก handle ไปที่ NUL ให้ sys.stdout/sys.stderr ของ pythonw
-// จึงเป็นไฟล์ปกติ ไม่ใช่ None -- logging.basicConfig ใน session_service.py จึงไม่พัง
-function runnerVenvPython() {
-  if (!meetingsDir) return null;
-  const dir = path.join(path.dirname(meetingsDir), '.venv', 'Scripts');
-  for (const exe of ['pythonw.exe', 'python.exe']) {
-    const p = path.join(dir, exe);
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
-}
-
-let runnerSpawnTried = false;
-let runnerWarmUntil = 0;   // poll fast for a moment after spawning, see runnerInterval
-
-// true ระหว่างที่ adoptOrphanRunner() กำลังส่อง process อยู่ (execFile ยังไม่ callback กลับมา)
-// กัน pollRunner spawn ตัวใหม่ซ้อนทับ orphan ที่ยังไม่ตายแค่ตอบ /api/state ไม่ทันภายใน 1.5s
-let orphanScanPending = false;
-
-// ยุ่ง = กำลังอัดอยู่ หรือปิดห้องแล้วแต่ pipeline ของ watcher ยังเดินอยู่
-//
-// ตอบไม่ได้ต้องคืน null ห้ามคืน false -- /api/state ที่เงียบ "ไม่ได้" แปลว่าโพรเซสตายแล้ว:
-// session_service รีเฟรช worker probe แบบ sync คาอยู่ในรีเควสต์ /api/state นั้นเอง (แคช 10 วิ)
-// และ probe ตัวนั้นคือ powershell + Get-CimInstance Win32_Process ไล่ทั้งเครื่องแบบไม่กรอง
-// ซึ่งกินเวลา 1-3 วินาทีเป็นเรื่องปกติ ส่วน fetchRunnerState ตัดที่ 1.5 วินาที
-// พอร์ตก็เป็นอีกทาง: เราถาม runnerPort ของวิดเจ็ต แต่ตัวที่ adopt มาจับคู่ด้วย path + command line
-// ไม่เคยยืนยันว่ามันถือพอร์ตนี้จริง ตั้งค่าคนละพอร์ตเมื่อไหร่ก็เงียบทุกครั้ง
-//
-// ทั้งสองทางจบเหมือนกันคือ "ถามไม่ได้" ปล่อยให้ children.js ตัดสินต่อด้วยการมีชีวิตของ pid
-// (ยังอยู่ = ถือว่ายุ่ง จึงมีกล่องถามเสมอ / ตายจริง = ไม่ยุ่ง ผู้ใช้ไม่โดนถามฟรี)
-async function runnerIsBusy() {
-  const state = await fetchRunnerState();
-  if (!state) return null;
-  return state.recorder !== 'idle' || runnerActivityAge(state) < 90000;
-}
-
-// Starts ONLY session_service, never the watcher. The watcher loads Whisper and
-// pyannote into VRAM, and the widget opens at Windows login on installed builds —
-// paying that on every login would be a bad trade for a service that is idle most
-// of the time. A missing watcher already has a graceful path: worker_ready comes
-// back false and the bar says the file will wait in the queue.
-//
-// detached + unref ตั้งใจไว้เพื่อ "อายุขัย" ไม่ใช่เพื่อกันไม่ให้ถูกปิด: ถ้าเป็นลูกธรรมดา
-// มันจะตายตามวิดเจ็ตทุกกรณี รวมทั้งตอนวิดเจ็ตแครช โดนสั่งจบจาก Task Manager หรือตอนผู้ใช้
-// เลือก "ปิดแค่วิดเจ็ต" เพราะยังอัดเสียงอยู่ -- ทั้งสามอย่างนี้ต้องไม่ทำให้เสียงประชุมหาย
-//
-// การปิดตอนแอปจบอย่างสวยเป็นคนละเรื่องและตั้งใจให้เกิด: มันผ่านด่าน handleQuit() ที่ win.on('close')
-// (ดูหัวข้อ "ปิดโพรเซสลูกก่อนปิดแอป" ข้างล่าง) ซึ่งอ่าน isBusy ของทุกตัวในทะเบียนก่อน
-// ตัวที่ว่างถึงจะถูกฆ่าเงียบ ๆ ตัวที่ยุ่งต้องให้ผู้ใช้ตอบก่อนเสมอ กฎคือ
-// "ไม่มีวันฆ่างานที่กำลังทำอยู่โดยที่เจ้าของยังไม่รู้ตัว" ไม่ใช่ "ไม่มีวันฆ่า"
-function startRunnerService() {
-  // scan ยังไม่จบ อาจเจอ orphan ที่แค่ตอบ /api/state ไม่ทันใน 1.5s ไม่ใช่ตายจริง
-  // return ก่อนเซ็ต runnerSpawnTried เพื่อให้ pollRunner รอบถัดไปยังลอง spawn ได้
-  if (orphanScanPending) return;
-  if (runnerSpawnTried) return;   // once per app run: a service that crashes on
-  runnerSpawnTried = true;        // boot must not be respawned every 30s forever
-  const python = runnerVenvPython();
-  if (!python) return;
-  try {
-    registry.spawnTracked(python, ['-m', 'src.session_service'], {
-      cwd: path.dirname(meetingsDir),
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    }, { name: 'ตัวประมวลผลประชุม (session_service)', isBusy: runnerIsBusy });
-    // Flask needs a few seconds to bind. Without this the next look would be 30s
-    // away and the bar would sit hidden long after the service was actually up.
-    runnerWarmUntil = Date.now() + 25000;
-  } catch { /* no recorder on this machine is a normal state, not an error */ }
-}
-
-// รับเลี้ยง session_service ที่รอบก่อนทิ้งไว้ (แอปโดนฆ่าจาก Task Manager, ล็อกเอาต์, ไฟดับ)
-// ไม่งั้นทะเบียนจะรู้จักเฉพาะตัวที่ spawn ในรอบนี้ แล้ว orphan จะค้างสะสมไปเรื่อย ๆ
-//
-// ใช้ powershell + Get-CimInstance ไม่ใช่ wmic -- wmic ถูกถอดออกจากวินโดวส์ 11 รุ่นนี้แล้ว
-// execFile แบบไม่ detached จึงไม่มีหน้าต่างโผล่ (วัดมาแล้ว) และ powershell ตายไปกับแอปอยู่แล้ว
-// จึงไม่ต้องเข้าทะเบียน
-//
-// ผลข้างเคียงที่ยอมรับแล้ว: ถ้าผู้ใช้เปิด session_service เองจาก terminal ด้วย venv ตัวเดียวกัน
-// มันจะถูกนับเป็นลูกและถูกปิดพร้อมวิดเจ็ต
-function adoptOrphanRunner() {
-  const python = runnerVenvPython();
-  if (!python) return;                  // เครื่องนี้ไม่มี meeting-notes ไม่ต้องไปส่องอะไรเลย
-  orphanScanPending = true;             // กัน pollRunner spawn ซ้อนจนกว่า scan นี้จะจบ (ทุก exit path ข้างล่างต้องเคลียร์)
-  const dir = path.dirname(python);
-  const exePaths = ['pythonw.exe', 'python.exe'].map(e => path.join(dir, e));
-  const ps = "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" "
-    + "| Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
-  execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps],
-    { windowsHide: true, timeout: 10000 }, (err, stdout) => {
-      if (err) {                        // ส่องไม่ได้ก็ไม่ใช่เรื่องคอขาดบาดตาย ข้ามไป
-        orphanScanPending = false;
-        return;
-      }
-      // stdout ว่างเปล่า = ไม่เจอโพรเซสตรงเงื่อนไขสักตัว ไม่ใช่ scan พัง -- powershell จบด้วย
-      // exit 0 แล้วไม่พิมพ์อะไรเลยเมื่อ filter ไม่แมตช์ (วัดมาแล้ว) ซึ่งคือเครื่องปกติที่ยังไม่ได้
-      // เปิด service เลย เป็นเคสที่พบบ่อยที่สุดตอนเปิดแอป ถ้าไปลงทางเดียวกับ error จะข้าม
-      // การเร่ง poll ข้างล่าง แล้วบริการจะไม่ถูก spawn ไปอีก 30 วินาทีเต็ม ๆ
-      let procs = [];
-      if (String(stdout).trim()) {
-        try { procs = JSON.parse(stdout); }
-        catch { orphanScanPending = false; return; }
-      }
-      // ConvertTo-Json คืน object เดี่ยว ๆ ไม่ใช่ array เมื่อเจอผลลัพธ์เดียว
-      if (!Array.isArray(procs)) procs = [procs];
-      let adopted = false;
-      for (const pid of matchOrphan(procs, { exePaths, needle: 'src.session_service' })) {
-        if (registry.adopt(pid, { name: 'ตัวประมวลผลประชุม (session_service)', isBusy: runnerIsBusy })) {
-          console.log('[children] adopted orphan session_service', pid);
-          runnerSpawnTried = true;      // มีตัวรันอยู่แล้ว ไม่ต้องไป spawn ซ้อน
-          adopted = true;
-        }
-      }
-      orphanScanPending = false;
-      // scan จบแล้วไม่เจออะไรให้ adopt เลย -- เร่ง poll รอบถัดไปทันที ไม่งั้นเครื่องที่ไม่มี
-      // service เลยจะรอ 30s เปล่า ๆ ทั้งที่ startRunnerService ถูกกันไว้แค่ระหว่าง scan เท่านั้น
-      if (!adopted) {
-        clearTimeout(runnerTimer);
-        pollRunner();
-      }
-    });
 }
 
 async function pollRunner() {
@@ -541,7 +410,6 @@ async function pollRunner() {
     runnerSeen = true;
     writeConfigMerge({ meetingRunnerSeen: true });
   }
-  if (!state) startRunnerService();
   if (win) win.webContents.send('runner-update', state);
   // setTimeout rather than setInterval: the gap changes with the state
   runnerTimer = setTimeout(pollRunner, runnerInterval(state));
@@ -865,7 +733,7 @@ ipcMain.handle('get-qa-failure-xml', (_e, runDir) => {
 if (gotLock) app.whenReady().then(() => {
   loadAppConfig();
   MODE === 'screensaver' ? createScreensaver() : createWidget();
-  if (MODE === 'widget') { setupAutoUpdate(); adoptOrphanRunner(); }
+  if (MODE === 'widget') setupAutoUpdate();
 });
 
 // กดไอคอนซ้ำตอนเปิดอยู่แล้ว ให้ดึงบานเดิมขึ้นมาแทนที่จะเปิดบานใหม่

@@ -1,0 +1,231 @@
+/* ---- Grafana tab ----
+   ทุกสีมาจากชุด token ใน widget.html ห้าม hardcode สีลงในกฎไหน ไม่งั้น light mode พัง
+   (ดู docs/superpowers — ธีม sand ต้องนิยาม token ครบทุกตัว ไม่งั้นมันเงียบ ๆ ไปหยิบค่าของ carbon)
+   ทุกอย่างในไฟล์นี้ผ่านการวัดคอนทราสต์แล้ว ต่ำสุด 4.53 ยกเว้นข้อความ --dim ที่จงใจให้จาง */
+
+/* แถบสรุปของแท็บนี้มี 6 ช่อง — ห้ามใช้ .stats.w5 ของ widget.html เพราะมันตรึง 5 คอลัมน์
+   และแท็บ Workspace ใช้อยู่ ที่ 420px ป้ายไทย 6 ช่องบีบจนอ่านไม่ออก จึงให้ตัดบรรทัดเอง */
+.stats.gf-w{grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}
+.stats.gf-w .stat{padding:10px 4px}
+.stats.gf-w .stat .l{font-size:8.5px;line-height:1.3;text-transform:none;word-break:break-word}
+.stats.gf-w .stat .n{font-size:16px}
+
+/* คำกำกับใต้แถบสรุป — บอกว่าเลขที่เห็นมาจากไหน (ยอดจริงทั้งช่วง หรือจากตัวอย่างที่ดึงมา)
+   ไม่มีบรรทัดนี้ เลขเดียวกันจะหมายความสองอย่างโดยที่ผู้ใช้แยกไม่ออก */
+.gf-statsnote{font-size:10px;color:var(--dim);line-height:1.5;margin:6px 0 0}
+
+/* ช่องกรอกช่วงเวลาเอง */
+.gf-custom{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:-4px 0 12px}
+.gf-custom label{display:flex;flex-direction:column;gap:3px;font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dim);font-weight:700}
+.gf-custom input{-webkit-app-region:no-drag;width:auto;margin:0;font-size:12px;padding:6px 9px}
+/* ปฏิทินในตัวของ Chromium เป็นไอคอนสีเข้ม มองไม่เห็นบนพื้นมืด — กลับสีเฉพาะธีมมืด */
+html[data-theme="carbon"] .gf-custom input::-webkit-calendar-picker-indicator{filter:invert(.85)}
+.gf-custom button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
+  color:var(--on-accent);background:var(--accent);border:1px solid var(--accent);
+  border-radius:8px;padding:7px 14px;cursor:pointer}
+.gf-custom button:hover{filter:brightness(1.08)}
+.gf-custom .warn{flex:1 1 100%;font-size:10.5px;color:var(--amber);line-height:1.5}
+
+/* เลือก environment + ไฟบอกสถานะ */
+.gf-envrow{display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.gf-env{-webkit-app-region:no-drag;font-family:inherit;font-size:11px;font-weight:600;color:var(--muted);
+  background:transparent;border:1px solid var(--line);border-radius:8px;padding:5px 14px;cursor:pointer;transition:.15s}
+.gf-env:hover{color:var(--ink);border-color:var(--accent)}
+.gf-env.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.gf-env:disabled{opacity:.45;cursor:not-allowed}
+.gf-env:disabled:hover{color:var(--muted);border-color:var(--line)}
+.gf-live{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim)}
+.gf-live .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
+.gf-live.busy .pulse{background:var(--amber)}
+.gf-live.err .pulse{background:var(--rose)}
+
+/* โหมด: เฉพาะปัญหา / ทุกบรรทัด — คนละเรื่องกับ "รวมที่ซ้ำกัน / ไล่ตามเวลา" ข้างล่าง */
+.gf-modes{display:flex;gap:4px;margin-bottom:10px}
+.gf-modes button{-webkit-app-region:no-drag;flex:1;font-family:inherit;font-size:11px;font-weight:600;
+  color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:7px 10px;cursor:pointer;transition:.15s}
+.gf-modes button:hover{color:var(--ink);border-color:var(--accent)}
+.gf-modes button.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+
+/* คำอธิบายว่าตัวเลขที่เห็นครอบอะไรอยู่จริง — ห้ามตัดออก ไม่มีบรรทัดนี้ชิป "24h"
+   จะสื่อว่าโชว์ทั้งวันทั้งที่ของจริงอาจครอบแค่ไม่กี่นาที */
+.gf-cover{font-size:10px;color:var(--dim);line-height:1.55;margin:-2px 0 11px}
+.gf-cover b{font-family:'JetBrains Mono',monospace;color:var(--muted);font-weight:600}
+.gf-cover .warn{color:var(--amber)}
+
+/* กำลังดึงข้อมูล — ช่วงเวลายาวยิงได้ถึง 12 query เรียงกัน ถ้าไม่บอกอะไรเลย
+   หน้าจอจะดูเหมือนกดแล้วไม่มีอะไรเกิดขึ้น (ผลชุดเก่ายังค้างอยู่บนจอ) */
+.gf-loading{display:flex;align-items:center;gap:9px;margin-bottom:11px;padding:9px 12px;
+  border-radius:10px;background:color-mix(in srgb,var(--accent) 8%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);
+  font-size:11.5px;color:var(--ink)}
+.gf-loading b{font-family:'JetBrains Mono',monospace;color:var(--accent);font-weight:700}
+.gf-loading .sp{width:13px;height:13px;flex-shrink:0;border-radius:50%;
+  border:2px solid color-mix(in srgb,var(--accent) 28%,transparent);
+  border-top-color:var(--accent);animation:gfspin .7s linear infinite}
+@keyframes gfspin{to{transform:rotate(360deg)}}
+/* คนที่ตั้งเครื่องให้ลดการเคลื่อนไหวต้องยังเห็นว่ากำลังทำงาน แค่ไม่หมุน */
+@media (prefers-reduced-motion:reduce){
+  .gf-loading .sp{animation:none;border-top-color:var(--accent);border-right-color:var(--accent)}
+}
+/* ระหว่างดึง: หรี่ตัวกรองกับผลเก่าลง และกันกดซ้ำ — ตัวเลขบนชิปยังเป็นของชุดเก่าอยู่
+   ปล่อยให้กดได้จะได้ผลที่ผู้ใช้ไม่ได้สั่ง */
+.gf-busy #gfRange,.gf-busy .gf-modes,.gf-busy #gfGroups,.gf-busy #gfLevels,
+.gf-busy #gfToggles,.gf-busy #gfOut,.gf-busy #gfStats{opacity:.45;pointer-events:none}
+
+/* สวิตช์ซ่อนสิ่งรบกวน (โหมดทุกบรรทัดเท่านั้น) */
+.gf-toggles{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px}
+.gf-tg{-webkit-app-region:no-drag;font-size:10.5px;font-weight:600;color:var(--muted);background:var(--panel);
+  border:1px solid var(--line);border-radius:7px;padding:4px 9px;cursor:pointer;display:flex;
+  align-items:center;gap:6px;transition:.12s}
+.gf-tg:hover{border-color:var(--accent);color:var(--ink)}
+.gf-tg .box{width:12px;height:12px;border-radius:3px;border:1px solid var(--line);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:9px;color:transparent}
+.gf-tg.on{color:var(--ink);border-color:var(--accent)}
+.gf-tg.on .box{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.gf-tg .n{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim)}
+
+/* ป้ายระดับ — 8.5px ตัวหนา จึงต้องผ่าน AA 4.5:1 ไม่ใช่ 3:1 ของตัวใหญ่
+   tint 9% ไม่ใช่ 15-17% แบบป้ายอื่นในวิดเจ็ต เพราะที่ 17% วัดได้ 3.49 ใน Warm Sand */
+.gf-lvl{font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.06em;
+  padding:2px 6px;border-radius:5px;flex-shrink:0;white-space:nowrap}
+.lv-error{background:color-mix(in srgb,var(--rose) 9%,transparent);color:var(--rose)}
+.lv-5xx{background:color-mix(in srgb,var(--orange) 9%,transparent);color:var(--orange)}
+.lv-4xx{background:color-mix(in srgb,var(--amber) 9%,transparent);color:var(--amber)}
+.lv-2xx{background:color-mix(in srgb,var(--violet) 9%,transparent);color:var(--violet)}
+.lv-warn{background:color-mix(in srgb,var(--amber) 9%,transparent);color:var(--amber)}
+.lv-sql{background:var(--pill-bg);color:var(--muted)}
+.lv-info{background:color-mix(in srgb,var(--cyan) 9%,transparent);color:var(--cyan)}
+.lv-debug,.lv-trace{background:var(--pill-bg);color:var(--muted)}
+.lv-http{background:color-mix(in srgb,var(--green) 9%,transparent);color:var(--green)}
+
+/* แถบ "ผลถูกซ่อนอยู่" — ต้องเด่นพอที่คนจะไม่อ่าน 0 ผลลัพธ์ว่า "ไม่มี log แบบนี้"
+   ใช้ --amber เพราะเป็นการเตือน ไม่ใช่ error (--rose สงวนไว้ให้ระดับ ERROR ของ log จริง) */
+.gf-hid{background:color-mix(in srgb,var(--amber) 9%,transparent);
+  border:1px solid color-mix(in srgb,var(--amber) 34%,transparent);
+  border-radius:10px;padding:10px 12px;margin-bottom:11px}
+.gf-hid .ht{font-size:11.5px;line-height:1.55;color:var(--ink);margin-bottom:8px}
+.gf-hid .ht b{color:var(--amber);font-weight:700}
+.gf-hid .ht code{font-family:'JetBrains Mono',monospace;font-size:11px;
+  background:var(--pill-bg);border-radius:4px;padding:1px 5px}
+.gf-hid .hb{display:flex;flex-wrap:wrap;gap:5px}
+.gf-hid .hb button{-webkit-app-region:no-drag;font-family:inherit;font-size:10.5px;font-weight:600;
+  color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:7px;
+  padding:4px 10px;cursor:pointer;transition:.12s}
+.gf-hid .hb button:hover{border-color:var(--amber);color:var(--amber)}
+.gf-hid .hb button .n{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
+  color:var(--muted);background:var(--pill-bg);border-radius:20px;padding:1px 6px;margin-left:5px}
+
+/* การ์ดกลุ่มปัญหา */
+.gf-groups{display:flex;flex-direction:column;gap:7px}
+.gf-g{background:var(--panel);border:1px solid var(--line-soft);border-left:3px solid var(--sc,var(--rose));
+  border-radius:10px;padding:10px 12px;cursor:pointer;transition:.14s}
+.gf-g:hover{background:var(--panel-2);border-color:var(--line)}
+.gf-g .gtop{display:flex;align-items:center;gap:7px;margin-bottom:6px;flex-wrap:wrap}
+.gf-app{font-size:10px;font-weight:700;color:var(--ac,var(--accent))}
+.gf-count{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--ink);
+  background:var(--pill-bg);border-radius:20px;padding:1px 7px}
+.gf-when{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim)}
+.gf-g .gmsg{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.5;color:var(--ink);
+  word-break:break-word;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.gf-g.open .gmsg{-webkit-line-clamp:unset;display:block}
+.gf-g .gmeta{display:flex;gap:10px;flex-wrap:wrap;margin-top:7px;font-size:9.5px;color:var(--dim)}
+.gf-g .gmeta b{font-family:'JetBrains Mono',monospace;color:var(--muted);font-weight:600}
+
+/* แถบจังหวะการเกิด — 60 ช่องกระจายทั่วช่วงที่เลือก ขวาสุด = ล่าสุด */
+.gf-spark{display:flex;gap:1px;align-items:flex-end;height:18px;margin-top:8px}
+.gf-spark i{flex:1;min-width:1px;background:var(--sc,var(--rose));opacity:.75;border-radius:1px;min-height:1px}
+.gf-spark i.z{background:var(--line);opacity:1;height:1px!important}
+
+/* ป้ายอายุปัญหา — จำนวนครั้งบอกไม่ได้ว่าควรไล่ตัวไหนก่อน: cron ที่พังมา 8 วันได้
+   1537 ครั้ง/วัน แต่บั๊กที่เพิ่งเกิดวันนี้ได้ 2 ครั้ง ตัวหลังคือตัวที่เพิ่งมีคนทำพัง */
+.gf-age{font-size:8.5px;font-weight:700;letter-spacing:.02em;padding:2px 6px;border-radius:5px;
+  flex-shrink:0;white-space:nowrap}
+.age-new{background:color-mix(in srgb,var(--rose) 12%,transparent);color:var(--rose)}
+.age-chronic{background:var(--pill-bg);color:var(--muted)}
+.age-inter{background:color-mix(in srgb,var(--amber) 10%,transparent);color:var(--amber)}
+.gf-days{display:flex;gap:2px;align-items:flex-end;height:14px;margin-top:7px}
+.gf-days i{flex:1;background:var(--muted);border-radius:1px;min-height:2px;opacity:.7}
+.gf-days i.z{background:var(--line);opacity:1;height:2px!important}
+.gf-days i.today{opacity:1;background:var(--sc,var(--rose))}
+.gf-dayscap{font-size:9px;color:var(--dim);margin-top:3px}
+
+/* รายละเอียดที่กางออกมา — คุมการซ่อน/โชว์ด้วยคลาสเท่านั้น
+   ห้ามใส่ display ผ่าน inline style ตอนสร้าง element: inline ชนะ CSS ตลอด
+   แล้วกดย่อกลับจะไม่ทำงาน (คลาส .open ถูกถอดแต่กล่องยังเปิดค้าง) */
+.gf-det{display:none;margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.gf-g.open .gf-det{display:block}
+.gf-det pre{font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.55;color:var(--muted);
+  background:var(--bg);border:1px solid var(--line-soft);border-radius:8px;padding:9px 10px;
+  overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:340px;overflow-y:auto}
+.gf-det .k{color:var(--cyan)}.gf-det .s{color:var(--green)}.gf-det .num{color:var(--orange)}
+.gf-occ{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.gf-occ span{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);
+  background:var(--panel-2);border:1px solid var(--line-soft);border-radius:5px;padding:1px 5px}
+
+/* template ที่ Drain เรียนได้ — โชว์ให้เห็นว่ามันจับกลุ่มด้วยอะไร ไม่ใช่กล่องดำ */
+.gf-tpl{margin-bottom:9px}
+.gf-tpl .tl{display:block;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim);font-weight:700;margin-bottom:4px}
+.gf-tpl code{display:block;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.5;
+  color:var(--mint);background:var(--bg);border:1px solid var(--line-soft);border-radius:7px;
+  padding:7px 9px;word-break:break-word}
+.gf-tpl .tn{display:block;font-size:9px;color:var(--muted);margin-top:4px}
+.gf-tpl .tn b{font-family:'JetBrains Mono',monospace;color:var(--mint)}
+
+/* โหมดไล่ตามเวลา */
+.gf-stream{display:flex;flex-direction:column;gap:1px}
+.gf-r{display:flex;gap:9px;align-items:baseline;padding:5px 8px;border-radius:7px;cursor:pointer;
+  border-left:2px solid var(--sc,transparent);transition:.1s}
+.gf-r:hover{background:var(--panel)}
+.gf-r.open{background:var(--panel);border-color:var(--sc,var(--accent));flex-wrap:wrap}
+.gf-r.open .gf-det{display:block;width:100%}
+.gf-r .t{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);flex-shrink:0;padding-top:1px}
+.gf-r .a{font-size:9.5px;font-weight:700;color:var(--ac,var(--accent));flex-shrink:0;width:88px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gf-r .m{font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;color:var(--muted);
+  flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.gf-r.open .m{white-space:normal;word-break:break-word;color:var(--ink)}
+.gf-r.lvERROR .m{color:var(--rose)}
+.gf-r.lv5xx .m{color:var(--orange)}
+.gf-r.lv4xx .m{color:var(--amber)}
+.gf-r.lv2xx .m{color:var(--violet)}
+.gf-r.lvWARN .m{color:var(--amber)}
+.gf-r .st{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;flex-shrink:0}
+.gf-st2{color:var(--green)}.gf-st3{color:var(--cyan)}.gf-st4{color:var(--amber)}.gf-st5{color:var(--rose)}
+.gf-more{-webkit-app-region:no-drag;width:100%;font-family:inherit;font-size:11px;font-weight:600;
+  color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:9px;
+  padding:9px;cursor:pointer;margin-top:10px}
+.gf-more:hover{color:var(--ink);border-color:var(--accent)}
+.gf-noise{font-size:10.5px;color:var(--dim);padding:7px 2px;font-style:italic}
+
+/* endpoint ที่ช้า */
+.gf-slow{display:flex;flex-direction:column;gap:5px}
+.gf-sr{background:var(--panel);border:1px solid var(--line-soft);border-radius:9px;padding:9px 11px}
+.gf-sr .st1{display:flex;align-items:baseline;gap:7px;margin-bottom:5px;flex-wrap:wrap}
+.gf-sr .sapp{font-size:9.5px;font-weight:700;color:var(--ac,var(--accent));flex-shrink:0}
+.gf-sr .suri{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink);
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gf-sr .sp95{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;
+  color:var(--orange);flex-shrink:0}
+.gf-sr .smeta{display:flex;align-items:center;gap:9px;font-size:9.5px;color:var(--dim);flex-wrap:wrap}
+.gf-sr .smeta b{font-family:'JetBrains Mono',monospace;color:var(--muted);font-weight:600}
+.gf-sr .lown{color:var(--amber)}
+/* แท่งเทียบ p50 กับ p95 บนสเกลเดียวกัน — เห็นทันทีว่าช้าทุกครั้ง หรือช้าเป็นบางครั้ง */
+.gf-bar{height:5px;border-radius:3px;background:var(--line-soft);margin-top:6px;position:relative;overflow:hidden}
+.gf-bar i{position:absolute;top:0;bottom:0;left:0;border-radius:3px}
+.gf-bar .b95{background:color-mix(in srgb,var(--orange) 55%,transparent)}
+.gf-bar .b50{background:var(--cyan)}
+.gf-slowcap{font-size:10px;color:var(--dim);margin:-4px 0 9px;line-height:1.5}
+
+/* สีต่อ app — ชุดเดียวกับสีผู้พูด แต่ตั้งทั้ง --ac (ตัวหนังสือ) และ --sc (ขอบ/แท่ง)
+   ไม่ใช้ .sp0-7 ของ widget.html ตรง ๆ เพราะอันนั้นตั้งแค่ --sc */
+.gf-ap0{--ac:var(--accent);--sc:var(--accent)}
+.gf-ap1{--ac:var(--green);--sc:var(--green)}
+.gf-ap2{--ac:var(--amber);--sc:var(--amber)}
+.gf-ap3{--ac:var(--rose);--sc:var(--rose)}
+.gf-ap4{--ac:var(--cyan);--sc:var(--cyan)}
+.gf-ap5{--ac:var(--violet);--sc:var(--violet)}
+.gf-ap6{--ac:var(--orange);--sc:var(--orange)}
+.gf-ap7{--ac:var(--mint);--sc:var(--mint)}

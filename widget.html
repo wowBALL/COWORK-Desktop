@@ -70,7 +70,7 @@
   /* หน้าต่างขยายเต็มจอได้ (ปุ่ม ⛶) — ให้เนื้อหากินพื้นที่ได้เต็มที่ (ไม่งั้นเสียดายจอ)
      แต่ยังมีเพดานกันบรรทัดยาวเป็นเมตรบนจอ ultrawide
      ที่ 420px (ขนาดวิดเจ็ตปกติ) กฎนี้ไม่มีผล เพราะยังไม่ถึง max-width */
-  #redmineView,#workspaceView,#qaView,#meetingView{max-width:1440px;margin:0 auto}
+  #redmineView,#workspaceView,#qaView,#meetingView,#grafanaView{max-width:1440px;margin:0 auto}
   /* หน้าตั้งค่าเป็นฟอร์ม ยิ่งกว้างยิ่งกรอกยาก — คุมไว้แคบกว่าเพื่อน */
   #settingsView{max-width:720px;margin:0 auto}
 
@@ -234,6 +234,7 @@
 <link rel="stylesheet" href="tab-redmine.css">
 <link rel="stylesheet" href="tab-meeting.css">
 <link rel="stylesheet" href="tab-qatest.css">
+<link rel="stylesheet" href="tab-grafana.css">
 </head>
 <body>
   <div class="shell">
@@ -253,10 +254,12 @@
         <button id="navWorkspace">Workspace</button>
         <button id="navQa">QA test</button>
         <button id="navMeeting">Meeting</button>
+        <button id="navGrafana">Grafana</button>
       </div>
       <button id="wsRefresh" class="refresh hidden" title="โหลด Workspace ใหม่">↻</button>
       <button id="qaRefresh" class="refresh hidden" title="โหลดผล QA test ใหม่">↻</button>
       <button id="mtRefresh" class="refresh hidden" title="โหลดรายการประชุมใหม่">↻</button>
+      <button id="gfRefresh" class="refresh hidden" title="ดึง log ใหม่">↻</button>
     </div>
 
     <div class="body">
@@ -339,6 +342,55 @@
         <div id="mtReader" class="hidden"></div>
       </div>
 
+      <!-- ===== Grafana view ===== -->
+      <!-- log จาก Loki — แท็บเดียวที่ "ดึงเอง" ไม่รอ main push เพราะ query ขึ้นกับตัวกรอง
+           gfNotice = แบนเนอร์ยังไม่ตั้งค่า/ต่อไม่ได้ · gfBody = เนื้อหาจริง สลับกันด้วย .hidden -->
+      <div id="grafanaView" class="hidden">
+        <div class="gf-envrow">
+          <button id="gfEnvDev" class="gf-env on" data-env="dev">Dev</button>
+          <button id="gfEnvProd" class="gf-env" data-env="prod">Prod</button>
+          <span id="gfLive" class="gf-live"><span class="pulse"></span><span>—</span></span>
+        </div>
+        <div id="gfNotice"></div>
+        <div id="gfBody">
+          <h3>ภาพรวม log</h3>
+          <div id="gfStats" class="stats gf-w"></div>
+          <div id="gfStatsNote" class="gf-statsnote"></div>
+
+          <h3>ค้นหา log</h3>
+          <input id="gfSearch" class="search" type="text"
+                 placeholder="🔍 ค้นข้อความ · ชื่อ app · pod · namespace — หลายคำ = ต้องมีทุกคำ · &quot;ในอัญประกาศ&quot; = วลีเป๊ะ" autocomplete="off">
+          <div class="gf-modes">
+            <button id="gfModeIssues" class="on" title="ให้ Loki กรองเฉพาะบรรทัดที่เป็นปัญหา — ครอบทั้งช่วงเวลาได้จริง">เฉพาะปัญหา</button>
+            <button id="gfModeAll" title="ทุกบรรทัด — ที่ปริมาณ log ของคลัสเตอร์นี้จะครอบได้ราว 15 นาทีเท่านั้น">ทุกบรรทัด</button>
+          </div>
+          <div class="row-label">ช่วงเวลา</div>
+          <div id="gfRange" class="chips"></div>
+          <!-- ช่องกรอกช่วงเวลาเอง โผล่เฉพาะตอนกดชิป "กำหนดเอง" -->
+          <div id="gfCustom" class="gf-custom hidden"></div>
+          <div class="row-label">กลุ่มงาน · เลือกได้หลายกลุ่ม</div>
+          <div id="gfGroups" class="chips"></div>
+          <div class="row-label">ระดับ</div>
+          <div id="gfLevels" class="chips"></div>
+          <div class="row-label" id="gfToggleLabel" style="display:none">ตัวช่วยลดสิ่งรบกวน</div>
+          <div id="gfToggles" class="gf-toggles" style="display:none"></div>
+          <div class="gf-modes">
+            <button id="gfViewG" class="on">รวมที่ซ้ำกัน</button>
+            <button id="gfViewS">ไล่ตามเวลา</button>
+          </div>
+          <div id="gfCover" class="gf-cover"></div>
+          <!-- ตัวบอกว่ากำลังดึงอยู่ — จำเป็นเพราะช่วงเวลายาวยิงได้ถึง 12 query เรียงกัน
+               (Loki 2.6.1 รับ concurrent ไม่ได้) ระหว่างนั้นหน้าจอยังโชว์ผลชุดเก่าอยู่ -->
+          <div id="gfLoading" class="gf-loading hidden"></div>
+          <div id="gfHidden"></div>
+          <div id="gfOut"><div class="hint">กำลังโหลด...</div></div>
+
+          <h3>Endpoint ที่ช้าสุด · 24 ชม.</h3>
+          <div id="gfSlowCap" class="gf-slowcap"></div>
+          <div id="gfSlow"></div>
+        </div>
+      </div>
+
       <!-- ===== Settings view ===== -->
       <div id="settingsView" class="hidden">
         <h3>ตั้งค่า</h3>
@@ -386,6 +438,26 @@
             <div class="set-actions"><button id="setMtSave" class="set-save">บันทึก</button></div>
           </div>
         </div>
+        <div class="set-card" id="cardGrafana">
+          <div class="set-card-header" data-card="cardGrafana"><span>◈ Grafana</span><span class="chev">›</span></div>
+          <div class="set-card-body">
+            <div class="hint" style="margin:-2px 0 10px">Dev กับ Prod เป็น Grafana คนละตัว คนละ token — กรอกแยกกัน กรอกเฉพาะที่ใช้ก็ได้</div>
+            <div id="setGfEnv" class="gf-envrow">
+              <button type="button" class="gf-env on" data-env="dev">Dev</button>
+              <button type="button" class="gf-env" data-env="prod">Prod</button>
+            </div>
+            <div class="row-label">Grafana URL</div>
+            <input id="setGfUrl" class="search" type="text" placeholder="https://mondev.example.com" autocomplete="off">
+            <div class="row-label">API token · สิทธิ์ Viewer พอ</div>
+            <input id="setGfToken" class="search" type="password" placeholder="glsa_… หรือ eyJrIjoi…" autocomplete="off">
+            <div class="hint" id="setGfHint" style="margin:-4px 0 12px"></div>
+            <div id="setGfStatus" class="set-status"></div>
+            <div class="set-actions">
+              <button id="setGfTest">ทดสอบ</button>
+              <button id="setGfSave" class="set-save">บันทึก</button>
+            </div>
+          </div>
+        </div>
         <button id="setCancel" class="set-cancel" style="width:100%">ปิด</button>
       </div>
     </div>
@@ -416,6 +488,7 @@
 <script src="tab-workspace.js"></script>
 <script src="tab-qatest.js"></script>
 <script src="tab-meeting.js"></script>
+<script src="tab-grafana.js"></script>
 <script>
   // ตัวช่วยที่ใช้ร่วมกันทุกแท็บ อยู่ใน util.js — ตั้งนามแฝงไว้ที่นี่เพื่อให้โค้ดข้างล่างเรียกสั้นเหมือนเดิม
   // ต้องอยู่บรรทัดแรกสุดของสคริปต์ เพราะ const ไม่ hoist แบบ function declaration ที่มันมาแทน
@@ -436,7 +509,7 @@
 
   // ทะเบียนแท็บ — ลำดับมาจากที่เดียว ใช้เป็นลำดับ mount ตอน boot (ท้ายไฟล์)
   // แท็บที่ยังไม่ได้แยกเป็นโมดูลจะไม่มีชื่อในทะเบียน ลูป mount ข้ามให้เงียบ ๆ
-  const TABS=['redmine','workspace','qatest','meeting'];
+  const TABS=['redmine','workspace','qatest','meeting','grafana'];
 
   // เปิดไฟล์ในโปรแกรมประจำเครื่อง — ทั้ง Workspace และ Meeting ใช้ จึงอยู่ที่เปลือก
   function openFile(p){ api&&api.openFile&&api.openFile(p); }
@@ -481,23 +554,28 @@
   // tab switching
   const navR=document.getElementById('navRedmine'), navW=document.getElementById('navWorkspace'),
         navQ=document.getElementById('navQa'), navM=document.getElementById('navMeeting'),
+        navG=document.getElementById('navGrafana'),
         viewR=document.getElementById('redmineView'), viewW=document.getElementById('workspaceView'),
         viewQ=document.getElementById('qaView'), viewM=document.getElementById('meetingView'),
+        viewG=document.getElementById('grafanaView'),
         wsRefresh=document.getElementById('wsRefresh'), qaRefresh=document.getElementById('qaRefresh'),
-        mtRefresh=document.getElementById('mtRefresh');
+        mtRefresh=document.getElementById('mtRefresh'), gfRefresh=document.getElementById('gfRefresh');
   let lastTab='rm';
   function showTab(which){
     lastTab=which;
-    const ws=which==='ws', qa=which==='qa', mt=which==='mt', rm=which==='rm';
+    const ws=which==='ws', qa=which==='qa', mt=which==='mt', gf=which==='gf', rm=which==='rm';
     viewR.classList.toggle('hidden',!rm);
     viewW.classList.toggle('hidden',!ws);
     viewQ.classList.toggle('hidden',!qa);
     viewM.classList.toggle('hidden',!mt);
+    viewG.classList.toggle('hidden',!gf);
     navR.classList.toggle('on',rm); navW.classList.toggle('on',ws);
     navQ.classList.toggle('on',qa); navM.classList.toggle('on',mt);
+    navG.classList.toggle('on',gf);
     wsRefresh.classList.toggle('hidden',!ws);
     qaRefresh.classList.toggle('hidden',!qa);
     mtRefresh.classList.toggle('hidden',!mt);
+    gfRefresh.classList.toggle('hidden',!gf);
     // แท็บที่มีอะไรต้องทำตอนถูกเปิดใส่ onShow ไว้ในสัญญา (ตอนนี้มีแค่ Meeting ที่ไปถามสถานะตัวรัน)
     TABS.forEach(name=>{
       const mod=window.COWORK.tabs[name];
@@ -508,6 +586,7 @@
   navW.onclick=()=>showTab('ws');
   navQ.onclick=()=>showTab('qa');
   navM.onclick=()=>showTab('mt');
+  navG.onclick=()=>showTab('gf');
   // ปุ่ม refresh ทั้งสามผูก onclick ในโมดูลของแท็บนั้น — เปลือกเหลือแค่ซ่อน/แสดงตามแท็บที่เปิด
 
   // settings view — collapsible per-tab cards (defaults to collapsed; more cards can be
@@ -521,6 +600,7 @@
   function openSettings(autoOpenCard){
     viewR.classList.add('hidden'); viewW.classList.add('hidden');
     viewQ.classList.add('hidden'); viewM.classList.add('hidden');
+    viewG.classList.add('hidden');
     viewS.classList.remove('hidden');
     navRow.classList.add('hidden');
     document.querySelectorAll('.set-card').forEach(c=>c.classList.remove('open'));

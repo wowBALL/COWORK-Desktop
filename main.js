@@ -5,6 +5,7 @@ const fs = require('fs');
 const { readWorkspace } = require('./workspace');
 const { readMeetings, readTranscript } = require('./meetings');
 const { readQaResults } = require('./qatest');
+const { Grafana, APP_GROUPS } = require('./grafana');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -75,6 +76,33 @@ let runnerProfile = 'dev';
 // recorder, a permanent red light would be noise about a feature they never asked
 // for — the tab has to stay exactly as it was.
 let runnerSeen = false;
+// Grafana/Loki log viewer — two environments from day one because Dev and Prod are
+// separate self-hosted instances with separate tokens. Prod is deliberately left
+// unconfigured for now; the tab shows it as unavailable rather than pretending.
+// See docs/superpowers/specs/2026-07-30-grafana-tab-design.md
+let grafanaConfig = { dev: { url: '', token: '' }, prod: { url: '', token: '' } };
+// One client per environment, rebuilt on save. Holding the instance (rather than
+// constructing per request) is what keeps the request queue and the resolved Loki
+// datasource uid alive — Loki 2.6.1 here answers HTTP 429 to concurrent queries, so
+// that queue is load-bearing, not an optimisation.
+// Two clients per environment, deliberately: `fg` serves the log list the user is
+// waiting on, `bg` serves the counts, slow-endpoint and history queries. They have
+// separate concurrency budgets, so a background sweep can no longer make the next
+// range click queue behind it — that was worth ~20 seconds on a 3-day range.
+// Measured safe: 20 queries across 2 lanes and 24 across 3 all succeeded.
+const grafanaClients = {};
+function grafanaFor(envName, lane) {
+  const key = (envName === 'prod' ? 'prod' : 'dev') + ':' + (lane === 'bg' ? 'bg' : 'fg');
+  const cfg = grafanaConfig[envName === 'prod' ? 'prod' : 'dev'] || { url: '', token: '' };
+  const cached = grafanaClients[key];
+  if (cached && cached.url === cfg.url.replace(/\/+$/, '') && cached.token === cfg.token) return cached;
+  grafanaClients[key] = new Grafana(cfg);
+  return grafanaClients[key];
+}
+function dropGrafanaClients(envKey) {
+  delete grafanaClients[envKey + ':fg'];
+  delete grafanaClients[envKey + ':bg'];
+}
 
 // ---- private per-issue notes, local-only — never written back to Redmine ----
 // See docs/superpowers/specs/2026-07-27-private-issue-notes-design.md
@@ -113,6 +141,10 @@ function loadAppConfig() {
   runnerModel = saved.meetingRunnerModel || 'GLM-5.2';
   runnerProfile = saved.meetingRunnerProfile || 'dev';
   runnerSeen = saved.meetingRunnerSeen === true;
+  grafanaConfig = {
+    dev:  { url: saved.grafanaDevUrl  || '', token: saved.grafanaDevToken  || '' },
+    prod: { url: saved.grafanaProdUrl || '', token: saved.grafanaProdToken || '' },
+  };
   // dev convenience only: unpackaged runs may still use a local .env; never packaged
   if (!app.isPackaged) {
     if (!redmineConfig.url) redmineConfig.url = ENV.REDMINE_URL || '';
@@ -125,6 +157,10 @@ function loadAppConfig() {
         path: ENV.QA_RESULTS_DIR || 'D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\results',
       }];
     }
+    if (!grafanaConfig.dev.url)   grafanaConfig.dev.url   = ENV.GRAFANA_DEV_URL   || '';
+    if (!grafanaConfig.dev.token) grafanaConfig.dev.token = ENV.GRAFANA_DEV_TOKEN || '';
+    if (!grafanaConfig.prod.url)   grafanaConfig.prod.url   = ENV.GRAFANA_PROD_URL   || '';
+    if (!grafanaConfig.prod.token) grafanaConfig.prod.token = ENV.GRAFANA_PROD_TOKEN || '';
   }
 }
 
@@ -678,6 +714,94 @@ ipcMain.handle('save-meetings-dir', (_e, dir) => {
   return { ok: true };
 });
 // renderer's QA test tab: read/save the list of { label, path } sources
+// ---- Grafana tab ----
+// Pull, not push, unlike the other four tabs. Those read files or one fixed API call,
+// so main can poll and broadcast. Here the query depends on filters the user is moving
+// (time range, apps, search), so the renderer has to be the one asking. It polls while
+// the tab is visible and stops when it isn't.
+//
+// The token is never sent to the renderer — only whether one exists and its last four
+// characters, enough for "is this the key I pasted?" without handing the secret to a
+// window that renders remote log content. (The Redmine card does return its key; this
+// one deliberately does not.)
+function grafanaConfigForRenderer() {
+  const shape = (c) => ({
+    url: c.url,
+    hasToken: Boolean(c.token),
+    tokenHint: c.token ? `…${c.token.slice(-4)}` : '',
+  });
+  return { dev: shape(grafanaConfig.dev), prod: shape(grafanaConfig.prod) };
+}
+ipcMain.handle('get-grafana-config', () => grafanaConfigForRenderer());
+ipcMain.handle('save-grafana-config', (_e, { env, url, token }) => {
+  const key = env === 'prod' ? 'prod' : 'dev';
+  // An empty token field means "leave the stored one alone", so re-saving a URL does
+  // not silently wipe the credential the user can no longer read back.
+  const next = { url: String(url || '').trim(), token: String(token || '').trim() || grafanaConfig[key].token };
+  grafanaConfig[key] = next;
+  writeConfigMerge(key === 'prod'
+    ? { grafanaProdUrl: next.url, grafanaProdToken: next.token }
+    : { grafanaDevUrl: next.url, grafanaDevToken: next.token });
+  dropGrafanaClients(key);         // drop both lanes' queues/uid with the old credentials
+  return { ok: true, config: grafanaConfigForRenderer() };
+});
+ipcMain.handle('test-grafana-connection', async (_e, { env, url, token }) => {
+  const key = env === 'prod' ? 'prod' : 'dev';
+  const probe = new Grafana({
+    url: String(url || '').trim() || grafanaConfig[key].url,
+    token: String(token || '').trim() || grafanaConfig[key].token,
+  });
+  if (!probe.configured) return { ok: false, error: 'ยังไม่ได้กรอก URL หรือ token' };
+  try { return { ok: true, ...(await probe.test()) }; }
+  catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle('grafana-query', async (_e, params) => {
+  const g = grafanaFor(params && params.env, 'fg');
+  if (!g.configured) return { error: 'ยังไม่ได้ตั้งค่า Grafana', notConfigured: true };
+  try { return await g.queryLogs(params || {}); }
+  catch (e) { return { error: e.message }; }
+});
+ipcMain.handle('grafana-overview', async (_e, params) => {
+  const g = grafanaFor(params && params.env, 'bg');
+  if (!g.configured) return { error: 'ยังไม่ได้ตั้งค่า Grafana', notConfigured: true };
+  const p = params || {};
+  // Each part is reported on its own: the slow-endpoint query is the heaviest and a
+  // timeout there must not blank out the issue counts that already came back.
+  const out = {};
+  await Promise.all([
+    g.issueCounts(p).then(v => { out.issueCounts = v; }, e => { out.issueCountsError = e.message; }),
+    g.slowEndpoints(p).then(v => { out.slowEndpoints = v; }, e => { out.slowEndpointsError = e.message; }),
+    g.statusInventory(p).then(v => { out.statusSeen = v; }, e => { out.statusSeenError = e.message; }),
+  ]);
+  return out;
+});
+// The problem list comes from the renderer because that is where the log lines are
+// parsed and clustered — deriving the same signatures again in main would be a second
+// copy of that logic, free to drift from the first.
+ipcMain.handle('grafana-history', async (_e, { env, problems, days } = {}) => {
+  const g = grafanaFor(env, 'bg');
+  if (!g.configured) return { error: 'ยังไม่ได้ตั้งค่า Grafana', notConfigured: true };
+  const list = (Array.isArray(problems) ? problems : [])
+    .filter(p => p && p.app && p.needle)
+    // Bounded on purpose: this is days × problems serial queries against an instance
+    // that 429s on concurrency. 12 problems × 8 days is already ~96 round trips.
+    .slice(0, 12)
+    .map(p => ({ app: String(p.app), needle: String(p.needle).slice(0, 120), level: String(p.level || '') }));
+  if (!list.length) return { history: [] };
+  try { return { history: await g.history(list, Math.min(Math.max(Number(days) || 8, 2), 14)) }; }
+  catch (e) { return { error: e.message }; }
+});
+// ตัวเลขจริงของทั้งช่วง — แยก handler จาก grafana-query เพราะรายการต้องมาก่อน
+// พอช่วงเวลากว้าง queryLogs คืนเป็นกลุ่มตัวอย่าง เลขจากตัวอย่างนั้นเอียงตามแอปที่ log ถี่สุด
+// (ที่ 3 วัน menutable-api กิน 2,406 จาก 2,997 บรรทัด) เอาไปโชว์เป็นยอดรวมคือตัวเลขที่โกหก
+ipcMain.handle('grafana-summary', async (_e, params) => {
+  const g = grafanaFor(params && params.env, 'bg');
+  if (!g.configured) return { error: 'ยังไม่ได้ตั้งค่า Grafana', notConfigured: true };
+  try { return await g.windowSummary(params || {}); }
+  catch (e) { return { error: e.message }; }
+});
+ipcMain.handle('grafana-app-groups', () => APP_GROUPS);
+
 ipcMain.handle('get-qa-sources', () => qaSources);
 ipcMain.handle('save-qa-sources', (_e, sources) => {
   qaSources = (sources || []).filter(s => s && s.path);

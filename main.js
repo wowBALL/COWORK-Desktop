@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, dialog } = require('electron');
-const { spawn, execFile } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { readWorkspace } = require('./workspace');

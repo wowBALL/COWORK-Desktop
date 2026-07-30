@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.9.1
+
+**แก้ของเสีย — v1.9.0 ที่ปล่อยไปเปิดไม่ขึ้น**
+
+ตัวติดตั้ง v1.9.0 ตายทันทีที่เปิด ขึ้นกล่อง `A JavaScript error occurred in the main process` /
+`Cannot find module './grafana'` และเข้าแอปไม่ได้เลย ไม่ใช่แค่แท็บ Grafana พัง
+
+- สาเหตุ: `build.files` ใน `package.json` เป็น **allowlist** ไฟล์ที่ไม่ได้ใส่ชื่อจะไม่ถูกแพ็กเข้า `app.asar`
+  ทั้ง `grafana.js` `tab-grafana.js` `tab-grafana.css` ตกไปทั้งสามตัว
+  ตอนรันจากซอร์สอ่านจากดิสก์ตรง ๆ ทุกอย่างจึงทำงานปกติ — ความพลาดแบบนี้โผล่เฉพาะในตัวติดตั้ง
+- เพิ่มเทส `tests/packaged-files.test.js` กันซ้ำ: ทุกไฟล์ที่ `widget.html` โหลด และทุกโมดูลที่
+  `main.js` / `preload.js` `require` (ไล่ต่อเป็นทอด ๆ) ต้องอยู่ใน `build.files` และต้องมีไฟล์อยู่จริง
+  พร้อมเช็คว่า `CHANGELOG.md` มีหัวข้อของเวอร์ชันใน `package.json`
+
+**ถ้าลง v1.9.0 ไปแล้ว** ให้ลงตัวนี้ทับได้เลย ไม่ต้องถอนก่อน
+
 ## v1.9.0
 
 **เพิ่มของใหม่ — แท็บ Grafana**

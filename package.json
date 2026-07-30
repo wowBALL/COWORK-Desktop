@@ -1,6 +1,6 @@
 {
   "name": "cowork-desktop",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "COWORK Command Center — desktop widget & screensaver",
   "main": "main.js",
   "scripts": {
@@ -40,9 +40,12 @@
       "tab-qatest.css",
       "tab-meeting.js",
       "tab-meeting.css",
+      "tab-grafana.js",
+      "tab-grafana.css",
       "workspace.js",
       "meetings.js",
       "qatest.js",
+      "grafana.js",
       "uidump.js",
       "meetingrun.js",
       "meetingrun.css",

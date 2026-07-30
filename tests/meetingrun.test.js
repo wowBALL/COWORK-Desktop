@@ -261,3 +261,55 @@ test('viewConnecting บอกว่ารอความพร้อม แล�
   assert.doesNotMatch(html, /data-act="open"/);
   assert.doesNotMatch(html, /<button/);
 });
+
+// ── ประเภทประชุม (profile) ────────────────────────────────────────────────
+// docs/superpowers/specs/2026-07-30-meeting-profile-design.md
+// คู่กับเทส STEPS ข้างบน: catalog ที่ลอกมาจาก meeting-notes ต้องมีเทสคุมความตรงกัน
+// ไม่ใช่ comment ที่บอกให้ระวัง แล้วรอวันที่ฝั่งใดฝั่งหนึ่งขยับ
+test('PROFILES ตรงกับ UI.th.profiles ใน meeting-notes web/app.js เป๊ะตัวอักษร', () => {
+  assert.deepStrictEqual(core.PROFILES, [
+    ['dev', 'dev ล้วน', 'ศัพท์เทคนิคตรงๆ'],
+    ['cross', 'Business + dev', 'แยก "ทำได้" ออกจาก "จะทำ" · ขยายศัพท์ให้คนนอกทีม'],
+  ]);
+});
+
+test('id ของ profile ต้องตรงกับไฟล์ใน prompts/profiles/ และไม่ซ้ำกัน', () => {
+  const ids = core.PROFILES.map((p) => p[0]);
+  assert.deepStrictEqual(ids, ['dev', 'cross']);
+  assert.strictEqual(new Set(ids).size, ids.length);
+});
+
+test('ค่าเริ่มต้นเป็น dev และเป็น id ที่มีอยู่จริงในรายการ', () => {
+  assert.strictEqual(core.DEFAULT_PROFILE, 'dev');
+  assert.ok(core.PROFILES.some((p) => p[0] === core.DEFAULT_PROFILE));
+});
+
+test('showsProfile: ถอดเสียงอย่างเดียวไม่ถามประเภท', () => {
+  // โหมดนี้ไม่มีขั้นสรุปให้ใช้กฎ profile เลย ถามไปก็เป็นคำถามที่คำตอบไม่เปลี่ยนอะไร
+  assert.strictEqual(core.showsProfile(core.NO_SUMMARY_MODEL), false);
+});
+
+test('showsProfile: ทุกโมเดลที่มีขั้นสรุปต้องถามประเภท', () => {
+  assert.strictEqual(core.showsProfile('GLM-5.2'), true);
+  assert.strictEqual(core.showsProfile('claude-opus-5'), true);
+  assert.strictEqual(core.showsProfile('claude-sonnet-5'), true);
+});
+
+test('showsProfile: ค่าที่ไม่รู้จักยังถามประเภท', () => {
+  // ซ่อนได้ที่เดียวคือ transcript-only ซึ่งพิสูจน์ได้ว่าไม่มีขั้นสรุป -- ค่าที่ไม่รู้จัก
+  // ฝั่งสรุปจะเตือนแล้วสรุปต่อ ถ้าซ่อนตรงนี้ผู้ใช้จะเสียสิทธิ์เลือกทั้งที่ยังได้สรุป
+  assert.strictEqual(core.showsProfile('โมเดลที่ยังไม่มี'), true);
+  assert.strictEqual(core.showsProfile(undefined), true);
+});
+
+test('profileTitle คืนชื่อที่คนอ่านได้', () => {
+  assert.strictEqual(core.profileTitle('dev'), 'dev ล้วน');
+  assert.strictEqual(core.profileTitle('cross'), 'Business + dev');
+});
+
+test('profileTitle คืน id เมื่อเจอค่าที่ไม่รู้จัก ไม่ใช่สตริงว่าง', () => {
+  // ค่าที่พิมพ์ผิดใน config.json ต้องยังเห็นบนหน้าจอ ไม่ใช่หายไปเงียบ ๆ
+  assert.strictEqual(core.profileTitle('pm'), 'pm');
+  assert.strictEqual(core.profileTitle(''), '');
+  assert.strictEqual(core.profileTitle(undefined), '');
+});

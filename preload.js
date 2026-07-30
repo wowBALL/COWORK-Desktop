@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld('cowork', {
   // meeting-notes recorder service — see main.js, the renderer never fetches it directly
   getRunnerState: () => ipcRenderer.invoke('runner-get-state'),
   onRunnerState: (cb) => ipcRenderer.on('runner-update', (_e, payload) => cb(payload)),
-  startMeeting: (model, name) => ipcRenderer.invoke('runner-start', model, name),
+  startMeeting: (model, name, profile) => ipcRenderer.invoke('runner-start', model, name, profile),
   stopMeeting: () => ipcRenderer.invoke('runner-stop'),
   getRunnerConfig: () => ipcRenderer.invoke('get-runner-config'),
   saveRunnerConfig: (cfg) => ipcRenderer.invoke('save-runner-config', cfg)

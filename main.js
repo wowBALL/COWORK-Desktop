@@ -5,7 +5,6 @@ const fs = require('fs');
 const { readWorkspace } = require('./workspace');
 const { readMeetings, readTranscript } = require('./meetings');
 const { readQaResults } = require('./qatest');
-const { registry, decideQuit } = require('./children');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -162,7 +161,6 @@ async function downloadUpdate(update) {
 
 function installUpdate(installerPath) {
   const installDir = path.dirname(process.execPath);
-  updating = true;   // ระหว่างอัปเดตห้ามถาม -- ตัวที่ว่างยังถูกปิด ตัวที่ยุ่งปล่อยไว้ทำงานต่อ
   console.log('[updater] installing to', installDir);
   // Generic NSIS docs say /D= must be unquoted even with spaces in the path — tested against
   // this actual electron-builder-generated installer, that's wrong: unquoted truncates the
@@ -189,8 +187,7 @@ function installUpdate(installerPath) {
   //  --force-run และ /S มาคู่กัน)
   //
   // /D= ต้องอยู่ท้ายสุดเสมอ
-  // ตัวนี้ต้องไม่เข้าทะเบียน children.js -- มันตั้งใจให้รอดหลังแอปปิด ถ้าจดทะเบียนไว้
-  // เราจะฆ่าตัวติดตั้งของตัวเองทิ้งตอนปิดแอปพอดี
+  // detached + unref ตั้งใจให้ตัวติดตั้งรอดหลังแอปปิด ไม่ผูกชะตากับโพรเซสหลักที่กำลังจะตายไป
   app.once('quit', () => {
     spawn(installerPath, ['/S', '--force-run', '/D="' + installDir + '"'],
       { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
@@ -436,49 +433,6 @@ function pushQaTests() {
   win.webContents.send('qatest-update', payload);
 }
 
-// ---- ปิดโพรเซสลูกก่อนปิดแอป --------------------------------------------------
-// ด่านอยู่ที่ win.on('close') ไม่ใช่ app.on('before-quit') เพราะ before-quit ยิงหลังหน้าต่าง
-// ถูกทำลายไปแล้ว (เส้นทางจริง: ipc 'win-close' -> win.close() -> window-all-closed -> app.quit())
-// ถ้าไปดักตรงนั้น ปุ่ม "ยกเลิก" จะเหลือแอปที่รันอยู่โดยไม่มีหน้าต่างให้กดอะไรได้เลย
-let quitConfirmed = false;
-let quitting = false;      // ผ่านด่านแล้วกำลังรอ await อยู่ (states/stopAll/dialog) กันกดปิดซ้ำแล้วเข้า handleQuit() ซ้อนกัน
-let updating = false;      // ตั้งโดย installUpdate() -- ห้ามเด้งกล่องกลางทางอัปเดต
-
-async function handleQuit() {
-  quitting = true;
-  let states = [];
-  try { states = await registry.states(); } catch { states = []; }
-  const action = decideQuit(states, { updating });
-  const idlePids = states.filter(s => !s.busy).map(s => s.pid);
-
-  if (action === 'kill') {
-    await registry.stopAll();
-  } else if (action === 'quiet') {
-    await registry.stopAll(idlePids);
-  } else {
-    const busy = states.filter(s => s.busy).map(s => s.name).join(', ');
-    const parent = win && !win.isDestroyed() ? win : null;
-    const opts = {
-      type: 'warning',
-      title: 'COWORK Desktop',
-      message: 'มีงานที่ยังทำอยู่',
-      detail: `${busy} กำลังอัดเสียงหรือประมวลผลอยู่ ถ้าปิดตอนนี้งานรอบนี้จะหาย`,
-      buttons: ['ปิดทั้งหมด', 'ปิดแค่วิดเจ็ต', 'ยกเลิก'],
-      defaultId: 1,
-      cancelId: 2,
-      noLink: true,
-    };
-    const r = parent ? await dialog.showMessageBox(parent, opts)
-                     : await dialog.showMessageBox(opts);
-    if (r.response === 2) { quitting = false; return; } // ยกเลิก: หน้าต่างยังอยู่ ไม่ปิดอะไรทั้งนั้น เปิดด่านใหม่ให้ปิดซ้ำได้
-    if (r.response === 0) await registry.stopAll();
-    else await registry.stopAll(idlePids);
-  }
-
-  quitConfirmed = true;
-  app.quit();
-}
-
 function createWidget() {
   const { width, height: availH } = screen.getPrimaryDisplay().workAreaSize;
   const W = 420, Y = 60;
@@ -508,21 +462,9 @@ function createWidget() {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
   }
   win.loadFile('widget.html');
-  win.on('close', (e) => {
-    // ผ่านด่านมาแล้ว หรือไม่มีลูกให้จัดการ ก็ปล่อยปิดตามปกติ
-    if (quitConfirmed || registry.list().length === 0) return;
-    e.preventDefault();
-    // รอบก่อนยัง await ไม่จบ (states/stopAll/dialog ค้างอยู่) กันไม่ให้กดซ้ำแล้ว handleQuit() เข้าซ้อนกัน
-    if (quitting) return;
-    handleQuit().catch(err => {
-      console.log('[quit] handleQuit failed:', err);
-      quitting = false;   // เคลียร์ด่านให้ผู้ใช้กดปิดใหม่ได้ ไม่งั้นหน้าต่างจะค้างปิดไม่ได้อีกเลย
-      // อัปเดตรอบนี้ไม่ได้ไปต่อแล้ว ต้องปลด updating ด้วย ไม่งั้นมันค้าง true ตลอดชีพโพรเซส
-      // แล้วการปิดครั้งต่อ ๆ ไปจะไหลไปทาง 'quiet' ทุกครั้ง คือไม่ถามอะไรเลยแล้วทิ้งตัวที่กำลัง
-      // อัดเสียงให้รันต่อหลังวิดเจ็ตหายไปจากจอ
-      updating = false;
-    });
-  });
+  // ไม่มีด่านตอนปิดอีกแล้ว: วิดเจ็ตไม่ได้เป็นเจ้าของโพรเซสไหนเลย การอัดเป็นของ
+  // meeting-notes ซึ่งไม่หยุดตามวิดเจ็ต -- ปิดหน้าต่างขณะกำลังอัดจึงปลอดภัยและ
+  // ไม่ต้องถาม ผลพลอยได้คือวิดเจ็ตไม่มีทางฆ่างานที่กำลังทำอยู่ได้อีก
   win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); pushMeetings(); pushQaTests(); });
   setInterval(pushTasks, 5 * 60 * 1000);
   setInterval(pushWorkspace, 5 * 60 * 1000);

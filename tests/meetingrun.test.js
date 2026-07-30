@@ -187,3 +187,19 @@ test('viewOf: มี state แล้ว ready ไม่มีผลต่อก�
   assert.strictEqual(core.viewOf({ ready: true, state: { recorder: 'recording' } }), 'recording');
   assert.strictEqual(core.viewOf({ ready: false, state: { recorder: 'recording' } }), 'recording');
 });
+
+test('viewWaiting บอก OFF AIR และยังบอกวิธีเปิด service', () => {
+  const html = core.viewWaiting();
+  assert.match(html, /OFF AIR/);
+  assert.match(html, /start-ui\.bat/);
+  assert.match(html, /data-s="waiting"/);
+});
+
+test('viewConnecting บอกว่ารอความพร้อม และต้องไม่มีปุ่มเปิดห้อง', () => {
+  const html = core.viewConnecting();
+  assert.match(html, /รอความพร้อม ก่อน On Air/);
+  assert.match(html, /data-s="connecting"/);
+  // assert ที่การไม่มีปุ่ม ไม่ใช่แค่ข้อความ -- ข้อความถูกได้ทั้งที่ปุ่มยังโผล่
+  assert.doesNotMatch(html, /data-act="open"/);
+  assert.doesNotMatch(html, /<button/);
+});

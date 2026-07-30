@@ -141,6 +141,7 @@
   function viewIdle() {
     return `<div class="mrun" data-s="idle">
         <span class="sd"></span>
+        <span class="stag">STANDBY</span>
         <input class="sin" id="mrunRoom" type="text" placeholder="ชื่อห้อง (ไม่ใส่ก็ได้)"
                value="${esc(roomDraft)}" autocomplete="off">
         <button class="sbtn" data-act="open">เปิดห้อง</button>
@@ -153,7 +154,18 @@
   function viewWaiting() {
     return `<div class="mrun" data-s="waiting">
         <span class="sd"></span>
-        <span class="stxt">รอตัวรันประชุม… <em>· เปิด start-ui.bat ที่ meeting-notes ถ้ายังไม่ขึ้น</em></span>
+        <span class="stag">OFF AIR</span>
+        <span class="stxt"><em>· เปิด start-ui.bat ที่ meeting-notes ถ้ายังไม่ขึ้น</em></span>
+      </div>`;
+  }
+
+  // GET / ตอบแล้ว (service มีจริง) แต่ /api/state ยังไม่มา -- ยังไม่รู้ว่ามีห้องที่กำลัง
+  // บันทึกอยู่หรือเปล่า จึงยังไม่โชว์ปุ่มเปิดห้อง: กดตอนนี้อาจไปเปิดทับห้องที่กำลังอัด
+  // แล้วได้ 409 กลับมา รอ 1-2 วินาทีเพื่อพูดความจริงถูกกว่า
+  function viewConnecting() {
+    return `<div class="mrun" data-s="connecting">
+        <span class="sd"></span>
+        <span class="stxt">รอความพร้อม ก่อน On Air…</span>
       </div>`;
   }
 
@@ -161,6 +173,7 @@
     const closing = state.recorder === 'stopping' || stopping;
     return `<div class="mrun" data-s="recording">
         <span class="sd"></span>
+        <span class="stag">ON AIR</span>
         <span class="sclock" id="mrunClock">${fmtClock(state.elapsed_seconds)}</span>
         <span class="stxt">${esc(state.room || 'ประชุมไม่ได้ตั้งชื่อ')}
           <em>· ${esc(modelTitle(state.model))}</em></span>
@@ -287,7 +300,8 @@
     if (sig !== signature) {
       // service ไม่ตอบ = ไม่วาดอะไรเลย ไม่ใช่ปุ่มเทาที่กดแล้วพัง
       root.innerHTML = view === 'absent' ? ''
-        : (view === 'connecting' || view === 'waiting') ? viewWaiting()
+        : view === 'connecting' ? viewConnecting()
+        : view === 'waiting' ? viewWaiting()
         : view === 'recording' ? viewRecording()
         : view === 'queued' ? viewQueued()
         : view === 'processing' ? viewProcessing(progress)
@@ -456,6 +470,8 @@
     progressOf,
     finishedMeetingId,
     viewOf,
+    viewWaiting,
+    viewConnecting,
   };
 
   global.COWORK = global.COWORK || {};

@@ -19,6 +19,13 @@
 .mrun[data-s="queued"] .sd{background:var(--amber)}
 .mrun[data-s="done"] .sd{background:var(--green)}
 .mrun[data-s="failed"] .sd{background:var(--rose)}
+.mrun[data-s="connecting"]::before{background:var(--amber)}
+.mrun[data-s="connecting"] .sd{background:var(--amber)}
+.mrun[data-s="idle"]::before{background:var(--green)}
+.mrun[data-s="idle"] .sd{background:var(--green)}
+.mrun .stag{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--dim);flex-shrink:0}
+.mrun[data-s="idle"] .stag{color:var(--green)}
+.mrun[data-s="recording"] .stag{color:var(--rose)}
 @keyframes mrunPulse{0%,100%{opacity:1}50%{opacity:.22}}
 
 .mrun .sin{-webkit-app-region:no-drag;flex:1;min-width:0;font-family:inherit;font-size:11.5px;

@@ -95,6 +95,7 @@
   // เครื่องนี้เคยติดต่อ service ได้ไหม -- ตัวตัดสินว่าจะโชว์ "รอตัวรัน" หรือไม่โชว์
   // อะไรเลย เครื่องที่ไม่เคยมีตัวอัดต้องเห็นแท็บ Meeting เหมือน v1.8.1 เป๊ะ
   let seenService = false;
+  let ready = false;        // GET / ตอบไหม -- แยกจาก state ซึ่งมาจาก /api/state ที่ช้าได้
 
   // esc ตัวเดียวของแอปอยู่ที่ util.js -- ตรงนี้เคยมีก๊อปส่วนตัวที่ไม่ escape " ซึ่งเป็นบั๊กจริง:
   // พิมพ์ " ในชื่อห้องแล้ว value="${esc(roomDraft)}" ขาดกลางคัน เหลือข้อความแค่ถึงตัว " แรก
@@ -254,7 +255,12 @@
   function viewOf(opts) {
     const o = opts || {};
     const state = o.state;
-    if (!state) return o.seenService ? 'waiting' : 'absent';
+    // ลำดับนี้สำคัญ: GET / ตอบแล้วแต่ /api/state ยังไม่มา ต้องเป็น connecting
+    // ไม่ใช่ waiting (ซึ่งบอกให้ไปเปิด start-ui.bat ทั้งที่มันเปิดอยู่แล้ว)
+    if (!state) {
+      if (o.ready) return 'connecting';
+      return o.seenService ? 'waiting' : 'absent';
+    }
     if (state.recorder === 'recording' || state.recorder === 'stopping') return 'recording';
     if (!o.following) return 'idle';
     const progress = o.progress || { stage: 0, failed: false };
@@ -272,16 +278,16 @@
     const recording = state && (state.recorder === 'recording' || state.recorder === 'stopping');
     const progress = !state || recording ? null : progressOf(state.activity, followingJob);
     const following = !!(progress && followingJob !== dismissedJob);
-    const view = viewOf({ state, seenService, progress, following });
+    const view = viewOf({ ready, state, seenService, progress, following });
 
-    const sig = [view, seenService, state && state.room, state && state.model, model, modelsOpen, stopping,
+    const sig = [view, ready, seenService, state && state.room, state && state.model, model, modelsOpen, stopping,
       detailOpen, followingJob, state && state.worker_ready,
       progress ? `${progress.stage}:${progress.failed}` : '',
       state ? (state.warnings || []).map((w) => w.code).join(',') : ''].join('|');
     if (sig !== signature) {
       // service ไม่ตอบ = ไม่วาดอะไรเลย ไม่ใช่ปุ่มเทาที่กดแล้วพัง
       root.innerHTML = view === 'absent' ? ''
-        : view === 'waiting' ? viewWaiting()
+        : (view === 'connecting' || view === 'waiting') ? viewWaiting()
         : view === 'recording' ? viewRecording()
         : view === 'queued' ? viewQueued()
         : view === 'processing' ? viewProcessing(progress)
@@ -412,10 +418,14 @@
   }
 
   function onData(next) {
-    state = next;
+    // payload คือ { ready, state } ไม่ใช่ state เปล่า ๆ -- ready มาจาก GET / ซึ่งเร็ว
+    // และเชื่อได้ ส่วน state มาจาก /api/state ซึ่งช้าได้และเป็น null ได้
+    const payload = next || {};
+    ready = !!payload.ready;
+    state = payload.state || null;
     // ติดต่อได้ครั้งเดียวก็พอที่จะรู้ว่าเครื่องนี้มีตัวอัด -- ครั้งต่อไปที่ติดต่อ
     // ไม่ได้จึงบอกว่า "รออยู่" แทนที่จะหายไปเงียบ ๆ
-    if (state) seenService = true;
+    if (ready) seenService = true;
     if (state && state.recorder === 'recording') stopping = false;
     // เริ่มตามงานตั้งแต่วินาทีที่ service บอกว่าได้ไฟล์แล้ว -- last_result ถูกล้าง
     // เมื่อเปิดห้องถัดไป จึงต้องจำไว้เอง ไม่ใช่อ่านจาก state ทุกรอบ

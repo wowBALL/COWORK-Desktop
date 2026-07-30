@@ -167,3 +167,23 @@ test('viewOf: กลางไปป์ไลน์ = processing', () => {
     state: IDLE, following: true, progress: { stage: 2, failed: false },
   }), 'processing');
 });
+
+test('viewOf: พร้อมแล้วแต่ยังอ่านสถานะไม่ได้ = connecting ไม่ใช่ waiting', () => {
+  assert.strictEqual(core.viewOf({ ready: true, state: null, seenService: true }), 'connecting');
+});
+
+test('viewOf: connecting ต้องมาก่อนแม้เครื่องนี้ยังไม่เคยเห็น service', () => {
+  // GET / ตอบแล้วคือเห็นแล้ว -- ไม่ควรตกไปที่ absent ซึ่งไม่วาดอะไรเลย
+  assert.strictEqual(core.viewOf({ ready: true, state: null, seenService: false }), 'connecting');
+});
+
+test('viewOf: ไม่พร้อมและไม่มี state ยังตัดสินด้วย seenService เหมือนเดิม', () => {
+  assert.strictEqual(core.viewOf({ ready: false, state: null, seenService: true }), 'waiting');
+  assert.strictEqual(core.viewOf({ ready: false, state: null, seenService: false }), 'absent');
+});
+
+test('viewOf: มี state แล้ว ready ไม่มีผลต่อการเลือก view', () => {
+  // ความพร้อมเป็นเรื่องของ "คุยได้ไหม" สถานะจริงมาจาก /api/state เท่านั้น
+  assert.strictEqual(core.viewOf({ ready: true, state: { recorder: 'recording' } }), 'recording');
+  assert.strictEqual(core.viewOf({ ready: false, state: { recorder: 'recording' } }), 'recording');
+});

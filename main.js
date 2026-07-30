@@ -370,13 +370,34 @@ function pushWorkspace() {
 // else. Copying it to a second place is how a meeting's audio goes missing.
 let runnerTimer = null;
 
+// ความพร้อมมาจาก GET / ไม่ใช่ /api/state
+//
+// index() ของ session_service แค่ส่งไฟล์สแตติก ไม่เรียก worker probe จึงตอบใน ~11 ms
+// เสมอ ต่างจาก /api/state ที่รัน powershell + Get-CimInstance ทั้งเครื่องแบบ sync คาอยู่ใน
+// รีเควสต์ (วัดจริง 2026-07-30: 376 / 1151 / 1171 / 1463 / 2140 ms) แล้วแพ้ timeout เดิม
+// 1500 ms เป็นส่วนใหญ่ ทำให้วิดเจ็ตรายงานว่าไม่มี service ทั้งที่มันรันอยู่และตอบได้ปกติ
+//
+// เลือก GET / ไม่ใช่การเช็ค TCP ดิบ เพราะมันพิสูจน์ว่า Flask ของเราตอบ ไม่ใช่แค่
+// "มีอะไรถือพอร์ตนี้อยู่" ซึ่งแอปอื่นก็ทำได้
+async function fetchRunnerReady() {
+  try {
+    const res = await fetch(`http://127.0.0.1:${runnerPort}/`,
+      { signal: AbortSignal.timeout(1500) });
+    return res.ok;
+  } catch { return false; }   // พอร์ตปิด = ยังไม่ได้เปิด meeting-notes ไม่ใช่ error ที่ต้องโชว์
+}
+
 async function fetchRunnerState() {
   try {
+    // 5000 ไม่ใช่ 1500: /api/state รัน worker probe แบบ sync ได้ถึง ~2.1 วินาที
+    // ค่านี้ตรงกับที่ runner-start/runner-stop ใช้อยู่แล้ว ไม่ใช่ค่าที่คิดขึ้นใหม่
+    // ความพร้อมไม่ผูกกับ endpoint นี้อีกแล้ว (ดู fetchRunnerReady) การรอนานขึ้น
+    // จึงไม่ทำให้ผู้ใช้เห็นแถบค้าง
     const res = await fetch(`http://127.0.0.1:${runnerPort}/api/state?lang=th`,
-      { signal: AbortSignal.timeout(1500) });
+      { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     return await res.json();
-  } catch { return null; }   // no answer = no recorder on this machine, not an error to show
+  } catch { return null; }   // อ่านสถานะไม่ทัน -- ไม่ได้แปลว่า service ไม่มี
 }
 
 // อายุของเหตุการณ์ล่าสุด ใช้เป็นตัวชี้ว่า pipeline หลังปิดห้องยังเดินอยู่หรือเงียบไปแล้ว
@@ -391,10 +412,11 @@ function runnerActivityAge(state) {
 // Poll cadence follows the situation. The installer goes to 8 machines, most
 // without the service at all — hammering 127.0.0.1 once a second all day there
 // buys nothing.
-function runnerInterval(state) {
+function runnerInterval(ready, state) {
   // ไม่มี service ตอบบนเครื่องนี้ -- ตัวติดตั้งไป 8 เครื่องซึ่งส่วนใหญ่ไม่มีตัวอัดเลย
-  // การถามถี่กว่านี้ไม่ได้อะไรกลับมา
-  if (!state) return 30000;
+  if (!ready) return 30000;
+  // พร้อมแล้วแต่ยังอ่านสถานะไม่ได้: รีบถามซ้ำเพื่อปิดช่อง connecting ให้เร็ว
+  if (!state) return 2000;
   if (state.recorder !== 'idle') return 1000;
   // Room closed but the watcher's pipeline is still running: keep up the pace
   // while fresh events keep arriving, then ease off once it goes quiet.
@@ -402,14 +424,19 @@ function runnerInterval(state) {
 }
 
 async function pollRunner() {
-  const state = await fetchRunnerState();
-  if (state && !runnerSeen) {
+  const ready = await fetchRunnerReady();
+  // ผูก "เครื่องนี้เคยมี meeting-notes ไหม" กับ ready ไม่ใช่ state -- GET / ตอบคำถามนี้
+  // ตรงกว่าและไม่แพ้ timeout อย่างที่ /api/state เคยทำ
+  if (ready && !runnerSeen) {
     runnerSeen = true;
     writeConfigMerge({ meetingRunnerSeen: true });
   }
-  if (win) win.webContents.send('runner-update', state);
+  // พอร์ตไม่ตอบก็ไม่ต้องไปถาม /api/state เลย -- ประหยัดรอบ และไม่ไปจุด worker probe
+  // (powershell หนึ่งตัวต่อหนึ่งครั้ง) ให้ service ฟรี ๆ
+  const state = ready ? await fetchRunnerState() : null;
+  if (win) win.webContents.send('runner-update', { ready, state });
   // setTimeout rather than setInterval: the gap changes with the state
-  runnerTimer = setTimeout(pollRunner, runnerInterval(state));
+  runnerTimer = setTimeout(pollRunner, runnerInterval(ready, state));
 }
 
 // meeting-notes vault — path comes from settings (meetingsDir, loaded in loadAppConfig).
@@ -629,7 +656,10 @@ ipcMain.handle('save-qa-sources', (_e, sources) => {
 });
 // renderer's Meeting tab: the recorder controls. The renderer never talks to
 // 127.0.0.1 itself — everything it can do goes through these five handles.
-ipcMain.handle('runner-get-state', () => fetchRunnerState());
+ipcMain.handle('runner-get-state', async () => {
+  const ready = await fetchRunnerReady();
+  return { ready, state: ready ? await fetchRunnerState() : null };
+});
 ipcMain.handle('runner-start', async (_e, model, name) => {
   try {
     const res = await fetch(`http://127.0.0.1:${runnerPort}/api/session`, {

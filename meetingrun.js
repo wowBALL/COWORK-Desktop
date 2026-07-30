@@ -84,10 +84,25 @@
     [NO_SUMMARY_MODEL, 'ถอดเสียงอย่างเดียว', 'ไม่สรุป · ไม่เสียเงิน'],
   ];
 
+  // ประเภทประชุม -- กฎเดียวกับ STEPS: ต้องตรงกับ UI.th.profiles ใน
+  // D:\COWORK\meeting-notes\web\app.js เป๊ะตัวอักษร และ id ต้องตรงกับชื่อไฟล์ใน
+  // prompts/profiles/ กับ prompts.KNOWN_PROFILES ของฝั่งนั้น
+  // (ที่นี่ไม่ validate id เหมือนกับที่ฝั่ง service ไม่ validate -- ค่าที่ไม่รู้จักฝั่งสรุป
+  // จะเตือนแล้วใช้ dev ต่อ การปฏิเสธตรงนี้จะทำให้กดเปิดห้องไม่ได้เพราะค่าที่แก้ทีหลังได้)
+  const PROFILES = [
+    ['dev', 'dev ล้วน', 'ศัพท์เทคนิคตรงๆ'],
+    ['cross', 'Business + dev', 'แยก "ทำได้" ออกจาก "จะทำ" · ขยายศัพท์ให้คนนอกทีม'],
+  ];
+  // dev เป็นค่าเริ่มต้นด้วยเหตุผลเดียวกับที่ web/app.js บันทึกไว้: เป็น 3 ใน 4 ครั้งของ
+  // สัปดาห์ และการเผลอเลือก cross ในประชุม dev ล้วนทำให้โมเดล qualify คำพูดปกติ
+  // เกินจำเป็นจนสรุปอ่านแล้วอ้อมค้อม
+  const DEFAULT_PROFILE = 'dev';
+
   let root = null;
   let api = null;           // window.cowork
   let state = null;         // state ล่าสุดจาก service (null = ไม่ตอบ)
   let model = 'GLM-5.2';
+  let profile = DEFAULT_PROFILE;
   let roomDraft = '';
   let modelsOpen = false;
   let stopping = false;     // กันกดปิดซ้ำระหว่างรอ service ตอบ
@@ -115,6 +130,24 @@
     return hit ? hit[1] : (id || '');
   }
 
+  function profileTitle(id) {
+    const hit = PROFILES.find((p) => p[0] === id);
+    return hit ? hit[1] : (id || '');
+  }
+
+  // ถอดเสียงอย่างเดียวไม่ถามประเภท (กฎเดียวกับ web/app.js) -- profile เลือกแค่ว่าจะใช้
+  // กฎสรุปชุดไหน โหมดนี้ไม่มีขั้นสรุปให้ใช้กฎกับมันเลย ถามไปก็เป็นคำถามที่คำตอบ
+  // ไม่เปลี่ยนอะไร
+  //
+  // ซ่อนได้ที่เดียวคือโมเดลนี้ ซึ่งพิสูจน์ได้ว่าไม่มีขั้นสรุป -- ค่าที่ไม่รู้จักยังต้องถาม
+  // เพราะฝั่งสรุปจะเตือนแล้วสรุปต่อ ถ้าซ่อนตรงนี้ผู้ใช้เสียสิทธิ์เลือกทั้งที่ยังได้สรุป
+  //
+  // แยกออกมาเป็น pure function ด้วยเหตุผลเดียวกับ viewOf: กฎการซ่อนเป็นสิ่งที่ต้องเทส
+  // แต่ตัวที่ประกอบ HTML แตะ DOM
+  function showsProfile(m) {
+    return m !== NO_SUMMARY_MODEL;
+  }
+
   function warnHtml() {
     if (!state || !state.warnings || !state.warnings.length) return '';
     return state.warnings
@@ -130,13 +163,28 @@
       + 'ไฟล์จะเข้าคิวรอไว้ แล้วประมวลผลเมื่อตัวประมวลผลกลับมา</span></div>';
   }
 
-  function modelsHtml() {
-    if (!modelsOpen) return '';
-    return `<div class="mrunx">${MODELS.map(([id, t, d]) => `
-      <div class="mrunopt ${model === id ? 'on' : ''}" data-model="${esc(id)}">
+  function optHtml(rows, chosen, attr) {
+    return rows.map(([id, t, d]) => `
+      <div class="mrunopt ${chosen === id ? 'on' : ''}" ${attr}="${esc(id)}">
         <span class="tick">✓</span>
         <span><span class="t">${esc(t)}</span><br><span class="d">${esc(d)}</span></span>
-      </div>`).join('')}</div>`;
+      </div>`).join('');
+  }
+
+  function modelsHtml() {
+    if (!modelsOpen) return '';
+    // ลำดับเดียวกับหน้าเว็บ: โมเดลก่อน ประเภททีหลัง
+    const profiles = showsProfile(model)
+      ? `<div class="mrunlabel">ประเภทประชุม</div>${optHtml(PROFILES, profile, 'data-profile')}`
+      : '';
+    return `<div class="mrunx">${optHtml(MODELS, model, 'data-model')}${profiles}</div>`;
+  }
+
+  // ป้ายปุ่ม ⋯ ต้องบอกทุกอย่างที่แผงนั้นตั้งได้ -- ไม่งั้นตัวเลือกประเภทประชุมจะอยู่
+  // หลังปุ่มที่สัญญาแค่เรื่องโมเดล และไม่มีใครรู้ว่าต้องกดที่นี่
+  function moreTitle() {
+    if (!showsProfile(model)) return `เลือกโมเดลสรุป (${modelTitle(model)})`;
+    return `เลือกโมเดลสรุปและประเภทประชุม (${modelTitle(model)} · ${profileTitle(profile)})`;
   }
 
   function viewIdle() {
@@ -146,7 +194,7 @@
         <input class="sin" id="mrunRoom" type="text" placeholder="ชื่อห้อง (ไม่ใส่ก็ได้)"
                value="${esc(roomDraft)}" autocomplete="off">
         <button class="sbtn" data-act="open">เปิดห้อง</button>
-        <button class="smore" data-act="models" title="เลือกโมเดลสรุป (${esc(modelTitle(model))})">⋯</button>
+        <button class="smore" data-act="models" title="${esc(moreTitle())}">⋯</button>
       </div>${modelsHtml()}${workerHtml()}${warnHtml()}`;
   }
 
@@ -328,7 +376,10 @@
     const following = !!(progress && followingJob !== dismissedJob);
     const view = viewOf({ ready, state, seenService, progress, following });
 
-    const sig = [view, ready, seenService, state && state.room, state && state.model, model, modelsOpen, stopping,
+    // profile ต้องอยู่ในลายเซ็นคู่กับ model: ถ้าไม่มี การกดเลือกประเภทจะเปลี่ยนตัวแปรจริง
+    // แต่เครื่องหมายถูกไม่ขยับ ผู้ใช้เห็นว่ากดไม่ติดแล้วกดซ้ำ หรือเริ่มอัดด้วยประเภทที่
+    // ไม่ได้ตั้งใจ (บั๊กจริงที่ web/app.js บันทึกไว้)
+    const sig = [view, ready, seenService, state && state.room, state && state.model, model, profile, modelsOpen, stopping,
       detailOpen, followingJob, state && state.worker_ready,
       progress ? `${progress.stage}:${progress.failed}` : '',
       state ? (state.warnings || []).map((w) => w.code).join(',') : ''].join('|');
@@ -361,9 +412,11 @@
     const input = root.querySelector('#mrunRoom');
     roomDraft = input ? input.value.trim() : '';
     if (!api || !api.startMeeting) return;
-    const res = await api.startMeeting(model, roomDraft);
+    // ส่ง profile ไปเสมอแม้ตอน transcript-only (เหมือนหน้าเว็บ) -- service เก็บค่าไว้เฉย ๆ
+    // โดยไม่มีใครใช้ ดีกว่ามีกฎที่สองตรงนี้ที่ต้องคอยซิงก์กับฝั่งนั้น
+    const res = await api.startMeeting(model, roomDraft, profile);
     // 409 = มีห้องเปิดอยู่แล้ว ปล่อยให้ poll รอบถัดไปบอกความจริง ไม่เดาแทน
-    if (res && res.ok) roomDraft = '';
+    if (res && res.ok) { roomDraft = ''; modelsOpen = false; }
     if (api.getRunnerState) onData(await api.getRunnerState());
   }
 
@@ -374,12 +427,24 @@
     if (api && api.getRunnerState) onData(await api.getRunnerState());
   }
 
+  // ต้องเจาะจง [data-model] / [data-profile] ไม่ใช่ .mrunopt เฉย ๆ: การ์ดสองชุดใช้คลาส
+  // เดียวกัน ถ้าจับด้วยคลาส การกดเลือกประเภทจะตั้ง model = undefined ไปด้วย
+  // (บั๊กจริงที่ web/app.js บันทึกไว้ ไม่ใช่ความกังวลลอย ๆ)
+  //
+  // แผงไม่ปิดตัวเองหลังเลือกอีกแล้ว -- มีสองอย่างให้ตั้งในแผงเดียว ปิดทันทีเท่ากับบังคับ
+  // ให้กด ⋯ ใหม่เพื่อเลือกอย่างที่สอง ปิดด้วยการกด ⋯ ซ้ำ หรือตอนเปิดห้องสำเร็จ
   function onClick(e) {
     const opt = e.target.closest('[data-model]');
     if (opt) {
       model = opt.dataset.model;
-      modelsOpen = false;
       if (api && api.saveRunnerConfig) api.saveRunnerConfig({ model });
+      draw();
+      return;
+    }
+    const prof = e.target.closest('[data-profile]');
+    if (prof) {
+      profile = prof.dataset.profile;
+      if (api && api.saveRunnerConfig) api.saveRunnerConfig({ profile });
       draw();
       return;
     }
@@ -454,6 +519,7 @@
       api.getRunnerConfig().then((cfg) => {
         if (!cfg) return;
         if (cfg.model) model = cfg.model;
+        if (cfg.profile) profile = cfg.profile;
         if (cfg.seen) seenService = true;
         draw();
       });
@@ -507,6 +573,10 @@
     STEPS,
     SUMMARIZE_STEP,
     NO_SUMMARY_MODEL,
+    PROFILES,
+    DEFAULT_PROFILE,
+    profileTitle,
+    showsProfile,
     STAGE_OF,
     jobStemOf,
     fmtClock,

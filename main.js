@@ -65,6 +65,11 @@ let qaSources = [];
 let runnerPort = 8765;
 // Last summary model picked, remembered so opening a room is a single click.
 let runnerModel = 'GLM-5.2';
+// Last meeting type (profile) picked — travels the same road as runnerModel.
+// 'dev' matches meeting-notes' own default, so a machine that never touched this
+// setting keeps behaving exactly as it did before the picker existed.
+// See docs/superpowers/specs/2026-07-30-meeting-profile-design.md
+let runnerProfile = 'dev';
 // Has this machine ever reached the service? Only then may the Meeting tab show
 // a "waiting for the runner" state. On the 8 installed machines that never had a
 // recorder, a permanent red light would be noise about a feature they never asked
@@ -106,6 +111,7 @@ function loadAppConfig() {
   qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
   runnerPort = Number(saved.meetingRunnerPort) || 8765;
   runnerModel = saved.meetingRunnerModel || 'GLM-5.2';
+  runnerProfile = saved.meetingRunnerProfile || 'dev';
   runnerSeen = saved.meetingRunnerSeen === true;
   // dev convenience only: unpackaged runs may still use a local .env; never packaged
   if (!app.isPackaged) {
@@ -683,12 +689,15 @@ ipcMain.handle('save-qa-sources', (_e, sources) => {
 // 127.0.0.1 itself — everything it can do goes through these five handles.
 // รูปเดียวกับที่ runner-update ส่งเป๊ะ เพราะเป็นตัวอ่านตัวเดียวกัน
 ipcMain.handle('runner-get-state', () => readRunner());
-ipcMain.handle('runner-start', async (_e, model, name) => {
+ipcMain.handle('runner-start', async (_e, model, name, profile) => {
   try {
     const res = await fetch(`http://127.0.0.1:${runnerPort}/api/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, name: name || '' }),
+      // profile ที่เป็น undefined ต้องไม่กลายเป็น key ใน JSON -- JSON.stringify ตัดให้เอง
+      // ผลคือเครื่องที่ยังไม่เคยตั้งค่านี้ส่ง payload เท่าเดิมเป๊ะ แล้วฝั่ง service
+      // fallback ไป config.meeting_profile ตามเดิม ไม่ใช่ได้ค่า null ที่ไม่มีใครรับมือ
+      body: JSON.stringify({ model, name: name || '', profile }),
       signal: AbortSignal.timeout(5000),
     });
     const body = await res.json().catch(() => ({}));
@@ -710,12 +719,13 @@ ipcMain.handle('runner-stop', async () => {
   } catch { return { error: 'unreachable' }; }
 });
 ipcMain.handle('get-runner-config', () => ({
-  port: runnerPort, model: runnerModel, seen: runnerSeen,
+  port: runnerPort, model: runnerModel, profile: runnerProfile, seen: runnerSeen,
 }));
 ipcMain.handle('save-runner-config', (_e, cfg) => {
   const patch = {};
   if (cfg && cfg.port) { runnerPort = Number(cfg.port) || 8765; patch.meetingRunnerPort = runnerPort; }
   if (cfg && cfg.model) { runnerModel = cfg.model; patch.meetingRunnerModel = runnerModel; }
+  if (cfg && cfg.profile) { runnerProfile = cfg.profile; patch.meetingRunnerProfile = runnerProfile; }
   if (Object.keys(patch).length) writeConfigMerge(patch);
   return { ok: true };
 });

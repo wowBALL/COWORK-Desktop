@@ -176,22 +176,27 @@
   // เสร็จ -- เป็นสิบวินาทีถึงเป็นนาทีในประชุมยาว และไม่มีเสียงเข้าเลยในช่วงนั้น ป้าย
   // ON AIR กับไฟแดงกะพริบตอนนั้นจึงหมายถึงคนละเรื่องกับที่มันสัญญาไว้
   //
-  // ค่าที่ไม่รู้จักได้ 'กำลังปิด' โดยตั้งใจ: ป้าย ON AIR ต้องมาจากหลักฐานเดียวคือ
+  // ค่าที่ไม่รู้จักไม่นับเป็นออกอากาศโดยตั้งใจ: ไฟแดงต้องมาจากหลักฐานเดียวคือ
   // recorder === 'recording' ไม่ใช่จากการเดา
-  const AIR_ON = 'ON AIR';
+  //
+  // ทุกที่ที่ต้องรู้ว่า "ออกอากาศอยู่จริงไหม" อ่านจากตัวนี้ตัวเดียว -- ป้ายบนแถบ
+  // (airTagOf) · สีจุดบนแถบ (data-air) · คลาสของ pill บนแถบหัวข้อ (drawBar)
+  // สามที่ที่เทียบ 'recording' เองคือสามที่ที่รอวันพูดไม่ตรงกัน
+  function isOnAir(recorder) {
+    return recorder === 'recording';
+  }
+
   function airTagOf(recorder) {
-    return recorder === 'recording' ? AIR_ON : 'กำลังปิด';
+    return isOnAir(recorder) ? 'ON AIR' : 'กำลังปิด';
   }
 
   function viewRecording() {
     const closing = state.recorder === 'stopping' || stopping;
     // data-s ยังเป็น recording ทั้งสองช่วง (นาฬิกาและปุ่มปิดห้องอยู่ที่ view นี้ทั้งคู่)
-    // ตัวแยกสีคือ data-air -- อ่านจากป้ายที่ airTagOf ตัดสิน ไม่ใช่เช็ค recorder ซ้ำ
-    // อีกที่ ไม่งั้นวันหน้าสองที่นี้พูดไม่ตรงกันได้
-    const tag = airTagOf(state.recorder);
-    return `<div class="mrun" data-s="recording" data-air="${tag === AIR_ON ? 'on' : 'closing'}">
+    // ตัวแยกสีคือ data-air
+    return `<div class="mrun" data-s="recording" data-air="${isOnAir(state.recorder) ? 'on' : 'closing'}">
         <span class="sd"></span>
-        <span class="stag">${tag}</span>
+        <span class="stag">${airTagOf(state.recorder)}</span>
         <span class="sclock" id="mrunClock">${fmtClock(state.elapsed_seconds)}</span>
         <span class="stxt">${esc(state.room || 'ประชุมไม่ได้ตั้งชื่อ')}
           <em>· ${esc(modelTitle(state.model))}</em></span>
@@ -409,7 +414,11 @@
     let cls = null;
     let html = '';
     if (view === 'recording') {
-      cls = 'rec';
+      // pill แดงกะพริบต้องหมายถึงสิ่งเดียวกับป้าย ON AIR บนแถบ ไม่ใช่ "view เป็น
+      // recording" ซึ่งกินช่วง encode หลังปิดห้องด้วย -- ช่วงนั้นใช้ wait (amber
+      // ไม่กะพริบ) ซึ่งมีอยู่แล้วสำหรับ queued จึงไม่ต้องเพิ่มสีหรือคลาสใหม่
+      // นาฬิกายังเดินอยู่ทั้งสองช่วง คนที่ลืมปิดห้องยังต้องเห็นเวลา
+      cls = isOnAir(state.recorder) ? 'rec' : 'wait';
       html = `<span class="d"></span>${fmtClock(state.elapsed_seconds)}`;
     } else if (view === 'processing') {
       const total = stepCount();
@@ -503,6 +512,7 @@
     fmtClock,
     progressOf,
     finishedMeetingId,
+    isOnAir,
     airTagOf,
     viewOf,
     viewWaiting,

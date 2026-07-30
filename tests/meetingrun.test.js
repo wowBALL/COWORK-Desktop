@@ -219,7 +219,24 @@ test('viewWaiting บอก OFF AIR และยังบอกวิธีเ�
 });
 
 // ON AIR = เสียงกำลังเข้าจริงเท่านั้น -- view `recording` กินทั้งช่วงอัดและช่วงปิด
-// (นาฬิกาและปุ่มปิดห้องอยู่ที่นั้นทั้งคู่) ตัวที่ต้องแยกคือป้าย
+// (นาฬิกาและปุ่มปิดห้องอยู่ที่นั้นทั้งคู่) ตัวที่ต้องแยกคือป้ายและสี
+//
+// isOnAir เป็นตัวตัดสินตัวเดียวของทั้งไฟล์: ป้ายบนแถบ (airTagOf), สีจุดบนแถบ
+// (data-air) และคลาสของ pill บนแถบหัวข้อ (drawBar) อ่านจากตัวนี้ทั้งหมด สามที่ที่
+// เทียบ recorder === 'recording' เองคือสามที่ที่รอวันพูดไม่ตรงกัน
+test('isOnAir: จริงเฉพาะตอนกำลังอัด', () => {
+  assert.strictEqual(core.isOnAir('recording'), true);
+});
+
+test('isOnAir: สั่งปิดแล้วแต่ยังบีบอัดไฟล์อยู่ = ไม่ได้ออกอากาศ', () => {
+  assert.strictEqual(core.isOnAir('stopping'), false);
+});
+
+test('isOnAir: ค่าที่ไม่คาดคิดต้องไม่นับเป็นออกอากาศ', () => {
+  assert.strictEqual(core.isOnAir('idle'), false);
+  assert.strictEqual(core.isOnAir(undefined), false);
+});
+
 test('airTagOf: กำลังอัดอยู่ = ON AIR', () => {
   assert.strictEqual(core.airTagOf('recording'), 'ON AIR');
 });

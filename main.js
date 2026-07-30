@@ -368,22 +368,25 @@ function pushWorkspace() {
 // Reads and commands over HTTP, never spawns the recorder itself: the
 // manifest -> encode -> inbox/ ordering lives in session_service.py and nowhere
 // else. Copying it to a second place is how a meeting's audio goes missing.
-let runnerTimer = null;
 
-// ความพร้อมมาจาก GET / ไม่ใช่ /api/state
+// ตัวหยั่งความพร้อมแบบถูก ๆ -- คำถามคือ "มีอะไรตอบ HTTP บนพอร์ตนี้ไหม" เท่านั้น
 //
 // index() ของ session_service แค่ส่งไฟล์สแตติก ไม่เรียก worker probe จึงตอบใน ~11 ms
 // เสมอ ต่างจาก /api/state ที่รัน powershell + Get-CimInstance ทั้งเครื่องแบบ sync คาอยู่ใน
 // รีเควสต์ (วัดจริง 2026-07-30: 376 / 1151 / 1171 / 1463 / 2140 ms) แล้วแพ้ timeout เดิม
 // 1500 ms เป็นส่วนใหญ่ ทำให้วิดเจ็ตรายงานว่าไม่มี service ทั้งที่มันรันอยู่และตอบได้ปกติ
 //
-// เลือก GET / ไม่ใช่การเช็ค TCP ดิบ เพราะมันพิสูจน์ว่า Flask ของเราตอบ ไม่ใช่แค่
-// "มีอะไรถือพอร์ตนี้อยู่" ซึ่งแอปอื่นก็ทำได้
+// นับ "ตอบกลับมา" ไม่ใช่ res.ok: 404 ก็คือมีเซิร์ฟเวอร์อยู่ตรงนั้นแล้ว ถ้าผูกไว้กับ 200
+// วันที่ index.html ฝั่ง meeting-notes ถูกเปลี่ยนชื่อ วิดเจ็ตจะค้างที่ OFF AIR และซ่อน
+// ปุ่มอัดหายไป -- คือบั๊กเดิมที่กลับมาทางประตูอื่น
+//
+// สิ่งที่มันไม่ได้พิสูจน์: ว่าคนที่ตอบคือ session_service จริง แอปอะไรก็ตามที่ถือพอร์ตนี้
+// อยู่ก็ตอบได้ คำถาม "เครื่องนี้เคยมี meeting-notes ไหม" จึงตัดสินจาก /api/state ที่
+// parse ผ่านเท่านั้น (ดู readRunner) ไม่ใช่จากค่าที่ฟังก์ชันนี้คืน
 async function fetchRunnerReady() {
   try {
-    const res = await fetch(`http://127.0.0.1:${runnerPort}/`,
-      { signal: AbortSignal.timeout(1500) });
-    return res.ok;
+    await fetch(`http://127.0.0.1:${runnerPort}/`, { signal: AbortSignal.timeout(1500) });
+    return true;
   } catch { return false; }   // พอร์ตปิด = ยังไม่ได้เปิด meeting-notes ไม่ใช่ error ที่ต้องโชว์
 }
 
@@ -391,13 +394,41 @@ async function fetchRunnerState() {
   try {
     // 5000 ไม่ใช่ 1500: /api/state รัน worker probe แบบ sync ได้ถึง ~2.1 วินาที
     // ค่านี้ตรงกับที่ runner-start/runner-stop ใช้อยู่แล้ว ไม่ใช่ค่าที่คิดขึ้นใหม่
-    // ความพร้อมไม่ผูกกับ endpoint นี้อีกแล้ว (ดู fetchRunnerReady) การรอนานขึ้น
-    // จึงไม่ทำให้ผู้ใช้เห็นแถบค้าง
+    // ความพร้อมไม่ถูก endpoint นี้ *กั้น* อีกแล้ว (ดู fetchRunnerReady ซึ่งเป็นเส้นทางเร็ว)
+    // การรอนานขึ้นจึงไม่ทำให้ผู้ใช้เห็นแถบค้าง -- ทางกลับกันคำตอบที่ parse ผ่านของ
+    // endpoint นี้ *ยืนยัน* ความพร้อมได้เองด้วย (ดู readRunner)
     const res = await fetch(`http://127.0.0.1:${runnerPort}/api/state?lang=th`,
       { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     return await res.json();
   } catch { return null; }   // อ่านสถานะไม่ทัน -- ไม่ได้แปลว่า service ไม่มี
+}
+
+// อ่านความพร้อม + สถานะเป็นก้อนเดียว -- ทั้งฝั่ง push (รอบ poll) และฝั่ง pull
+// (runner-get-state ที่ onShow/openRoom/stopRoom เรียก) ต้องได้รูป { ready, state }
+// เดียวกันเป๊ะ ไม่งั้น onShow() กับรอบ poll เห็นโลกไม่เหมือนกัน จึงมีที่เดียว
+//
+// สถานะเป็นใหญ่กว่าตัวหยั่ง: /api/state ตอบและ parse ผ่าน = service ติดต่อได้ *โดยนิยาม*
+// ไม่ว่า GET / จะทันหรือไม่ทัน ตัวหยั่งพลาดครั้งเดียวเคยทำให้แถบตกไป OFF AIR (ไม่มีปุ่ม
+// หยุด ไม่มีไฟแดง) แล้วรอ 30 วินาทีก่อนถามใหม่ ทั้งที่กำลังอัดอยู่ -- pushMeetings /
+// pushWorkspace / pushQaTests เป็น fs walk แบบ sync บนเธรดเดียวกันและยิงทุก 5 นาที
+// วอลต์ที่อยู่บน network share ตัวเดียวก็หยุด event loop ได้นานพอให้ตัวนับ 1500 ms ชนะ
+//
+// แต่เครื่องที่ไม่เคยเห็น service เลย (runnerSeen เป็น false ตลอดชีพเครื่อง) ยังไม่ถาม
+// /api/state แม้แต่ครั้งเดียว -- 8 เครื่องที่ติดตั้งไปซึ่งไม่มีตัวอัดจึงไม่ไปจุด worker
+// probe (powershell หนึ่งตัวต่อหนึ่งครั้ง) ให้ service ฟรี ๆ และแท็บ Meeting ยังเงียบ
+async function readRunner() {
+  const probe = await fetchRunnerReady();
+  const state = probe || runnerSeen ? await fetchRunnerState() : null;
+  // ผูก "เครื่องนี้เคยมี meeting-notes ไหม" กับหลักฐานที่แข็งที่สุดที่มี: JSON จาก
+  // /api/state ที่ parse ผ่าน ค่านี้ถูกเขียนลง config แบบถาวร -- GET / ที่ตอบ 200
+  // เฉย ๆ พิสูจน์ไม่ได้ว่าเป็น service ของเรา เครื่องที่มีแอปอื่นถือพอร์ตนี้อยู่จะได้
+  // บันไดสถานะติดค้างไปตลอดกาลทั้งที่แท็บ Meeting ควรเงียบสนิท
+  if (state && !runnerSeen) {
+    runnerSeen = true;
+    writeConfigMerge({ meetingRunnerSeen: true });
+  }
+  return { ready: probe || !!state, state };
 }
 
 // อายุของเหตุการณ์ล่าสุด ใช้เป็นตัวชี้ว่า pipeline หลังปิดห้องยังเดินอยู่หรือเงียบไปแล้ว
@@ -413,7 +444,7 @@ function runnerActivityAge(state) {
 // without the service at all — hammering 127.0.0.1 once a second all day there
 // buys nothing.
 function runnerInterval(ready, state) {
-  // ไม่มี service ตอบบนเครื่องนี้ -- ตัวติดตั้งไป 8 เครื่องซึ่งส่วนใหญ่ไม่มีตัวอัดเลย
+  // ไม่มี service ตอบบนเครื่องนี้
   if (!ready) return 30000;
   // พร้อมแล้วแต่ยังอ่านสถานะไม่ได้: รีบถามซ้ำเพื่อปิดช่อง connecting ให้เร็ว
   if (!state) return 2000;
@@ -424,19 +455,13 @@ function runnerInterval(ready, state) {
 }
 
 async function pollRunner() {
-  const ready = await fetchRunnerReady();
-  // ผูก "เครื่องนี้เคยมี meeting-notes ไหม" กับ ready ไม่ใช่ state -- GET / ตอบคำถามนี้
-  // ตรงกว่าและไม่แพ้ timeout อย่างที่ /api/state เคยทำ
-  if (ready && !runnerSeen) {
-    runnerSeen = true;
-    writeConfigMerge({ meetingRunnerSeen: true });
-  }
-  // พอร์ตไม่ตอบก็ไม่ต้องไปถาม /api/state เลย -- ประหยัดรอบ และไม่ไปจุด worker probe
-  // (powershell หนึ่งตัวต่อหนึ่งครั้ง) ให้ service ฟรี ๆ
-  const state = ready ? await fetchRunnerState() : null;
-  if (win) win.webContents.send('runner-update', { ready, state });
+  const { ready, state } = await readRunner();
+  // isDestroyed() ไม่ใช่แค่ !win: win ไม่เคยถูกเซ็ตเป็น null ที่ไหนเลย และรอบนี้ await
+  // ได้ถึง 1500 + 5000 ms ก่อนแตะ webContents ถ้าหน้าต่างถูกทำลายกลางทาง send() จะโยน
+  // อยู่ใน async function ที่ไม่มี .catch -- โซ่ poll ตายพร้อม unhandled rejection
+  if (win && !win.isDestroyed()) win.webContents.send('runner-update', { ready, state });
   // setTimeout rather than setInterval: the gap changes with the state
-  runnerTimer = setTimeout(pollRunner, runnerInterval(ready, state));
+  setTimeout(pollRunner, runnerInterval(ready, state));
 }
 
 // meeting-notes vault — path comes from settings (meetingsDir, loaded in loadAppConfig).
@@ -656,10 +681,8 @@ ipcMain.handle('save-qa-sources', (_e, sources) => {
 });
 // renderer's Meeting tab: the recorder controls. The renderer never talks to
 // 127.0.0.1 itself — everything it can do goes through these five handles.
-ipcMain.handle('runner-get-state', async () => {
-  const ready = await fetchRunnerReady();
-  return { ready, state: ready ? await fetchRunnerState() : null };
-});
+// รูปเดียวกับที่ runner-update ส่งเป๊ะ เพราะเป็นตัวอ่านตัวเดียวกัน
+ipcMain.handle('runner-get-state', () => readRunner());
 ipcMain.handle('runner-start', async (_e, model, name) => {
   try {
     const res = await fetch(`http://127.0.0.1:${runnerPort}/api/session`, {

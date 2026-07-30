@@ -169,11 +169,28 @@
       </div>`;
   }
 
+  // ON AIR = เสียงกำลังเข้าจริงเท่านั้น (ตัดสินใจแล้วโดยเจ้าของงาน)
+  //
+  // 'stopping' ถูกตั้งตั้งแต่วินาทีที่สั่งปิดห้อง แล้วค้างอยู่จนไฟล์ถูก drain และ encode
+  // เสร็จ -- เป็นสิบวินาทีถึงเป็นนาทีในประชุมยาว และไม่มีเสียงเข้าเลยในช่วงนั้น ป้าย
+  // ON AIR กับไฟแดงกะพริบตอนนั้นจึงหมายถึงคนละเรื่องกับที่มันสัญญาไว้
+  //
+  // ค่าที่ไม่รู้จักได้ 'กำลังปิด' โดยตั้งใจ: ป้าย ON AIR ต้องมาจากหลักฐานเดียวคือ
+  // recorder === 'recording' ไม่ใช่จากการเดา
+  const AIR_ON = 'ON AIR';
+  function airTagOf(recorder) {
+    return recorder === 'recording' ? AIR_ON : 'กำลังปิด';
+  }
+
   function viewRecording() {
     const closing = state.recorder === 'stopping' || stopping;
-    return `<div class="mrun" data-s="recording">
+    // data-s ยังเป็น recording ทั้งสองช่วง (นาฬิกาและปุ่มปิดห้องอยู่ที่ view นี้ทั้งคู่)
+    // ตัวแยกสีคือ data-air -- อ่านจากป้ายที่ airTagOf ตัดสิน ไม่ใช่เช็ค recorder ซ้ำ
+    // อีกที่ ไม่งั้นวันหน้าสองที่นี้พูดไม่ตรงกันได้
+    const tag = airTagOf(state.recorder);
+    return `<div class="mrun" data-s="recording" data-air="${tag === AIR_ON ? 'on' : 'closing'}">
         <span class="sd"></span>
-        <span class="stag">ON AIR</span>
+        <span class="stag">${tag}</span>
         <span class="sclock" id="mrunClock">${fmtClock(state.elapsed_seconds)}</span>
         <span class="stxt">${esc(state.room || 'ประชุมไม่ได้ตั้งชื่อ')}
           <em>· ${esc(modelTitle(state.model))}</em></span>
@@ -276,7 +293,11 @@
     }
     if (state.recorder === 'recording' || state.recorder === 'stopping') return 'recording';
     if (!o.following) return 'idle';
-    const progress = o.progress || { stage: 0, failed: false };
+    // ไม่มีค่า default ให้ progress โดยตั้งใจ: draw() คำนวณ following *จาก* progress
+    // (following = !!(progress && …)) ดังนั้น following จริง = progress ไม่เป็น null เสมอ
+    // ค่า default จะไม่แก้เคสไหนที่ไปถึงได้ แต่จะกลืนการผิดสัญญาในอนาคตให้กลายเป็น
+    // 'processing' เงียบ ๆ แทนที่จะโยนให้เห็น ซึ่งค้านกับเหตุผลที่แยกฟังก์ชันนี้ออกมา
+    const progress = o.progress;
     if (progress.failed) return 'failed';
     if (progress.stage >= 4) return 'done';
     // stage 0 = ยังไม่มีเหตุการณ์จาก watcher เลย ถ้า watcher ไม่ได้รันด้วย
@@ -469,6 +490,7 @@
     fmtClock,
     progressOf,
     finishedMeetingId,
+    airTagOf,
     viewOf,
     viewWaiting,
     viewConnecting,

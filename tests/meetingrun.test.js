@@ -162,6 +162,24 @@ test('viewOf: ขั้น 0 แต่ worker พร้อม = processing', () 
   }), 'processing');
 });
 
+test('viewOf: state ที่ไม่มีฟิลด์ worker_ready เลย = processing ไม่ใช่ queued', () => {
+  // โค้ดเทียบด้วย === false โดยตั้งใจ: service เวอร์ชันที่ยังไม่ส่งฟิลด์นี้มา ต้องไม่ถูก
+  // อ่านว่า "ตัวประมวลผลไม่พร้อม" แล้วค้างเป็น queued ทั้งที่ไปป์ไลน์เดินอยู่
+  assert.strictEqual(core.viewOf({
+    state: { recorder: 'idle', activity: [] },
+    following: true,
+    progress: { stage: 0, failed: false },
+  }), 'processing');
+});
+
+test('viewOf: เลิกตามงานแล้ว (กด ✕) แต่ progress ยังมีค่า = idle', () => {
+  // เส้นทางจริงหลังผู้ใช้กด ✕: draw() ยังคำนวณ progress ได้ตามเดิม แต่ following
+  // เป็น false เพราะ followingJob === dismissedJob -- ต้องกลับไปที่แถบว่าง
+  assert.strictEqual(core.viewOf({
+    state: IDLE, following: false, progress: { stage: 4, failed: false },
+  }), 'idle');
+});
+
 test('viewOf: กลางไปป์ไลน์ = processing', () => {
   assert.strictEqual(core.viewOf({
     state: IDLE, following: true, progress: { stage: 2, failed: false },
@@ -193,6 +211,24 @@ test('viewWaiting บอก OFF AIR และยังบอกวิธีเ�
   assert.match(html, /OFF AIR/);
   assert.match(html, /start-ui\.bat/);
   assert.match(html, /data-s="waiting"/);
+});
+
+// ON AIR = เสียงกำลังเข้าจริงเท่านั้น -- view `recording` กินทั้งช่วงอัดและช่วงปิด
+// (นาฬิกาและปุ่มปิดห้องอยู่ที่นั้นทั้งคู่) ตัวที่ต้องแยกคือป้าย
+test('airTagOf: กำลังอัดอยู่ = ON AIR', () => {
+  assert.strictEqual(core.airTagOf('recording'), 'ON AIR');
+});
+
+test('airTagOf: สั่งปิดแล้วแต่ยังบีบอัดไฟล์อยู่ = กำลังปิด ไม่ใช่ ON AIR', () => {
+  // 'stopping' ค้างอยู่จนไฟล์ถูก drain และ encode เสร็จ -- เป็นสิบวินาทีถึงเป็นนาที
+  // ในประชุมยาว และไม่มีเสียงเข้าเลยในช่วงนั้น
+  assert.strictEqual(core.airTagOf('stopping'), 'กำลังปิด');
+});
+
+test('airTagOf: ค่าที่ไม่คาดคิดต้องไม่ติดไฟแดง', () => {
+  // ป้าย ON AIR ต้องได้มาจากหลักฐานเดียวคือ recorder === 'recording'
+  assert.strictEqual(core.airTagOf('idle'), 'กำลังปิด');
+  assert.strictEqual(core.airTagOf(undefined), 'กำลังปิด');
 });
 
 test('viewConnecting บอกว่ารอความพร้อม และต้องไม่มีปุ่มเปิดห้อง', () => {

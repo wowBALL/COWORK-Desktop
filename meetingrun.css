@@ -14,7 +14,9 @@
 .mrun[data-s="done"]::before{background:var(--green)}
 
 .mrun .sd{width:7px;height:7px;border-radius:50%;background:var(--dim);flex-shrink:0}
-.mrun[data-s="recording"] .sd{background:var(--rose);animation:mrunPulse 1.6s infinite}
+/* ไฟแดงกะพริบ = เสียงกำลังเข้าจริงเท่านั้น -- data-s ยังเป็น recording ตลอดช่วงปิดห้อง
+   ด้วย (นาฬิกาและปุ่มปิดอยู่ที่ view เดียวกัน) ตัวแยกจึงเป็น data-air ไม่ใช่ data-s */
+.mrun[data-s="recording"][data-air="on"] .sd{background:var(--rose);animation:mrunPulse 1.6s infinite}
 .mrun[data-s="processing"] .sd{background:var(--cyan)}
 .mrun[data-s="queued"] .sd{background:var(--amber)}
 .mrun[data-s="done"] .sd{background:var(--green)}
@@ -26,6 +28,10 @@
 .mrun .stag{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--dim);flex-shrink:0}
 .mrun[data-s="idle"] .stag{color:var(--green)}
 .mrun[data-s="recording"] .stag{color:var(--rose)}
+/* สั่งปิดแล้วแต่ยังบีบอัดไฟล์อยู่: ป้าย "กำลังปิด" เป็น amber และจุดหยุดกะพริบ
+   amber ตัวเดียวกับ queued/connecting = "กำลังรออะไรอยู่" ซึ่งตรงกับความจริงตอนนั้น */
+.mrun[data-s="recording"][data-air="closing"] .stag{color:var(--amber)}
+.mrun[data-s="recording"][data-air="closing"] .sd{background:var(--amber);animation:none}
 @keyframes mrunPulse{0%,100%{opacity:1}50%{opacity:.22}}
 
 .mrun .sin{-webkit-app-region:no-drag;flex:1;min-width:0;font-family:inherit;font-size:11.5px;

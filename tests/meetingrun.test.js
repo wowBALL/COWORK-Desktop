@@ -190,9 +190,14 @@ test('viewOf: พร้อมแล้วแต่ยังอ่านสถา
   assert.strictEqual(core.viewOf({ ready: true, state: null, seenService: true }), 'connecting');
 });
 
-test('viewOf: connecting ต้องมาก่อนแม้เครื่องนี้ยังไม่เคยเห็น service', () => {
-  // GET / ตอบแล้วคือเห็นแล้ว -- ไม่ควรตกไปที่ absent ซึ่งไม่วาดอะไรเลย
-  assert.strictEqual(core.viewOf({ ready: true, state: null, seenService: false }), 'connecting');
+test('viewOf: เครื่องที่ไม่เคยเห็น service ต้องเงียบ แม้พอร์ตจะมีอะไรตอบอยู่', () => {
+  // กฎนี้กลับด้านจากแผนเดิม ซึ่งให้ connecting ชนะ absent ด้วยเหตุผลว่า "GET / ตอบแล้ว
+  // คือเห็นแล้ว" -- เหตุผลนั้นผิด: ความพร้อมพิสูจน์ได้แค่ว่า *มีอะไร* ตอบ HTTP บนพอร์ตนั้น
+  // แอปอื่นที่ถือพอร์ต 8765 อยู่ก็ตอบได้ ปลุกแท็บที่สเปกสัญญาว่าจะไม่แตะขึ้นมาด้วยหลักฐาน
+  // เท่านั้นไม่ได้ -- 8 เครื่องที่ติดตั้งไปซึ่งไม่มีตัวอัดจะได้แถบค้างไปตลอดกาล
+  //
+  // "เคยเห็นจริง" = /api/state ตอบและ parse ผ่าน (หรือ flag ที่บันทึกไว้ใน config แล้ว)
+  assert.strictEqual(core.viewOf({ ready: true, state: null, seenService: false }), 'absent');
 });
 
 test('viewOf: ไม่พร้อมและไม่มี state ยังตัดสินด้วย seenService เหมือนเดิม', () => {

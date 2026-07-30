@@ -92,10 +92,11 @@
   let modelsOpen = false;
   let stopping = false;     // กันกดปิดซ้ำระหว่างรอ service ตอบ
   let signature = null;     // วาดใหม่เฉพาะตอนสถานะเปลี่ยนจริง
-  // เครื่องนี้เคยติดต่อ service ได้ไหม -- ตัวตัดสินว่าจะโชว์ "รอตัวรัน" หรือไม่โชว์
-  // อะไรเลย เครื่องที่ไม่เคยมีตัวอัดต้องเห็นแท็บ Meeting เหมือน v1.8.1 เป๊ะ
+  // เครื่องนี้เคยอ่าน /api/state ได้จริงไหม (รอบนี้ หรือรอบก่อนที่จดไว้ใน config) --
+  // ประตูชั้นแรกของแถบทั้งอัน ไม่ผ่านคือไม่วาดอะไรเลย เครื่องที่ไม่เคยมีตัวอัดต้องเห็น
+  // แท็บ Meeting เหมือน v1.8.1 เป๊ะ ต่อให้มีแอปอื่นถือพอร์ต 8765 อยู่ก็ตาม
   let seenService = false;
-  let ready = false;        // GET / ตอบไหม -- แยกจาก state ซึ่งมาจาก /api/state ที่ช้าได้
+  let ready = false;        // service ตอบอยู่ไหม -- แยกจาก state ซึ่งมาจาก /api/state ที่ช้าได้
 
   // esc ตัวเดียวของแอปอยู่ที่ util.js -- ตรงนี้เคยมีก๊อปส่วนตัวที่ไม่ escape " ซึ่งเป็นบั๊กจริง:
   // พิมพ์ " ในชื่อห้องแล้ว value="${esc(roomDraft)}" ขาดกลางคัน เหลือข้อความแค่ถึงตัว " แรก
@@ -285,11 +286,19 @@
   function viewOf(opts) {
     const o = opts || {};
     const state = o.state;
-    // ลำดับนี้สำคัญ: GET / ตอบแล้วแต่ /api/state ยังไม่มา ต้องเป็น connecting
+    // ไม่มี state: seenService เป็นประตูชั้นแรก ไม่ใช่ ready
+    //
+    // เครื่องที่ไม่เคยเห็น service เลยต้องเงียบสนิทเสมอ ต่อให้ ready เป็น true --
+    // ความพร้อมพิสูจน์ได้แค่ว่า *มีอะไร* ตอบ HTTP บนพอร์ตนั้น แอปอื่นที่ถือพอร์ต 8765
+    // อยู่ก็ตอบได้ ถ้าปล่อยให้ ready ปลุกแถบขึ้นมาได้เอง 8 เครื่องที่ติดตั้งไปซึ่งไม่มี
+    // ตัวอัดจะได้ "รอความพร้อม ก่อน On Air…" ค้างไปตลอดกาล ซึ่งค้านสัญญาของสเปกที่ว่า
+    // แท็บ Meeting บนเครื่องพวกนั้นต้องเหมือน v1.8.1 เป๊ะ
+    //
+    // พอผ่านประตูแรกแล้ว ready จึงเป็นตัวแยก: ตอบอยู่แต่ยังอ่านสถานะไม่ได้ = connecting
     // ไม่ใช่ waiting (ซึ่งบอกให้ไปเปิด start-ui.bat ทั้งที่มันเปิดอยู่แล้ว)
     if (!state) {
-      if (o.ready) return 'connecting';
-      return o.seenService ? 'waiting' : 'absent';
+      if (!o.seenService) return 'absent';
+      return o.ready ? 'connecting' : 'waiting';
     }
     if (state.recorder === 'recording' || state.recorder === 'stopping') return 'recording';
     if (!o.following) return 'idle';
@@ -460,7 +469,11 @@
     state = payload.state || null;
     // ติดต่อได้ครั้งเดียวก็พอที่จะรู้ว่าเครื่องนี้มีตัวอัด -- ครั้งต่อไปที่ติดต่อ
     // ไม่ได้จึงบอกว่า "รออยู่" แทนที่จะหายไปเงียบ ๆ
-    if (ready) seenService = true;
+    // ผูกกับ state ที่ parse ผ่าน ไม่ใช่ ready -- ต้องเป็นหลักฐานชุดเดียวกับที่ main.js
+    // ใช้เขียน meetingRunnerSeen ลง config ไม่งั้นกฎ absent ใน viewOf ไม่มีผลอะไรเลย:
+    // แอปอื่นที่ถือพอร์ต 8765 อยู่จะทำให้ ready เป็น true ในรอบ poll แรก แล้วยกธงนี้
+    // ค้างไว้ตลอดชีพหน้าต่าง แถบก็ติดขึ้นมาอยู่ดี
+    if (state) seenService = true;
     if (state && state.recorder === 'recording') stopping = false;
     // เริ่มตามงานตั้งแต่วินาทีที่ service บอกว่าได้ไฟล์แล้ว -- last_result ถูกล้าง
     // เมื่อเปิดห้องถัดไป จึงต้องจำไว้เอง ไม่ใช่อ่านจาก state ทุกรอบ

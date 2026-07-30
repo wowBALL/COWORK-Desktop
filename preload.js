@@ -29,6 +29,17 @@ contextBridge.exposeInMainWorld('cowork', {
   getQaFailureXml: (runDir) => ipcRenderer.invoke('get-qa-failure-xml', runDir),
   getQaSources: () => ipcRenderer.invoke('get-qa-sources'),
   saveQaSources: (sources) => ipcRenderer.invoke('save-qa-sources', sources),
+  // Grafana/Loki — pull-based, unlike the tabs above: the query depends on filters the
+  // user is moving, so the renderer asks rather than main broadcasting. getGrafanaConfig
+  // returns whether a token exists and its last four characters, never the token itself.
+  getGrafanaConfig: () => ipcRenderer.invoke('get-grafana-config'),
+  saveGrafanaConfig: (cfg) => ipcRenderer.invoke('save-grafana-config', cfg),
+  testGrafanaConnection: (cfg) => ipcRenderer.invoke('test-grafana-connection', cfg),
+  grafanaQuery: (params) => ipcRenderer.invoke('grafana-query', params),
+  grafanaOverview: (params) => ipcRenderer.invoke('grafana-overview', params),
+  grafanaSummary: (params) => ipcRenderer.invoke('grafana-summary', params),
+  grafanaHistory: (params) => ipcRenderer.invoke('grafana-history', params),
+  grafanaAppGroups: () => ipcRenderer.invoke('grafana-app-groups'),
   // meeting-notes recorder service — see main.js, the renderer never fetches it directly
   getRunnerState: () => ipcRenderer.invoke('runner-get-state'),
   onRunnerState: (cb) => ipcRenderer.on('runner-update', (_e, payload) => cb(payload)),

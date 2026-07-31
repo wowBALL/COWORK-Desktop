@@ -66,6 +66,67 @@
     const t=b || lines.find(l=>l.trim() && !l.trim().startsWith('#')) || '';
     return t.replace(/^\s*[-*]\s+/,'').replace(/\*\*/g,'').trim();
   }
+  // summary.meta.md — เขียนโดย meeting-notes/src/storage.py:save_summary()
+  // สองส่วน: บรรทัด "key: value" 1-4 บรรทัดแรก แล้วตามด้วยหัวข้อ ## กี่หัวก็ได้
+  // (ชื่อหัวข้อไม่ตายตัว — TRANSCRIPT_QUALITY_HEADINGS ฝั่ง Python แก้ได้ทีหลัง
+  // parser นี้จึงเก็บทุกหัวข้อ ## แบบทั่วไป ไม่ผูกชื่อ กันไม่ให้เงียบหายทั้งหัวข้อ
+  // เมื่อฝั่งนั้นเปลี่ยนชื่อ)
+  function parseMeta(raw){
+    const text=String(raw||'').replace(/\r\n/g,'\n').trim();
+    if(!text) return null;
+    const lines=text.split('\n');
+    const head=[]; const secs=[]; let cur=null;
+    for(const line of lines){
+      const h=/^##\s+(.*)$/.exec(line.trim());
+      if(h){ cur={title:h[1].trim(),body:[]}; secs.push(cur); continue; }
+      if(cur) cur.body.push(line);
+      else if(line.trim()) head.push(line.trim());
+    }
+    const meta={model:'',modelNote:'',profile:'',glossary:[],fuzzy:[],other:[]};
+    for(const l of head){
+      let m;
+      if((m=/^สรุปด้วย\s+(.+)$/.exec(l))){
+        const v=m[1].trim();
+        const p=/^(\S+)\s*\((.*)\)$/.exec(v);
+        if(p){ meta.model=p[1]; meta.modelNote=p[2]; } else meta.model=v;
+      }
+      else if((m=/^ประเภทประชุม:\s*(.+)$/.exec(l))) meta.profile=m[1].trim();
+      else if((m=/^แก้คำตาม glossary:\s*(.+)$/.exec(l))) meta.glossary=splitCounts(m[1]);
+      else if((m=/^คำ fuzzy ที่เจอในห้อง:\s*(.+)$/.exec(l))) meta.fuzzy=splitCounts(m[1]);
+      else meta.other.push(l);   // บรรทัดที่ยังไม่รู้จัก — โผล่เป็นแถว "อื่น ๆ" ไม่ทิ้ง
+    }
+    meta.sections=secs.map(s=>({title:s.title,body:s.body.join('\n').trim()})).filter(s=>s.body);
+    return meta;
+  }
+  // "rollback 6 จุด, Zitadel 4 จุด" → [{term:'rollback',n:'6 จุด'}, …]
+  function splitCounts(s){
+    return s.split(',').map(x=>x.trim()).filter(Boolean).map(x=>{
+      const m=/^(.*?)\s+(\d+\s*(?:จุด|ครั้ง))$/.exec(x);
+      return m?{term:m[1],n:m[2]}:{term:x,n:''};
+    });
+  }
+  // bullet "- ได้ยิน → เดาว่า… (ได้ยิน N ครั้ง)" → {heard,guess,n}
+  function parseWords(body){
+    return body.split('\n').map(l=>/^\s*[-*]\s+(.*)$/.exec(l.trim())).filter(Boolean).map(m=>{
+      const t=m[1];
+      const i=t.indexOf('→');
+      const n=/\((ได้ยิน[^)]*)\)\s*$/.exec(t);
+      const rest=n?t.slice(0,n.index).trim():t;
+      if(i===-1) return {heard:'',guess:rest,n:n?n[1]:''};
+      return {heard:t.slice(0,i).trim(),guess:rest.slice(i+1).trim(),n:n?n[1]:''};
+    });
+  }
+  // bullet "- 08:00–16:20 (…): เนื้อหา" → {ts,tx}  (ป้ายเวลาเป็น optional)
+  function parseSpots(body){
+    return body.split('\n').map(l=>/^\s*[-*]\s+(.*)$/.exec(l.trim())).filter(Boolean).map(m=>{
+      const t=m[1];
+      const ts=/^(?:ช่วง\s*)?(\d{1,3}:\d{2}\s*[–-]\s*\d{1,3}:\d{2})/.exec(t);
+      if(ts) return {ts:ts[1].replace(/\s/g,''),tx:t.slice(ts[0].length).replace(/^[\s:：]+/,'')};
+      const all=/^(ทั้งไฟล์)\s*[:：]\s*/.exec(t);
+      if(all) return {ts:all[1],tx:t.slice(all[0].length)};
+      return {ts:'',tx:t};
+    });
+  }
   function mtRailColor(m){
     if(!m.usable) return 'var(--dim)';
     return m.actions ? 'var(--amber)' : 'var(--accent)';
@@ -161,6 +222,36 @@
     document.getElementById('mtReader').classList.add('hidden');
     document.getElementById('mtList').classList.remove('hidden');
   }
+  // แบบ B (ตารางตรวจงาน) ที่เลือกจาก summarymeta-mock.html — แถบ key:value บนสุด แล้วต่อด้วย
+  // ทุกหัวข้อ ## ที่ parseMeta เจอ แยกเลย์เอาต์ตามว่า bullet ส่วนใหญ่ในหัวข้อนั้นมี "→" หรือไม่
+  function renderMeta(meta){
+    const row=(k,v,cls)=>v?`<dt>${esc(k)}</dt><dd class="${cls||''}">${v}</dd>`:'';
+    const counts=a=>a.map(i=>esc(i.term)+(i.n?` <span style="color:var(--dim)">${esc(i.n)}</span>`:'')).join(' · ');
+    const sec=s=>{
+      const words=parseWords(s.body), spots=parseSpots(s.body);
+      const looksLikeWords=words.filter(w=>w.heard).length>words.length/2;
+      const rows=looksLikeWords
+        ? words.map(w=>`<div class="mtq-word">
+              <span class="heard">${esc(w.heard)}</span><span class="ar">→</span>
+              <span class="guess">${esc(w.guess)}</span>
+              ${w.n?`<span class="n">${esc(w.n)}</span>`:''}</div>`).join('')
+        : spots.map(p=>`<div class="mtq-spot">
+              <span class="ts">${esc(p.ts||'—')}</span><span class="tx">${esc(p.tx)}</span></div>`).join('');
+      const n=looksLikeWords?words.length:spots.length;
+      return `<div class="mtq-sec"><h4><span>${esc(s.title)}</span><span class="n">${n}</span></h4>${rows}</div>`;
+    };
+    return `<div class="mtq">
+      <dl class="mtq-strip">
+        ${row('สรุปด้วย',esc(meta.model),'mono')}
+        ${meta.modelNote?row('หมายเหตุ',esc(meta.modelNote)):''}
+        ${row('ประเภทประชุม',esc(meta.profile))}
+        ${row('แก้ตาม glossary',counts(meta.glossary))}
+        ${row('fuzzy ที่เจอ',counts(meta.fuzzy))}
+        ${meta.other.map(l=>row('อื่น ๆ',esc(l))).join('')}
+      </dl>
+      ${meta.sections.map(sec).join('')}
+    </div>`;
+  }
   function renderTranscript(tr){
     if(!tr) return '<div class="hint">กำลังโหลดบทถอดเสียง...</div>';
     if(tr.error) return `<div class="empty">อ่าน transcript ไม่สำเร็จ: ${esc(tr.error)}</div>`;
@@ -191,6 +282,10 @@
   }
   function renderMtReader(){
     const m=mtOpen; if(!m) return;
+    const hasMeta=!!(m.meta&&m.meta.trim());
+    // ประชุมนี้ไม่มี summary.meta.md (หรือเพิ่งหายไปตอน refresh) แต่ mtTab ค้างเป็น 'q'
+    // มาจากประชุมก่อนหน้า — ตกกลับไปแท็บ "สรุป" แทนที่จะเจอหน้าว่าง
+    if(mtTab==='q'&&!hasMeta) mtTab='s';
     const el=document.getElementById('mtReader');
     el.innerHTML=`
       <button class="mt-back" id="mtBack">← กลับไปรายการประชุม</button>
@@ -199,6 +294,7 @@
       ${mtPills(m)}
       <div class="mt-seg">
         <button data-tb="s" class="${mtTab==='s'?'on':''}">📄 สรุป</button>
+        ${hasMeta?`<button data-tb="q" class="${mtTab==='q'?'on':''}">⚠ ที่ต้องเช็ก</button>`:''}
         <button data-tb="t" class="${mtTab==='t'?'on':''}">🗒 ถอดเสียง</button>
         <button data-tb="f" class="${mtTab==='f'?'on':''}">📁 ไฟล์ (${m.files.length})</button>
       </div>
@@ -234,6 +330,9 @@
         renderMtReader();
         const n=document.getElementById('mtTq'); if(n){ n.focus(); n.setSelectionRange(pos,pos); }
       };
+    } else if(mtTab==='q'){
+      const meta=parseMeta(m.meta);
+      body.innerHTML=meta?renderMeta(meta):'<div class="empty">ไม่มีไฟล์ summary.meta.md</div>';
     } else {
       body.innerHTML=`<div class="mt-files">${m.files.map(f=>`
         <div class="mt-file" data-p="${esc(f.path)}">
@@ -348,4 +447,10 @@
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
   global.COWORK.tabs.meeting = { key:"mt", settingsCard:'cardMeetings', mount, mountSettings, loadSettings, onData, onShow };
+
+  // เปิดทาง node --test แบบเดียวกับ tab-grafana.js — เฉพาะ parser ของ summary.meta.md
+  // ที่ไม่ต้องใช้ DOM (renderMeta ใช้ esc จาก global.COWORK.util เลยไม่ export)
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { parseMeta, splitCounts, parseWords, parseSpots };
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

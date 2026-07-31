@@ -85,6 +85,7 @@ function readMeeting(root, name) {
   try { files = fs.readdirSync(dir).sort(); } catch { return null; }
   const { date, time, title } = parseFolderName(name);
   const summary = readText(path.join(dir, 'summary.md'));
+  const meta = readText(path.join(dir, 'summary.meta.md'));   // '' เมื่อไม่มีไฟล์ — ประชุมเก่าก่อนมีไฟล์นี้
   const transcript = readText(path.join(dir, 'transcript.md'));
   const { speakers, utterances } = parseTranscript(transcript);
   const audioName = files.find(f => AUDIO_RE.test(f)) || null;
@@ -93,6 +94,7 @@ function readMeeting(root, name) {
   return {
     id: name, dir, date, time, title,
     summary,                                  // markdown ดิบ — renderer เป็นคน render
+    meta,                                      // summary.meta.md ดิบ — renderer เป็นคน parse/render
     topics: topicsOf(summary),
     actions: actionCount(summary),
     usable: summaryUsable(summary),

@@ -51,8 +51,8 @@ test('parseGlossary: ข้ามคำที่มี * [ ] -- อักขร�
   // `*` `[` `]` เป็นอักขระที่ประกอบหัว segment ของ transcript เช่น `**ผู้พูด 1** [00:00]:`
   // ถ้า glossary มีคำเหล่านี้ คำนั้นจะทำให้ transcript parse ไม่ออก ต้องข้ามมัน
   // นอก correct term เราต้องข้ามเรคคอร์ดด้วยถ้า form ใดก็ตามมีอักขระเหล่านี้
-  const g = parseGlossary(['## exact', 'Test: form1, form2'].join('\n'));
-  assert.deepStrictEqual(g.sections.exact.Test.forms, ['form1', 'form2']);
+  const g = parseGlossary(['## exact', 'Test: form[1]'].join('\n'));
+  assert.deepStrictEqual(g.sections.exact.Test, undefined);
   assert.deepStrictEqual(g.duplicates, []);
 });
 
@@ -106,6 +106,17 @@ test('parseGlossary: section ที่มีแต่ comment -- insertAfter ต
     '## aliases',         // 4
   ].join('\n'));
   assert.strictEqual(g.insertAfter['project-names'], 2);
+});
+
+test('parseGlossary: section ที่มีเฉพาะ entry ที่มี markup -- insertAfter ชี้ heading ไม่ใช่บรรทัด rejected', () => {
+  // ถ้า entry มี * [ ] ต้องถูก reject และไม่ไปอัพเดต lastContent ไม่งั้น insertAfter จะชี้ไปยัง
+  // บรรทัดที่ถูก reject แล้ว
+  const g = parseGlossary([
+    '## exact',      // 1
+    'Te*st: form1',  // 2 - rejected (มี *)
+  ].join('\n'));
+  assert.strictEqual(g.insertAfter.exact, 1);  // ต้องชี้ heading ไม่ใช่ line 2
+  assert.strictEqual(g.sections.exact['Te*st'], undefined);
 });
 
 // เทสนี้คือเหตุผลที่ฟีเจอร์นี้ต้อง merge ไม่ใช่ append -- พิสูจน์ว่าไฟล์จริงมีของตายอยู่

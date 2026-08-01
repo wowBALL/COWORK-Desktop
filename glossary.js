@@ -50,8 +50,11 @@ function parseGlossary(text) {
       return;
     }
     if (!section) return;
-    if (line) lastContent = ln;
-    if (!line || line.startsWith('#')) return;
+    if (!line) return;
+    if (line.startsWith('#')) {
+      lastContent = ln;
+      return;
+    }
     if (!MAPPING_SECTIONS.includes(section)) return;
 
     const body = line.replace(INLINE_COMMENT_RE, '').trim();
@@ -70,6 +73,7 @@ function parseGlossary(text) {
     const prev = sections[section][term];
     if (prev) duplicates.push({ section, term, line: prev.line, shadowedBy: ln });
     sections[section][term] = { forms, line: ln };
+    lastContent = ln;
     lastEntry = ln;
   });
   closeSection();

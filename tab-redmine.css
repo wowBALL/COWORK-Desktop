@@ -105,6 +105,9 @@
   background:color-mix(in srgb,var(--violet) 12%,transparent)}
 .noteBtn.has::after{content:'';position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:50%;
   background:var(--violet);border:1.5px solid var(--bg)}
+.noteBtn.hit{color:var(--accent);border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 12%,transparent);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}
 .notePanel{background:var(--panel-2);border:1px solid color-mix(in srgb,var(--violet) 38%,var(--line));
   border-left:3px solid var(--violet);border-radius:10px;padding:12px;margin:0 0 10px}
 .notePanel .np-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--violet);
@@ -138,3 +141,8 @@
 /* assignee name colour (text only, same hue family) */
 .wc0{color:var(--accent)}.wc1{color:var(--green)}.wc2{color:var(--amber)}
 .wc3{color:var(--rose)}.wc4{color:var(--cyan)}.wc5{color:var(--violet)}
+/* ค้นหา — บรรทัดเตือนว่าคำค้นข้ามแท็บสถานะ (ALL เปลี่ยนความหมายชั่วคราวเป็น "ทุกสถานะ") */
+#rmSearchHint{display:none;font-size:10.5px;color:var(--dim);margin:-8px 0 10px}
+#rmSearchHint.on{display:block}
+/* ชิปที่ไม่มีผลตอนค้นอยู่ — จางลงแต่ยังกดได้ ที่ยังเลือกอยู่ห้ามจางเพราะเป็นตัวที่ต้องกดปิด */
+.chip.zero:not(.active){opacity:.42}

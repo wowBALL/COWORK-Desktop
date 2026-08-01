@@ -445,6 +445,11 @@
   function mount(){
     api=shell().api;
     api && api.onTasks && api.onTasks(onData);
+    // ช่องค้นหา — คำค้นเก็บระดับโมดูล จึงค้างข้ามการรีเฟรชอัตโนมัติและข้ามการสลับแท็บ
+    const box=document.getElementById('rmSearch');
+    const apply=v=>{ searchQuery=v; visibleCount=15; renderAll(); };
+    box.oninput=()=>apply(box.value);
+    box.onkeydown=e=>{ if(e.key==='Escape'){ e.preventDefault(); box.value=''; apply(''); } };
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====

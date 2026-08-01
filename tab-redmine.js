@@ -27,17 +27,7 @@
   const selectedProjects=new Set();    // empty = show all projects
   const selectedAssignees=new Set();   // empty = show all assignees
   let selectedRisk=null;   // null = ทั้งหมด; 'none' = ไม่ระบุ; else exact risk string
-  function issueMatch(i){
-    return (selectedProjects.size===0 || selectedProjects.has(i.project))
-        && (selectedAssignees.size===0 || selectedAssignees.has(i.assignee))
-        && (selectedRisk===null || (selectedRisk==='none' ? !i.risk : i.risk===selectedRisk));
-  }
   function allIssues(){ return lastPayload.groups.flatMap(g=>g.issues); }
-  function openIssues(){ return allIssues().filter(i=>!i.closed && i.status!=='Backlog'); } // ALL tab = only open work, excluding Backlog
-  function statusIssues(status){
-    const g=lastPayload.groups.find(g=>g.status===status);
-    return (g?g.issues:[]).filter(issueMatch);
-  }
 
   // ===== ค้นหา — ทำฝั่ง renderer ล้วน ๆ =====
   // payload มี issue ครบทุกสถานะอยู่แล้ว (main.js:320 ดึง status_id=* ไล่หน้าจนหมด)
@@ -127,13 +117,18 @@
   }
 
   let visibleCount=15; // reset to 15 whenever the tab/filters change; "load more" just bumps this
-  function renderPanel(){
+  function renderPanel(vm){
     const el=document.getElementById('tasks');
-    const allMatching=activeStatus==='ALL'?openIssues().filter(issueMatch):statusIssues(activeStatus);
-    if(!allMatching.length){ el.innerHTML='<div class="hint">ไม่มีงานในสถานะนี้</div>'; return; }
-    const issues=allMatching.slice(0,visibleCount);
+    const allMatching=vm.list;
+    if(!allMatching.length){
+      el.innerHTML=vm.searching
+        ? `<div class="hint">ไม่พบงานที่ตรงกับ "${esc(vm.query.trim())}"</div>`
+        : '<div class="hint">ไม่มีงานในสถานะนี้</div>';
+      return;
+    }
+    const entries=allMatching.slice(0,visibleCount);
     el.innerHTML='';
-    issues.forEach(issue=>{
+    entries.forEach(({issue, noteHit})=>{
       const row=document.createElement('div');
       row.className='task'+(issue.overdue?' overdue':'');
       const rank=RISK_ORDER.indexOf(issue.risk);
@@ -152,7 +147,7 @@
       row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
       const slot=document.createElement('div');
       if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id, slot));
-      row.appendChild(makeNoteBtn(issue.id, slot));
+      row.appendChild(makeNoteBtn(issue.id, slot, noteHit));
       el.appendChild(row);
       el.appendChild(slot);
     });
@@ -160,7 +155,7 @@
       const moreBtn=document.createElement('button');
       moreBtn.className='loadMoreBtn';
       moreBtn.textContent=`โหลดเพิ่ม (เหลืออีก ${allMatching.length-visibleCount})`;
-      moreBtn.onclick=()=>{ visibleCount+=15; renderPanel(); };
+      moreBtn.onclick=()=>{ visibleCount+=15; renderAll(); };
       el.appendChild(moreBtn);
     }
   }
@@ -196,12 +191,13 @@
   function notePreview(text){ return text.length>60 ? text.slice(0,60)+'…' : text; }
   // icon button: opens/closes the private note panel for this issue in `slot`.
   // Local-only — the note text never leaves this machine via any Redmine call.
-  function makeNoteBtn(issueId, slot){
+  function makeNoteBtn(issueId, slot, noteHit){
     const btn=document.createElement('button');
     const existing=notes[String(issueId)];
-    btn.className='noteBtn'+(existing?' has':'');
+    btn.className='noteBtn'+(existing?' has':'')+(noteHit?' hit':'');
     btn.textContent='📝';
-    btn.title=existing?('โน้ต: '+notePreview(existing.text)):'เพิ่มโน้ตส่วนตัว';
+    btn.title=noteHit?'ตรงกับคำค้นในโน้ต'
+      :(existing?('โน้ต: '+notePreview(existing.text)):'เพิ่มโน้ตส่วนตัว');
     btn.onclick=(e)=>{
       e.stopPropagation();
       if(slot.dataset.kind==='note'){ (slot._attemptClose||closeAllPanels)(); return; }
@@ -239,7 +235,7 @@
         if(val) notes[String(issueId)]={text:val, updatedAt:new Date().toISOString()};
         else delete notes[String(issueId)];
         clearSlot(slot);
-        renderPanel();
+        renderAll();   // โน้ตเป็นส่วนหนึ่งของ haystack ตัวเลขบนชิปต้องขยับตามด้วย
       });
     }
     function attemptClose(){
@@ -257,7 +253,7 @@
         if(!result || !result.ok){ showErr('ลบไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ')); return; }
         delete notes[String(issueId)];
         clearSlot(slot);
-        renderPanel();
+        renderAll();
       });
     };
     textarea.addEventListener('keydown',e=>{
@@ -311,77 +307,81 @@
     };
     slot.appendChild(panel);
   }
-  function renderTabs(){
+  function renderTabs(vm){
     const tabsEl=document.getElementById('tabs');
     tabsEl.innerHTML='';
-    // ALL tab (default) — every status combined
+    // ALL tab (default) — ไม่ค้น = งานที่ยังเปิด · ค้นอยู่ = ทุกสถานะ (viewModel เป็นคนตัดสิน)
     const allTab=document.createElement('div');
-    allTab.className='tab'+(activeStatus==='ALL'?' active':'');
+    allTab.className='tab'+(vm.allTab.active?' active':'');
     allTab.style.setProperty('--sc','var(--accent)');
-    allTab.innerHTML=`<span class="dot"></span>ALL<span class="n">${openIssues().filter(issueMatch).length}</span>`;
-    allTab.onclick=()=>{ activeStatus='ALL'; visibleCount=15; renderTabs(); renderPanel(); };
+    allTab.innerHTML=`<span class="dot"></span>ALL<span class="n">${vm.allTab.count}</span>`;
+    allTab.onclick=()=>{ activeStatus='ALL'; visibleCount=15; renderAll(); };
     tabsEl.appendChild(allTab);
-    lastPayload.groups.forEach(g=>{
+    vm.statusTabs.forEach(t=>{
       const tab=document.createElement('div');
-      tab.className='tab'+(g.status===activeStatus?' active':'');
-      tab.style.setProperty('--sc', STATUS_COLOR[g.status]||'var(--dim)');
-      tab.innerHTML=`<span class="dot"></span>${esc(g.status)}<span class="n">${statusIssues(g.status).length}</span>`;
-      tab.onclick=()=>{ activeStatus=g.status; visibleCount=15; renderTabs(); renderPanel(); };
+      tab.className='tab'+(t.active?' active':'');
+      tab.style.setProperty('--sc', STATUS_COLOR[t.status]||'var(--dim)');
+      tab.innerHTML=`<span class="dot"></span>${esc(t.status)}<span class="n">${t.count}</span>`;
+      tab.onclick=()=>{ activeStatus=t.status; visibleCount=15; renderAll(); };
       tabsEl.appendChild(tab);
     });
   }
   const ocSpan=(o,c)=>`<span class="n"><span class="o">${o}</span><span class="sep">/</span><span class="c">${c}</span></span>`;
-  function renderChipFilter(elId, keyFn, selected){
+  function renderChipFilter(elId, chipList, selected){
     const el=document.getElementById(elId);
     el.innerHTML='';
-    const counts=new Map();
-    allIssues().forEach(i=>{
-      const k=keyFn(i);
-      if(!counts.has(k)) counts.set(k,{open:0,closed:0});
-      const c=counts.get(k);
-      i.closed?c.closed++:c.open++;
-    });
-    [...counts.keys()].sort().forEach(k=>{
+    chipList.forEach(c=>{
       const chip=document.createElement('div');
-      chip.className='chip'+(selected.has(k)?' active':'');
-      const c=counts.get(k);
-      chip.innerHTML=`${esc(k)}${ocSpan(c.open,c.closed)}`;
+      // .zero = ไม่มีผลตอนค้นอยู่ — จางลงแต่ยังกดได้ ห้ามซ่อน ไม่งั้นตัวกรองที่ค้างอยู่จะกดปิดไม่ได้
+      chip.className='chip'+(c.selected?' active':'')+(c.zero?' zero':'');
+      chip.innerHTML=`${esc(c.key)}${ocSpan(c.open,c.closed)}`;
       chip.onclick=()=>{
-        selected.has(k)?selected.delete(k):selected.add(k);
-        visibleCount=15; renderFilters(); renderTabs(); renderPanel();
+        selected.has(c.key)?selected.delete(c.key):selected.add(c.key);
+        visibleCount=15; renderAll();
       };
       el.appendChild(chip);
     });
   }
-  function renderRiskFilter(){
+  const RISK_LABEL={all:'ทั้งหมด', none:'ไม่ระบุ'};
+  function riskColor(key){
+    if(key==='all') return 'var(--accent)';
+    if(key==='none') return 'var(--dim)';
+    const idx=RISK_ORDER.indexOf(key);
+    return idx>=0?RISK_COLORS[idx]:'var(--dim)';
+  }
+  function renderRiskFilter(rows){
     const el=document.getElementById('riskFilter');
     el.innerHTML='';
-    const issues=allIssues();
-    const oc=list=>({open:list.filter(i=>!i.closed).length,closed:list.filter(i=>i.closed).length});
-    const mk=(cls,sc,label,list,onclick)=>{
+    rows.forEach(r=>{
       const tab=document.createElement('div');
-      tab.className='tab'+cls;
-      tab.style.setProperty('--sc',sc);
-      const c=oc(list);
-      tab.innerHTML=`<span class="dot"></span>${esc(label)}${ocSpan(c.open,c.closed)}`;
-      tab.onclick=onclick;
+      tab.className='tab'+(r.active?' active':'');
+      tab.style.setProperty('--sc',riskColor(r.key));
+      tab.innerHTML=`<span class="dot"></span>${esc(RISK_LABEL[r.key]||r.key)}${ocSpan(r.open,r.closed)}`;
+      tab.onclick=()=>{
+        selectedRisk=(r.key==='all')?null:(selectedRisk===r.key?null:r.key);
+        visibleCount=15; renderAll();
+      };
       el.appendChild(tab);
-    };
-    mk(selectedRisk===null?' active':'','var(--accent)','ทั้งหมด',issues,
-      ()=>{ selectedRisk=null; visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
-    RISK_ORDER.forEach((r,idx)=>{
-      const list=issues.filter(i=>i.risk===r);
-      mk(selectedRisk===r?' active':'',RISK_COLORS[idx],r,list,
-        ()=>{ selectedRisk=(selectedRisk===r?null:r); visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
     });
-    const noneList=issues.filter(i=>!i.risk);
-    mk(selectedRisk==='none'?' active':'','var(--dim)','ไม่ระบุ',noneList,
-      ()=>{ selectedRisk=(selectedRisk==='none'?null:'none'); visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
   }
-  function renderFilters(){
-    renderChipFilter('projectFilter', i=>i.project, selectedProjects);
-    renderChipFilter('assigneeFilter', i=>i.assignee, selectedAssignees);
-    renderRiskFilter();
+  function renderSearchHint(searching){
+    const el=document.getElementById('rmSearchHint');
+    if(!el) return;   // Task 4 เป็นคนใส่ element นี้ใน widget.html
+    el.textContent=searching?'กำลังค้นจากทุกสถานะ รวมงานที่ปิดแล้ว':'';
+    el.classList.toggle('on', searching);
+  }
+  // ทางเข้าเดียวของการวาดใหม่ — เรียก viewModel ครั้งเดียวแล้วแจกให้ทุก renderer
+  function renderAll(){
+    if(!lastPayload) return;
+    const vm=viewModel(lastPayload, notes, {
+      query:searchQuery, selectedProjects, selectedAssignees, selectedRisk, activeStatus,
+    });
+    renderChipFilter('projectFilter', vm.projectChips, selectedProjects);
+    renderChipFilter('assigneeFilter', vm.assigneeChips, selectedAssignees);
+    renderRiskFilter(vm.riskRows);
+    renderTabs(vm);
+    renderPanel(vm);
+    renderSearchHint(vm.searching);
   }
   let closedYearsOpen=false;
   function renderRmStats(stats){
@@ -439,7 +439,7 @@
     if(!activeStatus || (activeStatus!=='ALL' && !payload.groups.some(g=>g.status===activeStatus))){
       activeStatus='ALL';
     }
-    renderFilters(); renderTabs(); renderPanel();
+    renderAll();
   }
 
   function mount(){

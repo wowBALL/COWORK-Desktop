@@ -27,25 +27,118 @@
   const selectedProjects=new Set();    // empty = show all projects
   const selectedAssignees=new Set();   // empty = show all assignees
   let selectedRisk=null;   // null = ทั้งหมด; 'none' = ไม่ระบุ; else exact risk string
-  function issueMatch(i){
-    return (selectedProjects.size===0 || selectedProjects.has(i.project))
-        && (selectedAssignees.size===0 || selectedAssignees.has(i.assignee))
-        && (selectedRisk===null || (selectedRisk==='none' ? !i.risk : i.risk===selectedRisk));
-  }
   function allIssues(){ return lastPayload.groups.flatMap(g=>g.issues); }
-  function openIssues(){ return allIssues().filter(i=>!i.closed && i.status!=='Backlog'); } // ALL tab = only open work, excluding Backlog
-  function statusIssues(status){
-    const g=lastPayload.groups.find(g=>g.status===status);
-    return (g?g.issues:[]).filter(issueMatch);
+
+  // ===== ค้นหา — ทำฝั่ง renderer ล้วน ๆ =====
+  // payload มี issue ครบทุกสถานะอยู่แล้ว (main.js:320 ดึง status_id=* ไล่หน้าจนหมด)
+  // จึงไม่ต้องยิง /search.json และค้นโน้ตส่วนตัวที่ไม่เคยขึ้น Redmine ได้ด้วย
+  let searchQuery='';
+  function parseTerms(q){ return String(q==null?'':q).trim().toLowerCase().split(/\s+/).filter(Boolean); }
+  // '#' ติดไปกับเลขด้วย ทั้ง "550" และ "#550" จึงเจอ #550 เหมือนกัน
+  function issueHay(issue, noteText){
+    return ('#'+issue.id+' '+(issue.subject||'')+' '+(issue.project||'')+' '
+           +(issue.assignee||'')+' '+(noteText||'')).toLowerCase();
   }
+  function matchTerms(hay, terms){ return terms.every(t=>hay.includes(t)); }
+  function termsHitNote(noteText, terms){
+    if(!noteText || !terms.length) return false;
+    const h=noteText.toLowerCase();
+    return terms.some(t=>h.includes(t));
+  }
+  // เปิดก่อนปิด แล้วใหม่→เก่า · updatedOn คือ issue.updated_on ของ Redmine ตรง ๆ (main.js:372)
+  // เป็น ISO UTC ความยาวคงที่ เทียบแบบ string ได้ ไม่ต้องแปลงเป็น Date — ใช้ตัวเทียบ </>/=== ธรรมดา
+  // ไม่ใช้ localeCompare เพราะเป็น ICU collation ที่ช้ากว่ามาก และ sort นี้รันทุกคีย์สโตรก ไม่มี debounce
+  function sortForSearch(list){
+    return list.slice().sort((a,b)=>{
+      const ac=a.closed?1:0, bc=b.closed?1:0;
+      if(ac!==bc) return ac-bc;
+      const au=String(a.updatedOn||''), bu=String(b.updatedOn||'');
+      if(au===bu) return 0;
+      return au<bu?1:-1;
+    });
+  }
+
+  // ตัวคิดเลขทั้งแท็บ — บริสุทธิ์ ไม่แตะ DOM ไม่อ่านตัวแปรระดับโมดูล
+  // renderer ทุกตัวรับตัวเลขจากที่นี่ที่เดียว "เลขบนแท็บ ≠ แถวข้างล่าง" จึงเป็นไปไม่ได้
+  // กฎการนับ (สเปก 2026-08-01-redmine-search-design.md):
+  //   คีย์ชิป มาจาก issue ทั้งก้อนเสมอ → ชิปที่เลือกอยู่ไม่มีวันหายจนกดปิดไม่ได้
+  //   ตัวเลข  นับจาก searched (คำค้นหักแล้ว) แต่ไม่ถูกหักด้วยชิปแถวอื่น = พฤติกรรมเดิม
+  //   ALL     ไม่ค้น = งานที่ยังเปิดและไม่ใช่ Backlog · ค้นอยู่ = ทุกสถานะ
+  function viewModel(payload, notes, state){
+    const groups=(payload&&payload.groups)||[];
+    const all=groups.flatMap(g=>g.issues);
+    const terms=parseTerms(state.query);
+    const searching=terms.length>0;
+    const noteOf=i=>{ const n=notes&&notes[String(i.id)]; return (n&&n.text)||''; };
+    const searched=all.filter(i=>matchTerms(issueHay(i,noteOf(i)),terms));
+    const hit=new Set(searched.map(i=>i.id));
+
+    const selProj=new Set(state.selectedProjects||[]);
+    const selAsg=new Set(state.selectedAssignees||[]);
+    const selRisk=state.selectedRisk??null;
+    const chipMatch=i=>
+         (selProj.size===0||selProj.has(i.project))
+      && (selAsg.size===0||selAsg.has(i.assignee))
+      && (selRisk===null||(selRisk==='none'?!i.risk:i.risk===selRisk));
+
+    const chipsOf=(keyFn,selected)=>{
+      const counts=new Map();
+      all.forEach(i=>{ const k=keyFn(i); if(!counts.has(k)) counts.set(k,{open:0,closed:0}); });
+      searched.forEach(i=>{ const c=counts.get(keyFn(i)); i.closed?c.closed++:c.open++; });
+      return [...counts.keys()].sort().map(k=>{
+        const c=counts.get(k);
+        return {key:k, open:c.open, closed:c.closed, selected:selected.has(k), zero:c.open+c.closed===0};
+      });
+    };
+    const oc=list=>({open:list.filter(i=>!i.closed).length, closed:list.filter(i=>i.closed).length});
+    const riskRows=[
+      Object.assign({key:'all'}, oc(searched), {active:selRisk===null}),
+      ...RISK_ORDER.map(r=>Object.assign({key:r}, oc(searched.filter(i=>i.risk===r)), {active:selRisk===r})),
+      Object.assign({key:'none'}, oc(searched.filter(i=>!i.risk)), {active:selRisk==='none'}),
+    ];
+
+    const allBase=searching?searched:searched.filter(i=>!i.closed&&i.status!=='Backlog');
+    const allList=allBase.filter(chipMatch);
+    const statusTabs=groups.map(g=>({
+      status:g.status,
+      count:g.issues.filter(i=>hit.has(i.id)&&chipMatch(i)).length,
+      active:state.activeStatus===g.status,
+    }));
+    const raw=state.activeStatus==='ALL'
+      ? allList
+      : (groups.find(g=>g.status===state.activeStatus)||{issues:[]}).issues
+          .filter(i=>hit.has(i.id)&&chipMatch(i));
+    const list=(searching?sortForSearch(raw):raw)
+      .map(i=>({issue:i, noteHit:termsHitNote(noteOf(i),terms)}));
+
+    return {
+      searching, query:String(state.query==null?'':state.query),
+      projectChips:chipsOf(i=>i.project,selProj),
+      assigneeChips:chipsOf(i=>i.assignee,selAsg),
+      riskRows, statusTabs,
+      allTab:{count:allList.length, active:state.activeStatus==='ALL'},
+      list,
+    };
+  }
+
   let visibleCount=15; // reset to 15 whenever the tab/filters change; "load more" just bumps this
-  function renderPanel(){
+  function renderPanel(vm){
     const el=document.getElementById('tasks');
-    const allMatching=activeStatus==='ALL'?openIssues().filter(issueMatch):statusIssues(activeStatus);
-    if(!allMatching.length){ el.innerHTML='<div class="hint">ไม่มีงานในสถานะนี้</div>'; return; }
-    const issues=allMatching.slice(0,visibleCount);
+    const allMatching=vm.list;
+    if(!allMatching.length){
+      const q=esc(vm.query.trim());
+      if(vm.searching && !vm.allTab.active && vm.allTab.count>0){
+        el.innerHTML=`<div class="hint">ไม่พบในสถานะนี้ — มีอีก <b>${vm.allTab.count}</b> งานที่ตรงกับ "${q}" อยู่ในสถานะอื่น กดแท็บ ALL เพื่อดู</div>`;
+      } else {
+        el.innerHTML=vm.searching
+          ? `<div class="hint">ไม่พบงานที่ตรงกับ "${q}"</div>`
+          : '<div class="hint">ไม่มีงานในสถานะนี้</div>';
+      }
+      return;
+    }
+    const entries=allMatching.slice(0,visibleCount);
     el.innerHTML='';
-    issues.forEach(issue=>{
+    entries.forEach(({issue, noteHit})=>{
       const row=document.createElement('div');
       row.className='task'+(issue.overdue?' overdue':'');
       const rank=RISK_ORDER.indexOf(issue.risk);
@@ -64,7 +157,7 @@
       row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
       const slot=document.createElement('div');
       if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id, slot));
-      row.appendChild(makeNoteBtn(issue.id, slot));
+      row.appendChild(makeNoteBtn(issue.id, slot, noteHit));
       el.appendChild(row);
       el.appendChild(slot);
     });
@@ -72,7 +165,7 @@
       const moreBtn=document.createElement('button');
       moreBtn.className='loadMoreBtn';
       moreBtn.textContent=`โหลดเพิ่ม (เหลืออีก ${allMatching.length-visibleCount})`;
-      moreBtn.onclick=()=>{ visibleCount+=15; renderPanel(); };
+      moreBtn.onclick=()=>{ visibleCount+=15; renderAll(); };
       el.appendChild(moreBtn);
     }
   }
@@ -108,12 +201,14 @@
   function notePreview(text){ return text.length>60 ? text.slice(0,60)+'…' : text; }
   // icon button: opens/closes the private note panel for this issue in `slot`.
   // Local-only — the note text never leaves this machine via any Redmine call.
-  function makeNoteBtn(issueId, slot){
+  function makeNoteBtn(issueId, slot, noteHit){
     const btn=document.createElement('button');
     const existing=notes[String(issueId)];
-    btn.className='noteBtn'+(existing?' has':'');
+    btn.className='noteBtn'+(existing?' has':'')+(noteHit?' hit':'');
     btn.textContent='📝';
-    btn.title=existing?('โน้ต: '+notePreview(existing.text)):'เพิ่มโน้ตส่วนตัว';
+    btn.title=noteHit&&existing?('ตรงกับคำค้นในโน้ต · '+notePreview(existing.text))
+      :noteHit?'ตรงกับคำค้นในโน้ต'
+      :(existing?('โน้ต: '+notePreview(existing.text)):'เพิ่มโน้ตส่วนตัว');
     btn.onclick=(e)=>{
       e.stopPropagation();
       if(slot.dataset.kind==='note'){ (slot._attemptClose||closeAllPanels)(); return; }
@@ -151,7 +246,7 @@
         if(val) notes[String(issueId)]={text:val, updatedAt:new Date().toISOString()};
         else delete notes[String(issueId)];
         clearSlot(slot);
-        renderPanel();
+        renderAll();   // โน้ตเป็นส่วนหนึ่งของ haystack ตัวเลขบนชิปต้องขยับตามด้วย
       });
     }
     function attemptClose(){
@@ -169,7 +264,7 @@
         if(!result || !result.ok){ showErr('ลบไม่สำเร็จ: '+((result&&result.error)||'ไม่ทราบสาเหตุ')); return; }
         delete notes[String(issueId)];
         clearSlot(slot);
-        renderPanel();
+        renderAll();
       });
     };
     textarea.addEventListener('keydown',e=>{
@@ -223,77 +318,81 @@
     };
     slot.appendChild(panel);
   }
-  function renderTabs(){
+  function renderTabs(vm){
     const tabsEl=document.getElementById('tabs');
     tabsEl.innerHTML='';
-    // ALL tab (default) — every status combined
+    // ALL tab (default) — ไม่ค้น = งานที่ยังเปิด · ค้นอยู่ = ทุกสถานะ (viewModel เป็นคนตัดสิน)
     const allTab=document.createElement('div');
-    allTab.className='tab'+(activeStatus==='ALL'?' active':'');
+    allTab.className='tab'+(vm.allTab.active?' active':'');
     allTab.style.setProperty('--sc','var(--accent)');
-    allTab.innerHTML=`<span class="dot"></span>ALL<span class="n">${openIssues().filter(issueMatch).length}</span>`;
-    allTab.onclick=()=>{ activeStatus='ALL'; visibleCount=15; renderTabs(); renderPanel(); };
+    allTab.innerHTML=`<span class="dot"></span>ALL<span class="n">${vm.allTab.count}</span>`;
+    allTab.onclick=()=>{ activeStatus='ALL'; visibleCount=15; renderAll(); };
     tabsEl.appendChild(allTab);
-    lastPayload.groups.forEach(g=>{
+    vm.statusTabs.forEach(t=>{
       const tab=document.createElement('div');
-      tab.className='tab'+(g.status===activeStatus?' active':'');
-      tab.style.setProperty('--sc', STATUS_COLOR[g.status]||'var(--dim)');
-      tab.innerHTML=`<span class="dot"></span>${esc(g.status)}<span class="n">${statusIssues(g.status).length}</span>`;
-      tab.onclick=()=>{ activeStatus=g.status; visibleCount=15; renderTabs(); renderPanel(); };
+      tab.className='tab'+(t.active?' active':'');
+      tab.style.setProperty('--sc', STATUS_COLOR[t.status]||'var(--dim)');
+      tab.innerHTML=`<span class="dot"></span>${esc(t.status)}<span class="n">${t.count}</span>`;
+      tab.onclick=()=>{ activeStatus=t.status; visibleCount=15; renderAll(); };
       tabsEl.appendChild(tab);
     });
   }
   const ocSpan=(o,c)=>`<span class="n"><span class="o">${o}</span><span class="sep">/</span><span class="c">${c}</span></span>`;
-  function renderChipFilter(elId, keyFn, selected){
+  function renderChipFilter(elId, chipList, selected){
     const el=document.getElementById(elId);
     el.innerHTML='';
-    const counts=new Map();
-    allIssues().forEach(i=>{
-      const k=keyFn(i);
-      if(!counts.has(k)) counts.set(k,{open:0,closed:0});
-      const c=counts.get(k);
-      i.closed?c.closed++:c.open++;
-    });
-    [...counts.keys()].sort().forEach(k=>{
+    chipList.forEach(c=>{
       const chip=document.createElement('div');
-      chip.className='chip'+(selected.has(k)?' active':'');
-      const c=counts.get(k);
-      chip.innerHTML=`${esc(k)}${ocSpan(c.open,c.closed)}`;
+      // .zero = ไม่มีผลตอนค้นอยู่ — จางลงแต่ยังกดได้ ห้ามซ่อน ไม่งั้นตัวกรองที่ค้างอยู่จะกดปิดไม่ได้
+      chip.className='chip'+(c.selected?' active':'')+(c.zero?' zero':'');
+      chip.innerHTML=`${esc(c.key)}${ocSpan(c.open,c.closed)}`;
       chip.onclick=()=>{
-        selected.has(k)?selected.delete(k):selected.add(k);
-        visibleCount=15; renderFilters(); renderTabs(); renderPanel();
+        selected.has(c.key)?selected.delete(c.key):selected.add(c.key);
+        visibleCount=15; renderAll();
       };
       el.appendChild(chip);
     });
   }
-  function renderRiskFilter(){
+  const RISK_LABEL={all:'ทั้งหมด', none:'ไม่ระบุ'};
+  function riskColor(key){
+    if(key==='all') return 'var(--accent)';
+    if(key==='none') return 'var(--dim)';
+    const idx=RISK_ORDER.indexOf(key);
+    return idx>=0?RISK_COLORS[idx]:'var(--dim)';
+  }
+  function renderRiskFilter(rows){
     const el=document.getElementById('riskFilter');
     el.innerHTML='';
-    const issues=allIssues();
-    const oc=list=>({open:list.filter(i=>!i.closed).length,closed:list.filter(i=>i.closed).length});
-    const mk=(cls,sc,label,list,onclick)=>{
+    rows.forEach(r=>{
       const tab=document.createElement('div');
-      tab.className='tab'+cls;
-      tab.style.setProperty('--sc',sc);
-      const c=oc(list);
-      tab.innerHTML=`<span class="dot"></span>${esc(label)}${ocSpan(c.open,c.closed)}`;
-      tab.onclick=onclick;
+      tab.className='tab'+(r.active?' active':'');
+      tab.style.setProperty('--sc',riskColor(r.key));
+      tab.innerHTML=`<span class="dot"></span>${esc(RISK_LABEL[r.key]||r.key)}${ocSpan(r.open,r.closed)}`;
+      tab.onclick=()=>{
+        selectedRisk=(r.key==='all')?null:(selectedRisk===r.key?null:r.key);
+        visibleCount=15; renderAll();
+      };
       el.appendChild(tab);
-    };
-    mk(selectedRisk===null?' active':'','var(--accent)','ทั้งหมด',issues,
-      ()=>{ selectedRisk=null; visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
-    RISK_ORDER.forEach((r,idx)=>{
-      const list=issues.filter(i=>i.risk===r);
-      mk(selectedRisk===r?' active':'',RISK_COLORS[idx],r,list,
-        ()=>{ selectedRisk=(selectedRisk===r?null:r); visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
     });
-    const noneList=issues.filter(i=>!i.risk);
-    mk(selectedRisk==='none'?' active':'','var(--dim)','ไม่ระบุ',noneList,
-      ()=>{ selectedRisk=(selectedRisk==='none'?null:'none'); visibleCount=15; renderRiskFilter(); renderTabs(); renderPanel(); });
   }
-  function renderFilters(){
-    renderChipFilter('projectFilter', i=>i.project, selectedProjects);
-    renderChipFilter('assigneeFilter', i=>i.assignee, selectedAssignees);
-    renderRiskFilter();
+  function renderSearchHint(vm){
+    const el=document.getElementById('rmSearchHint');
+    const show=vm.searching && vm.allTab.active;
+    el.textContent=show?'กำลังค้นจากทุกสถานะ รวมงานที่ปิดแล้ว':'';
+    el.classList.toggle('on', show);
+  }
+  // ทางเข้าเดียวของการวาดใหม่ — เรียก viewModel ครั้งเดียวแล้วแจกให้ทุก renderer
+  function renderAll(){
+    if(!lastPayload) return;
+    const vm=viewModel(lastPayload, notes, {
+      query:searchQuery, selectedProjects, selectedAssignees, selectedRisk, activeStatus,
+    });
+    renderChipFilter('projectFilter', vm.projectChips, selectedProjects);
+    renderChipFilter('assigneeFilter', vm.assigneeChips, selectedAssignees);
+    renderRiskFilter(vm.riskRows);
+    renderTabs(vm);
+    renderPanel(vm);
+    renderSearchHint(vm);
   }
   let closedYearsOpen=false;
   function renderRmStats(stats){
@@ -324,6 +423,8 @@
     document.getElementById('projectFilter').innerHTML='';
     document.getElementById('assigneeFilter').innerHTML='';
     document.getElementById('riskFilter').innerHTML='';
+    document.getElementById('rmSearchHint').textContent='';
+    document.getElementById('rmSearchHint').classList.remove('on');
     shell().setUserName(payload.currentUser);
     renderRmStats(payload.stats);
     if(payload.error){
@@ -336,9 +437,10 @@
       } else {
         el.innerHTML=`<div class="hint">โหลด Redmine ไม่สำเร็จ: ${esc(payload.error)}</div>`;
       }
+      lastPayload=null;
       return;
     }
-    if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; return; }
+    if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; lastPayload=null; return; }
     lastPayload=payload;
     notes=payload.notes||{};
     // drop selections that no longer exist
@@ -351,12 +453,17 @@
     if(!activeStatus || (activeStatus!=='ALL' && !payload.groups.some(g=>g.status===activeStatus))){
       activeStatus='ALL';
     }
-    renderFilters(); renderTabs(); renderPanel();
+    renderAll();
   }
 
   function mount(){
     api=shell().api;
     api && api.onTasks && api.onTasks(onData);
+    // ช่องค้นหา — คำค้นเก็บระดับโมดูล จึงค้างข้ามการรีเฟรชอัตโนมัติและข้ามการสลับแท็บ
+    const box=document.getElementById('rmSearch');
+    const apply=v=>{ searchQuery=v; visibleCount=15; renderAll(); };
+    box.oninput=()=>apply(box.value);
+    box.onkeydown=e=>{ if(e.key==='Escape'){ e.preventDefault(); box.value=''; apply(''); } };
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====
@@ -395,4 +502,11 @@
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
   global.COWORK.tabs.redmine = { key:"rm", settingsCard:'cardRedmine', mount, mountSettings, loadSettings, onData };
+
+  // เปิดทาง node --test แบบเดียวกับ tab-grafana.js / tab-meeting.js
+  // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM — พวกนี้คือที่เก็บกฎที่พลาดแล้วเงียบ:
+  // ตัวเลขบนแท็บต้องเท่าจำนวนแถวที่เห็น · ชิปที่ถูกเลือกต้องมีให้กดปิดเสมอ
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { parseTerms, issueHay, matchTerms, termsHitNote, sortForSearch, viewModel };
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

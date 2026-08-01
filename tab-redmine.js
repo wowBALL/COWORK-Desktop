@@ -423,6 +423,8 @@
     document.getElementById('projectFilter').innerHTML='';
     document.getElementById('assigneeFilter').innerHTML='';
     document.getElementById('riskFilter').innerHTML='';
+    document.getElementById('rmSearchHint').textContent='';
+    document.getElementById('rmSearchHint').classList.remove('on');
     shell().setUserName(payload.currentUser);
     renderRmStats(payload.stats);
     if(payload.error){

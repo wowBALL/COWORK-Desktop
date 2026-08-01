@@ -331,4 +331,8 @@ test('viewModel: รับ selectedProjects/selectedAssignees เป็น Set �
     query: 'menutable', selectedProjects: new Set(['Menutable']), selectedAssignees: new Set(['Thawalit']), activeStatus: 'Closed',
   }));
   assert.deepStrictEqual(withSets, withArrays);
+  // hand-derived expectation: query 'menutable' + Menutable project + Thawalit assignee + Closed status
+  // → all Closed/Menutable/Thawalit issues in PAYLOAD: 654, 646, 188, 94
+  // → sorted by updatedOn newest→oldest: 2026-07-20, 2026-07-15, 2026-05-02, 2026-04-10
+  assert.deepStrictEqual(withSets.list.map(e => e.issue.id), [654, 646, 188, 94]);
 });

@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
-const path = require('node:path');
 const { parseGlossary } = require('../glossary.js');
 
 // fixture คือไฟล์จริงของ meeting-notes ไม่ใช่ข้อมูลแต่ง (ไฟล์นี้ gitignored อยู่ที่ repo นั้น
@@ -46,6 +45,40 @@ test('parseGlossary: คีย์ซ้ำ "ข้าม" section ไม่ใ�
   assert.deepStrictEqual(g.duplicates, []);
   assert.deepStrictEqual(g.sections.exact.GORM.forms, ['กรอม']);
   assert.deepStrictEqual(g.sections.fuzzy.GORM.forms, ['กรม']);
+});
+
+test('parseGlossary: ข้ามคำที่มี * [ ] -- อักขระเหล่านี้ประกอบหัว segment transcript', () => {
+  // `*` `[` `]` เป็นอักขระที่ประกอบหัว segment ของ transcript เช่น `**ผู้พูด 1** [00:00]:`
+  // ถ้า glossary มีคำเหล่านี้ คำนั้นจะทำให้ transcript parse ไม่ออก ต้องข้ามมัน
+  // นอก correct term เราต้องข้ามเรคคอร์ดด้วยถ้า form ใดก็ตามมีอักขระเหล่านี้
+  const g = parseGlossary(['## exact', 'Test: form1, form2'].join('\n'));
+  assert.deepStrictEqual(g.sections.exact.Test.forms, ['form1', 'form2']);
+  assert.deepStrictEqual(g.duplicates, []);
+});
+
+test('parseGlossary: correct term มี * ทำให้ข้ามบรรทัดนั้น', () => {
+  const g = parseGlossary(['## exact', 'Te*st: form1'].join('\n'));
+  assert.strictEqual(g.sections.exact['Te*st'], undefined);
+  assert.strictEqual(g.duplicates.length, 0);
+});
+
+test('parseGlossary: form มี [ ทำให้ข้ามบรรทัดนั้น', () => {
+  const g = parseGlossary(['## exact', 'Test: form[1]'].join('\n'));
+  assert.strictEqual(g.sections.exact.Test, undefined);
+  assert.strictEqual(g.duplicates.length, 0);
+});
+
+test('parseGlossary: correct term มี ] ทำให้ข้าม ตัวเดิมที่ถูก correct ก่อนหน้านี้ไม่ถูก shadow', () => {
+  // ถ้าคำถูก correct มาก่อน แล้วเจอบรรทัดซ้ำที่มี markup ต้องข้ามบรรทัดใหม่
+  // บรรทัดเดิมต้องอยู่ไว้ตามเดิม ไม่เข้า duplicates
+  const g = parseGlossary([
+    '## exact',
+    'GitHub: กิทฮับ',      // บรรทัดที่ 2 -- ถูก correct
+    'GitHub]: กิทหับ',     // บรรทัดที่ 3 -- มี ] ต้องข้าม
+  ].join('\n'));
+  assert.deepStrictEqual(g.sections.exact.GitHub.forms, ['กิทฮับ']);
+  assert.strictEqual(g.sections.exact.GitHub.line, 2);
+  assert.deepStrictEqual(g.duplicates, []);
 });
 
 test('parseGlossary: จำ EOL ของไฟล์ไว้ (CRLF ต้องไม่กลายเป็น LF)', () => {

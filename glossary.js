@@ -14,6 +14,12 @@ const MAPPING_SECTIONS = ['exact', 'fuzzy', 'project-names', 'aliases'];
 // ต้องมีช่องว่างนำหน้า # ถึงนับเป็น comment -- `C#` กับ `F#` เป็นชื่อภาษาจริง
 const INLINE_COMMENT_RE = /\s+#.*$/;
 
+// `*` `[` `]` เป็นอักขระที่ประกอบหัว segment ของ transcript เช่น `**ผู้พูด 1** [00:00]:`
+// ตรงกับ _has_markup ใน meeting-notes/src/glossary.py:258
+function hasMarkup(term) {
+  return ['*', '[', ']'].some(char => term.includes(char));
+}
+
 function parseGlossary(text) {
   const src = String(text || '');
   const eol = src.includes('\r\n') ? '\r\n' : '\n';
@@ -54,6 +60,11 @@ function parseGlossary(text) {
     const term = body.slice(0, at).trim();
     const forms = body.slice(at + 1).split(',').map(s => s.trim()).filter(Boolean);
     if (!term || !forms.length) return;
+
+    // ข้ามเรคคอร์ดที่มี * [ ] เพราะอักขระเหล่านี้ประกอบหัว segment ของ transcript
+    // ถ้า glossary มีคำเหล่านี้ คำนั้นจะทำให้ transcript parse ไม่ออก (ตรงกับ Python)
+    const unsafe = [term, ...forms].filter(hasMarkup);
+    if (unsafe.length > 0) return;
 
     // ตัวหลังทับตัวหน้าเหมือน Python -- ตัวหน้าจึงเป็น "บรรทัดตาย" ที่ต้องรายงาน
     const prev = sections[section][term];

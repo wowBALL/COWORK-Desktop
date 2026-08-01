@@ -27,26 +27,59 @@
   }
   function mtSize(n){ return n>=1048576 ? (n/1048576).toFixed(1)+' MB' : Math.round(n/1024)+' KB'; }
 
-  // markdown เท่าที่ summary.md ใช้จริง: หัวข้อ 1-3 ระดับ, bullet (มีระดับย่อย), **ตัวหนา**, `code`
+  // markdown เท่าที่ summary.md ใช้จริง: หัวข้อ 1-3 ระดับ, bullet (มีระดับย่อย), **ตัวหนา**, `code`, ตาราง Action items
   function mdInline(t){
     return esc(t).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`(.+?)`/g,'<code>$1</code>');
+  }
+  // "| a | b |" → ['a','b'] — เอา pipe หัว-ท้ายออกก่อนค่อยตัด
+  function mdSplitRow(line){
+    let s=line.trim();
+    if(s.startsWith('|')) s=s.slice(1);
+    if(s.endsWith('|')) s=s.slice(0,-1);
+    return s.split('|').map(c=>c.trim());
+  }
+  const mdIsTableRow=line=>/^\|.*\|$/.test(line.trim());
+  // แถวคั่นหัวตาราง "|---|---|" — ทุกช่องต้องเป็น dash ล้วน (มี : ได้เผื่อ align)
+  const mdIsTableSep=line=>mdIsTableRow(line)&&mdSplitRow(line).every(c=>/^:?-{1,}:?$/.test(c));
+  // คอลัมน์ "ความชัดเจน" ในตาราง action items ใช้แค่สองค่านี้ — ทำเป็น badge สีให้เห็นชัดกว่าตัวหนังสือเฉย ๆ
+  function mdTableCell(t){
+    const v=(t||'').trim();
+    if(!v||v==='-') return '<span class="md-dash">–</span>';
+    if(v==='คาดเดา') return `<span class="md-badge amber">${mdInline(v)}</span>`;
+    if(v==='ชัดเจน') return `<span class="md-badge accent">${mdInline(v)}</span>`;
+    return mdInline(t);
+  }
+  function mdTable(header,rows){
+    const thead=`<tr>${header.map(h=>`<th>${mdInline(h)}</th>`).join('')}</tr>`;
+    const tbody=rows.map(r=>`<tr>${header.map((_,i)=>`<td>${mdTableCell(r[i])}</td>`).join('')}</tr>`).join('');
+    return `<div class="md-table-wrap"><table><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
   }
   function mdRender(src){
     const out=[]; let ul=false, hn=0;
     const closeUl=()=>{ if(ul){ out.push('</ul>'); ul=false; } };
-    for(const raw of String(src||'').replace(/\r/g,'').split('\n')){
-      const line=raw.replace(/\s+$/,'');
-      if(!line.trim()){ closeUl(); continue; }
+    const lines=String(src||'').replace(/\r/g,'').split('\n').map(l=>l.replace(/\s+$/,''));
+    let i=0;
+    while(i<lines.length){
+      const line=lines[i];
+      if(!line.trim()){ closeUl(); i++; continue; }
       let m;
       if((m=/^(#{1,3})\s+(.*)$/.exec(line))){
         closeUl(); hn++;
-        out.push(`<h${m[1].length} id="mth${hn}">${mdInline(m[2])}</h${m[1].length}>`); continue;
+        out.push(`<h${m[1].length} id="mth${hn}">${mdInline(m[2])}</h${m[1].length}>`); i++; continue;
+      }
+      if(mdIsTableRow(line) && i+1<lines.length && mdIsTableSep(lines[i+1])){
+        closeUl();
+        const header=mdSplitRow(line);
+        i+=2;
+        const rows=[];
+        while(i<lines.length && mdIsTableRow(lines[i])){ rows.push(mdSplitRow(lines[i])); i++; }
+        out.push(mdTable(header,rows)); continue;
       }
       if((m=/^(\s*)[-*]\s+(.*)$/.exec(line))){
         if(!ul){ out.push('<ul>'); ul=true; }
-        out.push(`<li${m[1].length>=2?' class="sub"':''}>${mdInline(m[2])}</li>`); continue;
+        out.push(`<li${m[1].length>=2?' class="sub"':''}>${mdInline(m[2])}</li>`); i++; continue;
       }
-      closeUl(); out.push(`<p>${mdInline(line)}</p>`);
+      closeUl(); out.push(`<p>${mdInline(line)}</p>`); i++;
     }
     closeUl(); return out.join('');
   }
@@ -451,6 +484,6 @@
   // เปิดทาง node --test แบบเดียวกับ tab-grafana.js — เฉพาะ parser ของ summary.meta.md
   // ที่ไม่ต้องใช้ DOM (renderMeta ใช้ esc จาก global.COWORK.util เลยไม่ export)
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { parseMeta, splitCounts, parseWords, parseSpots };
+    module.exports = { parseMeta, splitCounts, parseWords, parseSpots, mdRender };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

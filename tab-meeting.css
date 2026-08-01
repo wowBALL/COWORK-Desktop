@@ -101,11 +101,30 @@
 .md strong{color:var(--ink);font-weight:700}
 .md code{font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--panel-2);
   border-radius:4px;padding:1px 5px;color:var(--cyan)}
+/* ตาราง Action items จาก summary.md — wrap ให้เลื่อนแนวนอนได้ วิดเจ็ตปกติแคบแค่ 420px
+   คอลัมน์ "งาน"/"ผู้รับผิดชอบ" ตัวยาว ๆ มักไม่พอที่ */
+.md-table-wrap{overflow-x:auto;margin:9px 0 13px;border:1px solid var(--line-soft);border-radius:10px}
+.md table{width:100%;min-width:420px;border-collapse:collapse;font-size:12px}
+.md th,.md td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line-soft);
+  vertical-align:top;word-break:break-word}
+.md th{font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.04em;
+  background:var(--panel-2);white-space:nowrap}
+.md td{color:var(--muted)}
+.md td:first-child{color:var(--ink);font-weight:600}
+.md tr:last-child td{border-bottom:0}
+.md tr:hover td{background:color-mix(in srgb,var(--accent) 5%,transparent)}
+.md .md-dash{color:var(--dim)}
+/* คอลัมน์ "ความชัดเจน" มีแค่สองค่า (คาดเดา/ชัดเจน) — badge สีให้กวาดตาหาแถวที่ยังคาดเดาอยู่ได้ไว */
+.md .md-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;
+  border-radius:20px;white-space:nowrap}
+.md .md-badge.amber{color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent)}
+.md .md-badge.accent{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
 /* จอกว้างพอ (ขยายเต็มจอ) ตัวอักษรใหญ่ขึ้นอีกนิด — เนื้อหา + สารบัญอ่านสบายขึ้นโดยไม่ต้อง
    เพ่ง ที่ 420px (วิดเจ็ตปกติ) ไม่เปลี่ยน เพราะ container query ยังไม่ถึงเกณฑ์ · วางไว้หลังสุด
    เพราะ specificity เท่ากับ .md h3 ด้านบน ต้องมาทีหลังใน source ถึงจะชนะตอน override */
 @container (min-width:900px){
   .md{font-size:14px}
+  .md table{font-size:13px}
   .md h1{font-size:17px}
   .md h2{font-size:14px}
   .md h3{font-size:14px}

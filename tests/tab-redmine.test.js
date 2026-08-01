@@ -27,17 +27,17 @@ test('parseTerms: คำไทยไม่ถูกตัดกลางคำ',
 // ===== issueHay =====
 const ISSUE_188 = {
   id: 188, subject: 'เช็คหน้า voucher มันมี error ถ้าไม่มีข้อมูล',
-  project: 'Menutable', assignee: 'Thawalit', risk: null, closed: true,
+  project: 'Menutable', assignee: 'Somchai', risk: null, closed: true,
   status: 'Closed', updatedOn: '2026-05-02T04:10:00Z',
 };
 
 test('issueHay: รวม #id / subject / project / assignee / โน้ต เป็นตัวพิมพ์เล็ก', () => {
-  const hay = issueHay(ISSUE_188, 'ถามพี่เอกเรื่องนี้ก่อน');
+  const hay = issueHay(ISSUE_188, 'ถามหัวหน้าทีมเรื่องนี้ก่อน');
   assert.ok(hay.includes('#188'));
   assert.ok(hay.includes('voucher'));
   assert.ok(hay.includes('menutable'));   // project ถูกลดเป็นตัวพิมพ์เล็ก
-  assert.ok(hay.includes('thawalit'));
-  assert.ok(hay.includes('พี่เอก'));
+  assert.ok(hay.includes('somchai'));
+  assert.ok(hay.includes('หัวหน้าทีม'));
 });
 
 test('issueHay: field ที่หายไปไม่ทำให้ได้คำว่า undefined/null ปนใน haystack', () => {
@@ -58,7 +58,7 @@ test('matchTerms: หลายคำต้องตรงทุกคำ (AND)',
 });
 
 test('matchTerms: "550" กับ "#550" หาเจอ issue เดียวกัน', () => {
-  const hay = issueHay({ id: 550, subject: 'Invoice total', project: 'Menutable', assignee: 'Thawalit' }, '');
+  const hay = issueHay({ id: 550, subject: 'Invoice total', project: 'Menutable', assignee: 'Somchai' }, '');
   assert.strictEqual(matchTerms(hay, parseTerms('550')), true);
   assert.strictEqual(matchTerms(hay, parseTerms('#550')), true);
 });
@@ -69,8 +69,8 @@ test('matchTerms: ไม่สนตัวพิมพ์เล็กใหญ�
 
 // ===== termsHitNote =====
 test('termsHitNote: จริงเมื่อคำใดคำหนึ่งอยู่ในโน้ต', () => {
-  assert.strictEqual(termsHitNote('ถามพี่เอกก่อน', parseTerms('พี่เอก')), true);
-  assert.strictEqual(termsHitNote('ถามพี่เอกก่อน', parseTerms('voucher')), false);
+  assert.strictEqual(termsHitNote('ถามหัวหน้าทีมก่อน', parseTerms('หัวหน้าทีม')), true);
+  assert.strictEqual(termsHitNote('ถามหัวหน้าทีมก่อน', parseTerms('voucher')), false);
 });
 
 test('termsHitNote: ไม่มีโน้ต หรือไม่มีคำค้น = เท็จเสมอ', () => {
@@ -110,39 +110,39 @@ test('sortForSearch: updatedOn ว่าง/หายไป ตกไปท้�
 const PAYLOAD = { groups: [
   { status: 'Backlog', issues: [
     { id: 17,  subject: 'Stripe ยังไม่สามารถ สร้าง ได้ สำหรับลูกค้าใหม่', project: 'Payment', /* ARRANGED */
-      assignee: 'songkran', risk: null, status: 'Backlog', closed: false, updatedOn: '2026-03-01T00:00:00Z' },
+      assignee: 'malee', risk: null, status: 'Backlog', closed: false, updatedOn: '2026-03-01T00:00:00Z' },
     { id: 69,  subject: 'ป้องกันออก key ซ้ำกัน ตอนสร้าง voucher', project: 'Menutable',
-      assignee: 'Thawalit', risk: 'Fairly Low', status: 'Backlog', closed: false, updatedOn: '2026-03-02T00:00:00Z' },
+      assignee: 'Somchai', risk: 'Fairly Low', status: 'Backlog', closed: false, updatedOn: '2026-03-02T00:00:00Z' },
   ]},
   { status: 'New', issues: [
     { id: 657, subject: '[UI] Header menu: เมนู toggle อยู่มุมจอและสีตัวอักษรไม่อ่านค่า (แก้ Header.svelte)',
-      project: 'Menutable', assignee: 'songkran', risk: 'Low', status: 'New', closed: false, updatedOn: '2026-07-30T10:00:00Z' },
+      project: 'Menutable', assignee: 'malee', risk: 'Low', status: 'New', closed: false, updatedOn: '2026-07-30T10:00:00Z' },
     { id: 656, subject: 'เพิ่ม Save ให้ Edit ของ Block out ใน Booking', project: 'Menutable',
-      assignee: 'Thawalit', risk: 'Moderate', status: 'New', closed: false, updatedOn: '2026-07-29T10:00:00Z' },
+      assignee: 'Somchai', risk: 'Moderate', status: 'New', closed: false, updatedOn: '2026-07-29T10:00:00Z' },
   ]},
   { status: 'In Progress', issues: [
     { id: 584, subject: 'Create pre-order when place order and update order when make payment',
-      project: 'Menutable', assignee: 'songkran', risk: 'High', status: 'In Progress', closed: false, updatedOn: '2026-07-31T08:00:00Z' },
+      project: 'Menutable', assignee: 'malee', risk: 'High', status: 'In Progress', closed: false, updatedOn: '2026-07-31T08:00:00Z' },
   ]},
   { status: 'Test', issues: [
     { id: 530, subject: 'Booking CMS Transactions display incorrect table information', project: 'Wallet', /* ARRANGED */
-      assignee: 'Thawalit', risk: 'Medium', status: 'Test', closed: false, updatedOn: '2026-07-28T10:00:00Z' },
+      assignee: 'Somchai', risk: 'Medium', status: 'Test', closed: false, updatedOn: '2026-07-28T10:00:00Z' },
   ]},
   { status: 'Resolved', issues: [
     { id: 550, subject: 'Invoice total and refund details are inconsistent with item prices and payment records.',
-      project: 'Menutable', assignee: 'Thawalit', risk: 'High', status: 'Resolved', closed: false, updatedOn: '2026-07-27T10:00:00Z' },
+      project: 'Menutable', assignee: 'Somchai', risk: 'High', status: 'Resolved', closed: false, updatedOn: '2026-07-27T10:00:00Z' },
   ]},
   { status: 'Closed', issues: [
     { id: 531, subject: 'Booking ซ้ำโต๊ะเดียวกันเวลาเดียวกัน', project: 'Menutable',
-      assignee: 'songkran', risk: 'Low', status: 'Closed', closed: true, updatedOn: '2026-06-01T10:00:00Z' },
+      assignee: 'malee', risk: 'Low', status: 'Closed', closed: true, updatedOn: '2026-06-01T10:00:00Z' },
     { id: 188, subject: 'เช็คหน้า voucher มันมี error ถ้าไม่มีข้อมูล', project: 'Menutable',
-      assignee: 'Thawalit', risk: null, status: 'Closed', closed: true, updatedOn: '2026-05-02T04:10:00Z' },
+      assignee: 'Somchai', risk: null, status: 'Closed', closed: true, updatedOn: '2026-05-02T04:10:00Z' },
     { id: 94,  subject: 'add feature print voucher', project: 'Menutable',
-      assignee: 'Thawalit', risk: 'Fairly Low', status: 'Closed', closed: true, updatedOn: '2026-04-10T10:00:00Z' },
+      assignee: 'Somchai', risk: 'Fairly Low', status: 'Closed', closed: true, updatedOn: '2026-04-10T10:00:00Z' },
     { id: 654, subject: 'CMS: กด Web App อื่นแล้วโดนบังคับ login Casdoor ใหม่ (เพิ่ม Silent SSO)',
-      project: 'Menutable', assignee: 'Thawalit', risk: 'Moderate', status: 'Closed', closed: true, updatedOn: '2026-07-20T10:00:00Z' },
+      project: 'Menutable', assignee: 'Somchai', risk: 'Moderate', status: 'Closed', closed: true, updatedOn: '2026-07-20T10:00:00Z' },
     { id: 646, subject: 'ปรับแสดงรายการแอป ของ menutable', project: 'Menutable',
-      assignee: 'Thawalit', risk: 'Moderate', status: 'Closed', closed: true, updatedOn: '2026-07-15T10:00:00Z' },
+      assignee: 'Somchai', risk: 'Moderate', status: 'Closed', closed: true, updatedOn: '2026-07-15T10:00:00Z' },
   ]},
 ]};
 // โน้ตส่วนตัว: คำว่า "ตู้เย็น" ไม่มีอยู่ใน field ไหนของ issue เลย จึงพิสูจน์ได้ว่าค้นจากโน้ตจริง
@@ -164,7 +164,7 @@ test('ไม่ค้น: แท็บ ALL นับเฉพาะงานท�
 });
 
 test('ไม่ค้น: ตัวเลขชิปคือยอดรวมทั้งก้อน ไม่ถูกหักด้วยคำค้นหรือชิปแถวอื่น', () => {
-  const vm = viewModel(PAYLOAD, NOTES, st({ selectedAssignees: ['songkran'] }));
+  const vm = viewModel(PAYLOAD, NOTES, st({ selectedAssignees: ['malee'] }));
   const menutable = vm.projectChips.find(c => c.key === 'Menutable');
   assert.strictEqual(menutable.open + menutable.closed,
     ALL_ISSUES.filter(i => i.project === 'Menutable').length);
@@ -195,7 +195,7 @@ test('"550" กับ "#550" ได้ผลชุดเดียวกัน', 
 test('หลายคำ = ต้องตรงทุกคำ และค้นชื่อโปรเจกต์/ผู้รับผิดชอบได้', () => {
   const vm = viewModel(PAYLOAD, NOTES, st({ query: 'menutable VOUCHER' }));
   assert.deepStrictEqual(vm.list.map(e => e.issue.id).sort((x, y) => x - y), [69, 94, 188]);
-  const byPerson = viewModel(PAYLOAD, NOTES, st({ query: 'songkran booking' }));
+  const byPerson = viewModel(PAYLOAD, NOTES, st({ query: 'malee booking' }));
   assert.deepStrictEqual(byPerson.list.map(e => e.issue.id), [531]);
 });
 
@@ -238,7 +238,7 @@ test('noteHit ติดเฉพาะแถวที่ตรงเพราะ
 test('invariant: เลขบนแท็บที่ active = จำนวนแถวจริง · ผลรวมสถานะ = ALL ตอนค้น · ชิปที่เลือกอยู่ต้องมีให้กดปิด', () => {
   const QUERIES = ['', 'voucher', '550', '#550', 'menutable voucher', 'ตู้เย็น', 'booking', 'ไม่มีทางเจอคำนี้'];
   const PROJECTS = [[], ['Menutable'], ['Wallet'], ['Menutable', 'Payment']];
-  const ASSIGNEES = [[], ['Thawalit'], ['songkran']];
+  const ASSIGNEES = [[], ['Somchai'], ['malee']];
   const RISKS = [null, 'High', 'Low', 'none'];
   const STATUSES = ['ALL', ...PAYLOAD.groups.map(g => g.status)];
   let combos = 0;
@@ -325,14 +325,14 @@ test('ชิปโปรเจกต์หักตามคำค้น ไม�
 
 test('viewModel: รับ selectedProjects/selectedAssignees เป็น Set ได้ผลเหมือน array', () => {
   const withArrays = viewModel(PAYLOAD, NOTES, st({
-    query: 'menutable', selectedProjects: ['Menutable'], selectedAssignees: ['Thawalit'], activeStatus: 'Closed',
+    query: 'menutable', selectedProjects: ['Menutable'], selectedAssignees: ['Somchai'], activeStatus: 'Closed',
   }));
   const withSets = viewModel(PAYLOAD, NOTES, st({
-    query: 'menutable', selectedProjects: new Set(['Menutable']), selectedAssignees: new Set(['Thawalit']), activeStatus: 'Closed',
+    query: 'menutable', selectedProjects: new Set(['Menutable']), selectedAssignees: new Set(['Somchai']), activeStatus: 'Closed',
   }));
   assert.deepStrictEqual(withSets, withArrays);
-  // hand-derived expectation: query 'menutable' + Menutable project + Thawalit assignee + Closed status
-  // → all Closed/Menutable/Thawalit issues in PAYLOAD: 654, 646, 188, 94
+  // hand-derived expectation: query 'menutable' + Menutable project + Somchai assignee + Closed status
+  // → all Closed/Menutable/Somchai issues in PAYLOAD: 654, 646, 188, 94
   // → sorted by updatedOn newest→oldest: 2026-07-20, 2026-07-15, 2026-05-02, 2026-04-10
   assert.deepStrictEqual(withSets.list.map(e => e.issue.id), [654, 646, 188, 94]);
 });

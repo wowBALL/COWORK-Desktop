@@ -74,11 +74,11 @@ global.COWORK.shell.api = { onTasks: (cb) => { onTasks = cb; }, openLink() {}, s
 tab.mount();
 assert.ok(onTasks, 'mount() ต้องลงทะเบียน onTasks');
 
-const iss = (o) => Object.assign({ project: 'Menutable', assignee: 'Thawalit', risk: null,
+const iss = (o) => Object.assign({ project: 'Menutable', assignee: 'Somchai', risk: null,
   closed: false, overdue: false, createdOn: '2026-01-01T00:00:00Z', updatedOn: '2026-01-01T00:00:00Z',
   url: 'http://x/issues/' + o.id }, o);
 const PAYLOAD = {
-  currentUser: 'satit',
+  currentUser: 'somchai',
   stats: { open: 3, highRisk: 1, overdue: 0, closed: 2, closedByYear: [] },
   notes: { '646': { text: 'อันนี้รอ design ก่อน ตู้เย็น ยาว ๆ หน่อยเพื่อเช็กว่าตัดที่ 60 ตัวอักษรแล้วต่อท้ายด้วยจุดสามจุดจริงไหม', updatedAt: '2026-07-16T00:00:00Z' } },
   groups: [
@@ -153,7 +153,7 @@ test('6 หน้า error + พิมพ์ 2 ครั้ง: การ์ด 
   tabsNamed('ALL').onclick();
   type('voucher');
   assert.strictEqual(byId.rmSearchHint.classList.contains('on'), true, 'ตั้งต้น: บรรทัดเตือนต้องติดอยู่ก่อน error มา');
-  onTasks({ currentUser: 'satit', stats: null, error: 'ยังไม่ได้ตั้งค่า Redmine' });
+  onTasks({ currentUser: 'somchai', stats: null, error: 'ยังไม่ได้ตั้งค่า Redmine' });
   assert.ok(byId.tasks.innerHTML.includes('ตั้งค่าเลย'));
   assert.strictEqual(byId.rmSearchHint.textContent, '', 'บรรทัดเตือนต้องถูกล้างตอนขึ้นหน้า error');
   assert.strictEqual(byId.rmSearchHint.classList.contains('on'), false);
@@ -165,7 +165,7 @@ test('6 หน้า error + พิมพ์ 2 ครั้ง: การ์ด 
 
 // ---- 7. payload ว่าง (ไม่มีงานค้าง) ก็ต้องกันแบบเดียวกัน
 test('7 payload ว่าง + พิมพ์: "ไม่มีงานค้าง" ยังอยู่ ไม่ถูกวาดทับ', () => {
-  onTasks({ currentUser: 'satit', stats: null, groups: [] });
+  onTasks({ currentUser: 'somchai', stats: null, groups: [] });
   assert.ok(byId.tasks.innerHTML.includes('ไม่มีงานค้าง'));
   type('voucher');
   assert.ok(byId.tasks.innerHTML.includes('ไม่มีงานค้าง'), 'พิมพ์แล้วต้องไม่มีอะไรวาดทับ');

@@ -81,4 +81,79 @@ function parseGlossary(text) {
   return { eol, lines, sections, insertAfter, duplicates };
 }
 
-module.exports = { parseGlossary, MAPPING_SECTIONS };
+// ต่อคำผิดใหม่ท้ายบรรทัดเดิม โดยไม่ไปอยู่หลัง inline comment
+// (`A: b  # หมายเหตุ` + ['c'] -> `A: b, c  # หมายเหตุ`)
+function appendForms(raw, forms) {
+  const m = /^(.*?)(\s+#.*)$/.exec(raw);
+  const body = m ? m[1] : raw;
+  const comment = m ? m[2] : '';
+  return body.replace(/\s+$/, '') + ', ' + forms.join(', ') + comment;
+}
+
+function planWrite(text, entries, meta) {
+  const g = parseGlossary(text);
+  const out = {
+    added: [], merged: [], skipped: [], warnings: [], conflicts: [],
+    deadLines: g.duplicates, newText: null,
+  };
+  const edits = new Map();          // 1-based line -> ข้อความใหม่ของบรรทัดนั้น
+  const inserts = new Map();        // 1-based line -> บรรทัดที่จะแทรก "ต่อจาก" บรรทัดนั้น
+  const headerDone = new Set();     // เขียน header ครั้งเดียวต่อ section ต่อการกดหนึ่งครั้ง
+
+  for (const entry of entries || []) {
+    const section = entry.section;
+    const term = String(entry.term || '').trim();
+    const bucket = g.sections[section];
+    if (!term || !bucket) continue;
+
+    const existing = bucket[term];
+    const have = new Set(existing ? existing.forms : []);
+    const fresh = [];
+    for (const raw of entry.forms || []) {
+      const form = String(raw).trim();
+      if (!form || have.has(form) || fresh.includes(form)) continue;
+      fresh.push(form);
+    }
+    if (!fresh.length) {
+      out.skipped.push({ term, forms: entry.forms || [], section, reason: 'มีอยู่แล้วทั้งหมด' });
+      continue;
+    }
+
+    if (existing) {
+      // เข้าบรรทัดสุดท้ายของคำถูกนั้นเสมอ -- parseGlossary เก็บตัวสุดท้ายไว้ให้แล้ว
+      // เติมบรรทัดแรกจะได้ไฟล์ที่ดูถูกแต่ไม่มีผลตอนรัน
+      const line = existing.line;
+      const base = edits.has(line) ? edits.get(line) : g.lines[line - 1];
+      edits.set(line, appendForms(base, fresh));
+      out.merged.push({ term, forms: fresh, section, line });
+    } else {
+      const anchor = g.insertAfter[section];
+      if (anchor == null) {
+        out.skipped.push({ term, forms: fresh, section, reason: `ไม่พบ section ${section} ในไฟล์` });
+        continue;
+      }
+      const block = inserts.get(anchor) || [];
+      if (!headerDone.has(section)) {
+        headerDone.add(section);
+        block.push('', `# --- จาก ${meta && meta.title} (${meta && meta.date}) ---`);
+      }
+      block.push(`${term}: ${fresh.join(', ')}`);
+      inserts.set(anchor, block);
+      out.added.push({ term, forms: fresh, section });
+    }
+  }
+
+  if (!edits.size && !inserts.size) return out;
+
+  // ประกอบใหม่ทีเดียวจากบนลงล่าง เลขบรรทัดจึงไม่เลื่อนระหว่างทาง
+  const result = [];
+  g.lines.forEach((raw, i) => {
+    const ln = i + 1;
+    result.push(edits.has(ln) ? edits.get(ln) : raw);
+    if (inserts.has(ln)) result.push(...inserts.get(ln));
+  });
+  out.newText = result.join(g.eol);
+  return out;
+}
+
+module.exports = { parseGlossary, planWrite, MAPPING_SECTIONS };

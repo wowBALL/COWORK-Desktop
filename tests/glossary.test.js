@@ -139,3 +139,87 @@ test('parseGlossary: ไฟล์จริงมีคีย์ซ้ำที�
   assert.ok(dup.includes('exact/Approve'));
   assert.ok(dup.includes('exact/Merge Request'));
 });
+
+const { planWrite } = require('../glossary.js');
+
+const META = { title: 'Stanup', date: '2026-07-31' };
+const BASE = [
+  '## exact',                 // 1
+  'Kubernetes: ครูป, ฟลูก',    // 2
+  'Approve: App Proof',       // 3
+  'Approve: โกรธ',            // 4
+  '',                         // 5
+  '# ท้าย section',           // 6
+  '## fuzzy',                 // 7
+  'Electron: อิเล็กตรอน  # เฉพาะ desktop app',  // 8
+].join('\n') + '\n';
+
+test('planWrite: คำถูกที่ยังไม่มี -> added และแทรกใต้ header ที่บอกที่มา', () => {
+  const r = planWrite(BASE, [{ term: 'Odoo', forms: ['Udo', 'UDU'], section: 'exact' }], META);
+  assert.deepStrictEqual(r.added, [{ term: 'Odoo', forms: ['Udo', 'UDU'], section: 'exact' }]);
+  assert.deepStrictEqual(r.merged, []);
+  // insertAfter.exact = 4 (บรรทัด entry สุดท้าย) ของใหม่จึงเริ่มที่ index 4
+  const out = r.newText.split('\n');
+  assert.strictEqual(out[3], 'Approve: โกรธ');             // บรรทัด 4 เดิม ไม่ถูกแตะ
+  assert.strictEqual(out[4], '');                          // บรรทัดว่างคั่นที่แทรกเข้ามา
+  assert.strictEqual(out[5], '# --- จาก Stanup (2026-07-31) ---');
+  assert.strictEqual(out[6], 'Odoo: Udo, UDU');
+  assert.strictEqual(out[7], '');                          // บรรทัดว่างเดิม (บรรทัด 5)
+});
+
+test('planWrite: คำถูกที่มีอยู่แล้ว -> merged เข้าบรรทัดเดิม ไม่สร้างคีย์ซ้ำใหม่', () => {
+  const r = planWrite(BASE, [{ term: 'Kubernetes', forms: ['คูป'], section: 'exact' }], META);
+  assert.deepStrictEqual(r.added, []);
+  assert.strictEqual(r.merged.length, 1);
+  assert.strictEqual(r.merged[0].line, 2);
+  assert.strictEqual(r.newText.split('\n')[1], 'Kubernetes: ครูป, ฟลูก, คูป');
+  // เขียนแล้วต้องไม่มีคีย์ซ้ำงอกเพิ่ม
+  assert.strictEqual(parseGlossary(r.newText).duplicates.length,
+                     parseGlossary(BASE).duplicates.length);
+});
+
+test('planWrite: คำถูกที่มีหลายบรรทัด -> merge เข้าบรรทัดสุดท้าย (บรรทัดที่ Python อ่านจริง)', () => {
+  const r = planWrite(BASE, [{ term: 'Approve', forms: ['แอปพรูฟ'], section: 'exact' }], META);
+  assert.strictEqual(r.merged[0].line, 4);
+  assert.strictEqual(r.newText.split('\n')[3], 'Approve: โกรธ, แอปพรูฟ');
+  assert.strictEqual(r.newText.split('\n')[2], 'Approve: App Proof');   // บรรทัดตายไม่ถูกแตะ
+});
+
+test('planWrite: บรรทัดที่มี inline comment -> คำใหม่แทรกก่อน # ไม่ใช่หลัง', () => {
+  const r = planWrite(BASE, [{ term: 'Electron', forms: ['อีเล็คตรอน'], section: 'fuzzy' }], META);
+  assert.strictEqual(r.newText.split('\n')[7],
+    'Electron: อิเล็กตรอน, อีเล็คตรอน  # เฉพาะ desktop app');
+});
+
+test('planWrite: คำผิดที่มีอยู่แล้วครบ -> skipped ไม่แตะไฟล์', () => {
+  const r = planWrite(BASE, [{ term: 'Kubernetes', forms: ['ครูป'], section: 'exact' }], META);
+  assert.strictEqual(r.skipped.length, 1);
+  assert.strictEqual(r.merged.length, 0);
+  assert.strictEqual(r.newText, null);
+});
+
+test('planWrite: entries ว่าง -> newText เป็น null', () => {
+  assert.strictEqual(planWrite(BASE, [], META).newText, null);
+});
+
+test('planWrite: comment / บรรทัดว่าง / EOL ของเดิมต้องเหมือนเดิมเป๊ะ', () => {
+  const r = planWrite(BASE, [{ term: 'Odoo', forms: ['Udo'], section: 'exact' }], META);
+  const before = BASE.split('\n');
+  const after = r.newText.split('\n');
+  // ทุกบรรทัดเดิมยังอยู่ เรียงเหมือนเดิม (ของใหม่จากแค่แทรกเพิ่ม)
+  let i = 0;
+  for (const line of before) {
+    const at = after.indexOf(line, i);
+    assert.notStrictEqual(at, -1, `บรรทัดหาย: ${JSON.stringify(line)}`);
+    i = at + 1;
+  }
+  assert.ok(r.newText.endsWith('\n'), 'ต้องยังจบด้วย newline');
+  assert.ok(!r.newText.includes('\r'), 'ไฟล์ LF ห้ามกลายเป็น CRLF');
+});
+
+test('planWrite: ไฟล์ CRLF ต้องเขียนกลับเป็น CRLF', () => {
+  const crlf = BASE.replace(/\n/g, '\r\n');
+  const r = planWrite(crlf, [{ term: 'Odoo', forms: ['Udo'], section: 'exact' }], META);
+  assert.ok(r.newText.includes('\r\n'));
+  assert.ok(!/[^\r]\n/.test(r.newText), 'ห้ามมี LF โดด ๆ ปนในไฟล์ CRLF');
+});

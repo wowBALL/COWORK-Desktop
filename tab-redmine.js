@@ -38,6 +38,31 @@
     const g=lastPayload.groups.find(g=>g.status===status);
     return (g?g.issues:[]).filter(issueMatch);
   }
+
+  // ===== ค้นหา — ทำฝั่ง renderer ล้วน ๆ =====
+  // payload มี issue ครบทุกสถานะอยู่แล้ว (main.js:320 ดึง status_id=* ไล่หน้าจนหมด)
+  // จึงไม่ต้องยิง /search.json และค้นโน้ตส่วนตัวที่ไม่เคยขึ้น Redmine ได้ด้วย
+  let searchQuery='';
+  function parseTerms(q){ return String(q==null?'':q).trim().toLowerCase().split(/\s+/).filter(Boolean); }
+  // '#' ติดไปกับเลขด้วย ทั้ง "550" และ "#550" จึงเจอ #550 เหมือนกัน
+  function issueHay(issue, noteText){
+    return ('#'+issue.id+' '+(issue.subject||'')+' '+(issue.project||'')+' '
+           +(issue.assignee||'')+' '+(noteText||'')).toLowerCase();
+  }
+  function matchTerms(hay, terms){ return terms.every(t=>hay.includes(t)); }
+  function termsHitNote(noteText, terms){
+    if(!noteText || !terms.length) return false;
+    const h=noteText.toLowerCase();
+    return terms.some(t=>h.includes(t));
+  }
+  // เปิดก่อนปิด แล้วใหม่→เก่า · updatedOn คือ issue.updated_on ของ Redmine ตรง ๆ (main.js:372)
+  // เป็น ISO UTC ความยาวคงที่ เทียบแบบ string ได้ ไม่ต้องแปลงเป็น Date
+  function sortForSearch(list){
+    return list.slice().sort((a,b)=>
+      (a.closed?1:0)-(b.closed?1:0) ||
+      String(b.updatedOn||'').localeCompare(String(a.updatedOn||'')));
+  }
+
   let visibleCount=15; // reset to 15 whenever the tab/filters change; "load more" just bumps this
   function renderPanel(){
     const el=document.getElementById('tasks');
@@ -395,4 +420,11 @@
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
   global.COWORK.tabs.redmine = { key:"rm", settingsCard:'cardRedmine', mount, mountSettings, loadSettings, onData };
+
+  // เปิดทาง node --test แบบเดียวกับ tab-grafana.js / tab-meeting.js
+  // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM — พวกนี้คือที่เก็บกฎที่พลาดแล้วเงียบ:
+  // ตัวเลขบนแท็บต้องเท่าจำนวนแถวที่เห็น · ชิปที่ถูกเลือกต้องมีให้กดปิดเสมอ
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { parseTerms, issueHay, matchTerms, termsHitNote, sortForSearch };
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

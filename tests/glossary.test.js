@@ -74,7 +74,7 @@ test('parseGlossary: correct term มี ] ทำให้ข้าม ตัว
   const g = parseGlossary([
     '## exact',
     'GitHub: กิทฮับ',      // บรรทัดที่ 2 -- ถูก correct
-    'GitHub]: กิทหับ',     // บรรทัดที่ 3 -- มี ] ต้องข้าม
+    'GitHub: กิทฮับ]',     // บรรทัดที่ 3 -- ซ้ำคีย์ มี ] ในคำแปล ต้องข้าม
   ].join('\n'));
   assert.deepStrictEqual(g.sections.exact.GitHub.forms, ['กิทฮับ']);
   assert.strictEqual(g.sections.exact.GitHub.line, 2);
@@ -117,6 +117,18 @@ test('parseGlossary: section ที่มีเฉพาะ entry ที่ม�
   ].join('\n'));
   assert.strictEqual(g.insertAfter.exact, 1);  // ต้องชี้ heading ไม่ใช่ line 2
   assert.strictEqual(g.sections.exact['Te*st'], undefined);
+});
+
+test('parseGlossary: บรรทัดผิดรูป (ไม่มี : หรือคำหรือคำแปลว่าง) ไม่ไปอัพเดต lastContent', () => {
+  // บรรทัดผิดรูปต้องข้าม แต่ต้องไม่ไปอัพเดต lastContent เหมือนกับบรรทัด markup
+  // เพื่อให้ insertAfter ชี้บรรทัด entry สุดท้ายที่ถูก valid หรือ heading เท่านั้น
+  const g = parseGlossary([
+    '## exact',         // 1
+    'just some text',   // 2 - ผิดรูป (ไม่มี :)
+  ].join('\n'));
+  assert.strictEqual(g.insertAfter.exact, 1);  // ต้องชี้ heading ไม่ใช่ line 2
+  assert.deepStrictEqual(g.sections.exact, {});
+  assert.deepStrictEqual(g.duplicates, []);
 });
 
 // เทสนี้คือเหตุผลที่ฟีเจอร์นี้ต้อง merge ไม่ใช่ append -- พิสูจน์ว่าไฟล์จริงมีของตายอยู่

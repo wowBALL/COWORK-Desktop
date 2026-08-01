@@ -46,11 +46,16 @@
     return terms.some(t=>h.includes(t));
   }
   // เปิดก่อนปิด แล้วใหม่→เก่า · updatedOn คือ issue.updated_on ของ Redmine ตรง ๆ (main.js:372)
-  // เป็น ISO UTC ความยาวคงที่ เทียบแบบ string ได้ ไม่ต้องแปลงเป็น Date
+  // เป็น ISO UTC ความยาวคงที่ เทียบแบบ string ได้ ไม่ต้องแปลงเป็น Date — ใช้ตัวเทียบ </>/=== ธรรมดา
+  // ไม่ใช้ localeCompare เพราะเป็น ICU collation ที่ช้ากว่ามาก และ sort นี้รันทุกคีย์สโตรก ไม่มี debounce
   function sortForSearch(list){
-    return list.slice().sort((a,b)=>
-      (a.closed?1:0)-(b.closed?1:0) ||
-      String(b.updatedOn||'').localeCompare(String(a.updatedOn||'')));
+    return list.slice().sort((a,b)=>{
+      const ac=a.closed?1:0, bc=b.closed?1:0;
+      if(ac!==bc) return ac-bc;
+      const au=String(a.updatedOn||''), bu=String(b.updatedOn||'');
+      if(au===bu) return 0;
+      return au<bu?1:-1;
+    });
   }
 
   // ตัวคิดเลขทั้งแท็บ — บริสุทธิ์ ไม่แตะ DOM ไม่อ่านตัวแปรระดับโมดูล
@@ -70,7 +75,7 @@
 
     const selProj=new Set(state.selectedProjects||[]);
     const selAsg=new Set(state.selectedAssignees||[]);
-    const selRisk=state.selectedRisk==null?null:state.selectedRisk;
+    const selRisk=state.selectedRisk??null;
     const chipMatch=i=>
          (selProj.size===0||selProj.has(i.project))
       && (selAsg.size===0||selAsg.has(i.assignee))
@@ -121,9 +126,14 @@
     const el=document.getElementById('tasks');
     const allMatching=vm.list;
     if(!allMatching.length){
-      el.innerHTML=vm.searching
-        ? `<div class="hint">ไม่พบงานที่ตรงกับ "${esc(vm.query.trim())}"</div>`
-        : '<div class="hint">ไม่มีงานในสถานะนี้</div>';
+      const q=esc(vm.query.trim());
+      if(vm.searching && !vm.allTab.active && vm.allTab.count>0){
+        el.innerHTML=`<div class="hint">ไม่พบในสถานะนี้ — มีอีก <b>${vm.allTab.count}</b> งานที่ตรงกับ "${q}" อยู่ในสถานะอื่น กดแท็บ ALL เพื่อดู</div>`;
+      } else {
+        el.innerHTML=vm.searching
+          ? `<div class="hint">ไม่พบงานที่ตรงกับ "${q}"</div>`
+          : '<div class="hint">ไม่มีงานในสถานะนี้</div>';
+      }
       return;
     }
     const entries=allMatching.slice(0,visibleCount);
@@ -196,7 +206,8 @@
     const existing=notes[String(issueId)];
     btn.className='noteBtn'+(existing?' has':'')+(noteHit?' hit':'');
     btn.textContent='📝';
-    btn.title=noteHit?'ตรงกับคำค้นในโน้ต'
+    btn.title=noteHit&&existing?('ตรงกับคำค้นในโน้ต · '+notePreview(existing.text))
+      :noteHit?'ตรงกับคำค้นในโน้ต'
       :(existing?('โน้ต: '+notePreview(existing.text)):'เพิ่มโน้ตส่วนตัว');
     btn.onclick=(e)=>{
       e.stopPropagation();
@@ -364,11 +375,11 @@
       el.appendChild(tab);
     });
   }
-  function renderSearchHint(searching){
+  function renderSearchHint(vm){
     const el=document.getElementById('rmSearchHint');
-    if(!el) return;   // Task 4 เป็นคนใส่ element นี้ใน widget.html
-    el.textContent=searching?'กำลังค้นจากทุกสถานะ รวมงานที่ปิดแล้ว':'';
-    el.classList.toggle('on', searching);
+    const show=vm.searching && vm.allTab.active;
+    el.textContent=show?'กำลังค้นจากทุกสถานะ รวมงานที่ปิดแล้ว':'';
+    el.classList.toggle('on', show);
   }
   // ทางเข้าเดียวของการวาดใหม่ — เรียก viewModel ครั้งเดียวแล้วแจกให้ทุก renderer
   function renderAll(){
@@ -381,7 +392,7 @@
     renderRiskFilter(vm.riskRows);
     renderTabs(vm);
     renderPanel(vm);
-    renderSearchHint(vm.searching);
+    renderSearchHint(vm);
   }
   let closedYearsOpen=false;
   function renderRmStats(stats){
@@ -424,9 +435,10 @@
       } else {
         el.innerHTML=`<div class="hint">โหลด Redmine ไม่สำเร็จ: ${esc(payload.error)}</div>`;
       }
+      lastPayload=null;
       return;
     }
-    if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; return; }
+    if(!payload.groups || !payload.groups.length){ el.innerHTML='<div class="hint">ไม่มีงานค้าง</div>'; lastPayload=null; return; }
     lastPayload=payload;
     notes=payload.notes||{};
     // drop selections that no longer exist

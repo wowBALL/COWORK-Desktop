@@ -280,3 +280,55 @@ test('invariant: เลขบนแท็บที่ active = จำนวน�
   }
   assert.strictEqual(combos, 8 * 4 * 3 * 4 * 7);
 });
+
+// ===== ตัวเลขที่ขึ้นจอจริง แต่ก่อนหน้านี้ไม่เคยถูก assert ค่าตรง ๆ =====
+// คำค้น 'voucher' เจอแค่ 3 ตัว: 69 (Backlog, เปิด, Fairly Low), 188 (Closed, ปิด, risk null),
+// 94 (Closed, ปิด, Fairly Low) — ทั้งสามอยู่โปรเจกต์ Menutable ทั้งหมด
+// เจตนาเลือกคำนี้ (แทน 'menutable') เพราะชื่อโปรเจกต์ติดอยู่ใน haystack ของทุก issue
+// ของโปรเจกต์นั้นเสมอ คำค้น 'menutable' เลยจะจับได้ทั้งก้อนพอดี ไม่โชว์การหักจากคำค้นให้เห็น
+
+test('riskRows: นับจากผลค้นหา (searched) ไม่ใช่ทั้งก้อน', () => {
+  const vm = viewModel(PAYLOAD, NOTES, st({ query: 'voucher' }));
+  // all: เปิด 1 (69) / ปิด 2 (188, 94)
+  const all = vm.riskRows.find(r => r.key === 'all');
+  assert.strictEqual(all.open, 1);
+  assert.strictEqual(all.closed, 2);
+  // Fairly Low: เปิด 1 (69) / ปิด 1 (94)
+  const fairlyLow = vm.riskRows.find(r => r.key === 'Fairly Low');
+  assert.strictEqual(fairlyLow.open, 1);
+  assert.strictEqual(fairlyLow.closed, 1);
+  // none (risk ไม่ระบุ): เปิด 0 / ปิด 1 (188 risk:null)
+  const none = vm.riskRows.find(r => r.key === 'none');
+  assert.strictEqual(none.open, 0);
+  assert.strictEqual(none.closed, 1);
+});
+
+test('statusTabs: นับจากผลค้นหาตอนมีคำค้น', () => {
+  const vm = viewModel(PAYLOAD, NOTES, st({ query: 'voucher' }));
+  // Backlog มีแค่ 69 ที่ตรงคำค้น (17 เป็น Payment ไม่ตรง) = 1
+  assert.strictEqual(vm.statusTabs.find(t => t.status === 'Backlog').count, 1);
+  // Closed มี 188, 94 ที่ตรงคำค้น (531, 654, 646 ไม่ตรง) = 2
+  assert.strictEqual(vm.statusTabs.find(t => t.status === 'Closed').count, 2);
+});
+
+test('ชิปโปรเจกต์หักตามคำค้น ไม่ใช่ยอดทั้งก้อน', () => {
+  const vm = viewModel(PAYLOAD, NOTES, st({ query: 'voucher' }));
+  const menutable = vm.projectChips.find(c => c.key === 'Menutable');
+  // ผลค้นหา 'voucher' ทั้งสามตัว (69 เปิด, 188+94 ปิด) เป็น Menutable ทั้งหมด
+  assert.strictEqual(menutable.open, 1);
+  assert.strictEqual(menutable.closed, 2);
+  // ยอดทั้งก้อนของ Menutable (ไม่ผ่านคำค้น) คือ 5 เปิด / 5 ปิด — ต้องไม่ใช่เลขนี้
+  const menutableTotal = ALL_ISSUES.filter(i => i.project === 'Menutable');
+  assert.strictEqual(menutableTotal.filter(i => !i.closed).length, 5);
+  assert.strictEqual(menutableTotal.filter(i => i.closed).length, 5);
+});
+
+test('viewModel: รับ selectedProjects/selectedAssignees เป็น Set ได้ผลเหมือน array', () => {
+  const withArrays = viewModel(PAYLOAD, NOTES, st({
+    query: 'menutable', selectedProjects: ['Menutable'], selectedAssignees: ['Thawalit'], activeStatus: 'Closed',
+  }));
+  const withSets = viewModel(PAYLOAD, NOTES, st({
+    query: 'menutable', selectedProjects: new Set(['Menutable']), selectedAssignees: new Set(['Thawalit']), activeStatus: 'Closed',
+  }));
+  assert.deepStrictEqual(withSets, withArrays);
+});

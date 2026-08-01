@@ -63,6 +63,69 @@
       String(b.updatedOn||'').localeCompare(String(a.updatedOn||'')));
   }
 
+  // ตัวคิดเลขทั้งแท็บ — บริสุทธิ์ ไม่แตะ DOM ไม่อ่านตัวแปรระดับโมดูล
+  // renderer ทุกตัวรับตัวเลขจากที่นี่ที่เดียว "เลขบนแท็บ ≠ แถวข้างล่าง" จึงเป็นไปไม่ได้
+  // กฎการนับ (สเปก 2026-08-01-redmine-search-design.md):
+  //   คีย์ชิป มาจาก issue ทั้งก้อนเสมอ → ชิปที่เลือกอยู่ไม่มีวันหายจนกดปิดไม่ได้
+  //   ตัวเลข  นับจาก searched (คำค้นหักแล้ว) แต่ไม่ถูกหักด้วยชิปแถวอื่น = พฤติกรรมเดิม
+  //   ALL     ไม่ค้น = งานที่ยังเปิดและไม่ใช่ Backlog · ค้นอยู่ = ทุกสถานะ
+  function viewModel(payload, notes, state){
+    const groups=(payload&&payload.groups)||[];
+    const all=groups.flatMap(g=>g.issues);
+    const terms=parseTerms(state.query);
+    const searching=terms.length>0;
+    const noteOf=i=>{ const n=notes&&notes[String(i.id)]; return (n&&n.text)||''; };
+    const searched=all.filter(i=>matchTerms(issueHay(i,noteOf(i)),terms));
+    const hit=new Set(searched.map(i=>i.id));
+
+    const selProj=new Set(state.selectedProjects||[]);
+    const selAsg=new Set(state.selectedAssignees||[]);
+    const selRisk=state.selectedRisk==null?null:state.selectedRisk;
+    const chipMatch=i=>
+         (selProj.size===0||selProj.has(i.project))
+      && (selAsg.size===0||selAsg.has(i.assignee))
+      && (selRisk===null||(selRisk==='none'?!i.risk:i.risk===selRisk));
+
+    const chipsOf=(keyFn,selected)=>{
+      const counts=new Map();
+      all.forEach(i=>{ const k=keyFn(i); if(!counts.has(k)) counts.set(k,{open:0,closed:0}); });
+      searched.forEach(i=>{ const c=counts.get(keyFn(i)); i.closed?c.closed++:c.open++; });
+      return [...counts.keys()].sort().map(k=>{
+        const c=counts.get(k);
+        return {key:k, open:c.open, closed:c.closed, selected:selected.has(k), zero:c.open+c.closed===0};
+      });
+    };
+    const oc=list=>({open:list.filter(i=>!i.closed).length, closed:list.filter(i=>i.closed).length});
+    const riskRows=[
+      Object.assign({key:'all'}, oc(searched), {active:selRisk===null}),
+      ...RISK_ORDER.map(r=>Object.assign({key:r}, oc(searched.filter(i=>i.risk===r)), {active:selRisk===r})),
+      Object.assign({key:'none'}, oc(searched.filter(i=>!i.risk)), {active:selRisk==='none'}),
+    ];
+
+    const allBase=searching?searched:searched.filter(i=>!i.closed&&i.status!=='Backlog');
+    const allList=allBase.filter(chipMatch);
+    const statusTabs=groups.map(g=>({
+      status:g.status,
+      count:g.issues.filter(i=>hit.has(i.id)&&chipMatch(i)).length,
+      active:state.activeStatus===g.status,
+    }));
+    const raw=state.activeStatus==='ALL'
+      ? allList
+      : (groups.find(g=>g.status===state.activeStatus)||{issues:[]}).issues
+          .filter(i=>hit.has(i.id)&&chipMatch(i));
+    const list=(searching?sortForSearch(raw):raw)
+      .map(i=>({issue:i, noteHit:termsHitNote(noteOf(i),terms)}));
+
+    return {
+      searching, query:String(state.query==null?'':state.query),
+      projectChips:chipsOf(i=>i.project,selProj),
+      assigneeChips:chipsOf(i=>i.assignee,selAsg),
+      riskRows, statusTabs,
+      allTab:{count:allList.length, active:state.activeStatus==='ALL'},
+      list,
+    };
+  }
+
   let visibleCount=15; // reset to 15 whenever the tab/filters change; "load more" just bumps this
   function renderPanel(){
     const el=document.getElementById('tasks');
@@ -425,6 +488,6 @@
   // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM — พวกนี้คือที่เก็บกฎที่พลาดแล้วเงียบ:
   // ตัวเลขบนแท็บต้องเท่าจำนวนแถวที่เห็น · ชิปที่ถูกเลือกต้องมีให้กดปิดเสมอ
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { parseTerms, issueHay, matchTerms, termsHitNote, sortForSearch };
+    module.exports = { parseTerms, issueHay, matchTerms, termsHitNote, sortForSearch, viewModel };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

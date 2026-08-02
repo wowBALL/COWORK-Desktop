@@ -46,6 +46,19 @@ function hasUnsafeChars(s) {
   return findUnsafeChar(s) !== null;
 }
 
+// อัญประกาศ/backtick ที่ "คร่อม" คำ มาจากข้อความของโมเดล ไม่ใช่ตัวคำ ปล่อยลงไฟล์แล้วจะได้คีย์
+// ที่ไม่มีวันแมตช์อะไรเลย -- เกิดขึ้นจริงที่ glossary.md:183 `"Playwright": "PlayLight"`
+// ซึ่งเป็นคนละคีย์กับ `Playwright:` ที่มีอยู่แล้ว และ `"PlayLight"` ก็ไม่ตรงกับ `PlayLight`
+// ใน transcript ทั้งบรรทัดจึงตายสนิทโดย UI รายงานว่าสำเร็จ
+//
+// ตรวจเฉพาะ "หัวกับท้าย" ไม่ใช่ทั้งสตริงแบบ findUnsafeChar -- คำถูกที่ถูกต้องมีเครื่องหมาย
+// พวกนี้อยู่กลางคำได้ (O'Reilly, don't) การบล็อกทั้งสตริงจะปฏิเสธคำที่ใช้ได้จริง
+const EDGE_QUOTE_RE = /^["'“”‘’`]|["'“”‘’`]$/;
+function findEdgeQuote(s) {
+  const m = EDGE_QUOTE_RE.exec(String(s || ''));
+  return m ? m[0] : null;
+}
+
 function parseGlossary(text) {
   const src = String(text || '');
   // Minor 9 (ข้อจำกัดที่รู้อยู่แล้ว): ตรวจ EOL ครั้งเดียวสำหรับทั้งไฟล์ -- ไฟล์ที่ผสม LF/CRLF ปนกัน
@@ -227,12 +240,16 @@ function planWrite(text, entries, meta) {
     // findUnsafeChar ด้านบน) ต้องบล็อกทุก section เหมือนกัน ไม่ใช่แค่ guarded
     const termMarkup = hasMarkup(term);
     const termBadChar = termMarkup ? null : findUnsafeChar(term);
-    if (termMarkup || termBadChar) {
+    const termEdgeQuote = (termMarkup || termBadChar) ? null : findEdgeQuote(term);
+    if (termMarkup || termBadChar || termEdgeQuote) {
       const reason = termMarkup
         ? `คำถูก "${term}" มีอักขระ * [ ] ซึ่งเป็นหัว segment ของ transcript -- ` +
           'Python parser จะทิ้งทั้งบรรทัดนี้ตอนอ่าน ฟอร์มอื่นที่ถูกต้องในบรรทัดเดียวกันจะหายไปด้วย'
-        : `คำถูก "${term}" มีอักขระ "${termBadChar}" ซึ่งเป็นไวยากรณ์ของไฟล์เอง ` +
-          '(`term: form1, form2  # comment`) -- เขียนแล้วอ่านกลับมาจะไม่เท่าเดิม บรรทัดนี้จะพังเงียบ ๆ';
+        : termBadChar
+          ? `คำถูก "${term}" มีอักขระ "${termBadChar}" ซึ่งเป็นไวยากรณ์ของไฟล์เอง ` +
+            '(`term: form1, form2  # comment`) -- เขียนแล้วอ่านกลับมาจะไม่เท่าเดิม บรรทัดนี้จะพังเงียบ ๆ'
+          : `คำถูก "${term}" ขึ้นต้นหรือลงท้ายด้วย ${termEdgeQuote} ซึ่งมาจากข้อความของโมเดล ` +
+            'ไม่ใช่ตัวคำ -- เขียนแล้วจะได้คีย์คนละตัวกับคำเดียวกันที่ไม่มีเครื่องหมาย ใช้งานไม่ได้เลย';
       const list = forms.length ? forms : [undefined];
       for (const form of list) {
         out.conflicts.push({ term, form, section, clashesWith: null, reason });
@@ -289,12 +306,16 @@ function planWrite(text, entries, meta) {
       // หรือ \n ปนก็ไม่รอด round-trip ผ่านไวยากรณ์ของไฟล์เอง (เคส "C # sharp" ในรีวิว)
       const formMarkup = hasMarkup(form);
       const formBadChar = formMarkup ? null : findUnsafeChar(form);
-      if (formMarkup || formBadChar) {
+      const formEdgeQuote = (formMarkup || formBadChar) ? null : findEdgeQuote(form);
+      if (formMarkup || formBadChar || formEdgeQuote) {
         const reason = formMarkup
           ? `"${form}" มีอักขระ * [ ] ซึ่งเป็นหัว segment ของ transcript -- ` +
             'Python parser จะทิ้งทั้งบรรทัดนี้ตอนอ่าน'
-          : `"${form}" มีอักขระ "${formBadChar}" ซึ่งเป็นไวยากรณ์ของไฟล์เอง ` +
-            '(`term: form1, form2  # comment`) -- เขียนแล้วอ่านกลับมาจะไม่เท่าเดิม';
+          : formBadChar
+            ? `"${form}" มีอักขระ "${formBadChar}" ซึ่งเป็นไวยากรณ์ของไฟล์เอง ` +
+              '(`term: form1, form2  # comment`) -- เขียนแล้วอ่านกลับมาจะไม่เท่าเดิม'
+            : `"${form}" ขึ้นต้นหรือลงท้ายด้วย ${formEdgeQuote} ซึ่งมาจากข้อความของโมเดล ` +
+              'ไม่ใช่ตัวคำ -- คำผิดที่มีเครื่องหมายคร่อมจะไม่ตรงกับข้อความใน transcript';
         out.conflicts.push({ term, form, section, clashesWith: null, reason });
         anyRejected = true;
         continue;

@@ -585,3 +585,40 @@ test('Minor 7: entry ไม่มีฟอร์มส่งมาเลย (for
   assert.notStrictEqual(r.skipped[0].reason, 'มีอยู่แล้วทั้งหมด', 'Ghost ไม่เคยอยู่ในไฟล์ การบอกว่า "มีอยู่แล้ว" เป็นเรื่องโกหก');
   assert.strictEqual(r.newText, null);
 });
+
+// ===== อัญประกาศคร่อมคำ =====
+// เกิดขึ้นจริงแล้ว: glossary.md:183 มี `"Playwright": "PlayLight"` ซึ่งเป็นคนละคีย์กับ
+// `Playwright:` ที่บรรทัด 84 และคำผิด `"PlayLight"` ก็ไม่ตรงกับ `PlayLight` ใน transcript
+// ทั้งบรรทัดจึงตายสนิท แต่ UI รายงานว่า "เพิ่มใหม่" สำเร็จ
+test('planWrite: คำถูกที่มีอัญประกาศคร่อม -> conflict ไม่เขียน', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: '"Playwright"', forms: ['PlayLight'] }], {});
+  assert.strictEqual(out.added.length, 0);
+  assert.strictEqual(out.conflicts.length, 1);
+  // เหมือน conflict ตัวอื่นทุกประการ (markup, กฎข้อ 1/2 ฯลฯ): เมื่อ entry เดียวถูกปฏิเสธทั้งหมด
+  // ไม่มี edits/inserts อะไรเลย newText จึงเป็น null (สัญญาณ "ห้ามเขียนไฟล์") ไม่ใช่ string เท่า src
+  assert.strictEqual(out.newText, null, 'ห้ามแตะไฟล์เลยเมื่อคำถูกใช้ไม่ได้');
+});
+
+test('planWrite: คำผิดที่มีอัญประกาศคร่อม -> conflict ไม่เขียน', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: 'Playwright', forms: ['"PlayLight"'] }], {});
+  assert.strictEqual(out.added.length, 0);
+  assert.strictEqual(out.conflicts.length, 1);
+  assert.strictEqual(out.newText, null);
+});
+
+test('planWrite: backtick คร่อมคำก็บล็อกเหมือนกัน', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: '`cheat sheet`', forms: ['cheatTangNiw'] }], {});
+  assert.strictEqual(out.conflicts.length, 1);
+  assert.strictEqual(out.newText, null);
+});
+
+test('planWrite: อัญประกาศกลางคำต้องผ่าน -- ชื่อจริงมี \' อยู่กลางคำได้', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: "O'Reilly", forms: ['OhRiley'] }], {});
+  assert.strictEqual(out.conflicts.length, 0, "' กลางคำไม่ใช่ปัญหา");
+  assert.strictEqual(out.added.length, 1);
+  assert.ok(out.newText.includes("O'Reilly: OhRiley"));
+});

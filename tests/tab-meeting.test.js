@@ -5,7 +5,7 @@ const assert = require('node:assert');
 // (แบบเดียวกับ datefilter.test.js) ให้ตั้ง global.COWORK.util / .dateFilter ให้เอง
 require('../util.js');
 require('../datefilter.js');
-const { parseMeta, splitCounts, parseWords, parseSpots } = require('../tab-meeting.js');
+const { parseMeta, splitCounts, parseWords, parseSpots, glossaryDraft } = require('../tab-meeting.js');
 
 // ฟิกซ์เจอร์ทั้งหมดยกมาจากไฟล์จริง (ไม่ใช่ข้อมูลที่แต่งขึ้นเอง):
 // D:\COWORK\meeting-notes\meetings\2026-07-31_09-59-Stanup2\summary.meta.md
@@ -134,4 +134,56 @@ test('parseSpots: บรรทัด "ทั้งไฟล์:" ไม่มี
   const s = parseSpots(m.sections[1].body);
   assert.strictEqual(s[0].ts, 'ทั้งไฟล์');
   assert.match(s[0].tx, /^มีผู้พูด 3 คน/);
+});
+
+// ===== glossaryDraft =====
+test('glossaryDraft: แถวปกติ -> แยกคำผิดด้วย / และตัดคำนำ "เดาว่าคือ" ออก', () => {
+  const [r] = glossaryDraft([
+    { heard: 'Udo / UDU / ODO', guess: 'เดาว่าคือ Odoo', n: 'ได้ยิน 20 ครั้ง' },
+  ]);
+  assert.deepStrictEqual(r.forms, ['Udo', 'UDU', 'ODO']);
+  assert.strictEqual(r.term, 'Odoo');
+  assert.strictEqual(r.section, 'exact');
+  assert.strictEqual(r.tick, true);
+});
+
+test('glossaryDraft: ตัดวงเล็บบริบทออกจากฝั่งคำผิด -- วงเล็บไม่ใช่คำผิด', () => {
+  const [r] = glossaryDraft([
+    { heard: 'กรอม / กรม / Column (ที่บอกว่าเป็น ORM ของ Golang)', guess: 'เดาว่าคือ GORM', n: '' },
+  ]);
+  assert.deepStrictEqual(r.forms, ['กรอม', 'กรม', 'Column']);
+});
+
+test('glossaryDraft: คำนำ "ฟังไม่ออก เดาว่าคือ" ก็ตัดออก', () => {
+  const [r] = glossaryDraft([{ heard: 'Peythearn', guess: 'ฟังไม่ออก เดาว่าคือ Payment', n: '' }]);
+  assert.strictEqual(r.term, 'Payment');
+  assert.strictEqual(r.tick, true);
+});
+
+test('glossaryDraft: ฝั่งขวาเป็นประโยค -> term ว่าง ไม่ติ๊กให้', () => {
+  const [r] = glossaryDraft([
+    { heard: 'GOM', guess: 'เดาว่าคือชื่อผู้ให้บริการ KYC ตัวเดียวกับ Sumsub', n: '' },
+  ]);
+  assert.strictEqual(r.term, '');
+  assert.strictEqual(r.tick, false);
+  assert.deepStrictEqual(r.forms, ['GOM']);   // คำผิดยังต้องมี ให้คนกรอกคำถูกเอง
+});
+
+test('glossaryDraft: มีสองคำตอบ ("หรือ") -> ไม่ติ๊กให้', () => {
+  const [r] = glossaryDraft([
+    { heard: 'ClearCat', guess: 'เดาว่าคือ Clear Cache หรือ Clear-cut', n: '' },
+  ]);
+  assert.strictEqual(r.term, '');
+  assert.strictEqual(r.tick, false);
+});
+
+test('glossaryDraft: วัดกับ summary.meta.md จริง -> ติ๊กอัตโนมัติ 24 จาก 32 แถว', () => {
+  const fs = require('node:fs');
+  // ใช้ / ไม่ใช่ \ -- backslash ในสตริง JS เป็น escape ทำให้ path เพี้ยนเงียบ ๆ
+  const REAL = 'D:/COWORK/meeting-notes/meetings/2026-07-31_09-59-Stanup/summary.meta.md';
+  assert.ok(fs.existsSync(REAL), `ไม่พบ fixture ที่ ${REAL}`);
+  const meta = parseMeta(fs.readFileSync(REAL, 'utf8'));
+  const rows = glossaryDraft(parseWords(meta.sections[0].body));
+  assert.strictEqual(rows.length, 32);
+  assert.strictEqual(rows.filter(r => r.tick).length, 24);
 });

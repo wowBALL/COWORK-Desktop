@@ -149,6 +149,27 @@
       return {heard:t.slice(0,i).trim(),guess:rest.slice(i+1).trim(),n:n?n[1]:''};
     });
   }
+  // คำนำที่โมเดลใช้ขึ้นต้นฝั่ง "เดาว่าคือ" -- ตัดออกให้เหลือแต่ตัวคำ
+  const GUESS_PREFIX=/^(?:ฟังไม่ออก\s+)?(?:เดาว่าคือ|เดาว่าเป็น|น่าจะเป็น|น่าจะคือ)\s+/;
+  // ร่าง entry สำหรับส่งเข้า glossary.md จากแถว parseWords
+  //
+  // วัดกับประชุมจริง (Stanup 2026-07-31, 32 แถว): แปลงอัตโนมัติได้ 24 อีก 8 ฝั่งขวาเป็น
+  // *ประโยค* ไม่ใช่คำ ("เดาว่าเป็นชื่อผู้ผลิต POS รายหนึ่ง สะกดยังไม่แน่") แถวพวกนั้นจึง
+  // ไม่ติ๊กให้ แต่ยังโชว์คำผิดไว้ให้กรอกคำถูกเอง -- ทิ้งไปเลยจะเสียแถวที่มีค่าที่สุดบางแถว
+  function glossaryDraft(words){
+    return (words||[]).map(w=>{
+      // วงเล็บในฝั่งซ้ายเป็นบริบทที่โมเดลใส่มา ไม่ใช่คำที่ถอดเพี้ยน
+      const forms=String(w.heard||'').replace(/\s*\([^)]*\)/g,'')
+        .split('/').map(s=>s.trim()).filter(Boolean);
+      const guess=String(w.guess||'');
+      const hasPrefix=GUESS_PREFIX.test(guess);
+      const term=hasPrefix?guess.replace(GUESS_PREFIX,'').trim():'';
+      // "หรือ" = โมเดลเสนอสองคำตอบ, เกิน 3 คำ = เป็นประโยคไม่ใช่คำ
+      const clean=hasPrefix && !!term && !term.includes('หรือ') && term.split(/\s+/).length<=3;
+      return {heard:w.heard, n:w.n, forms, term:clean?term:'', section:'exact',
+              tick:clean && forms.length>0};
+    });
+  }
   // bullet "- 08:00–16:20 (…): เนื้อหา" → {ts,tx}  (ป้ายเวลาเป็น optional)
   function parseSpots(body){
     return body.split('\n').map(l=>/^\s*[-*]\s+(.*)$/.exec(l.trim())).filter(Boolean).map(m=>{
@@ -484,6 +505,6 @@
   // เปิดทาง node --test แบบเดียวกับ tab-grafana.js — เฉพาะ parser ของ summary.meta.md
   // ที่ไม่ต้องใช้ DOM (renderMeta ใช้ esc จาก global.COWORK.util เลยไม่ export)
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { parseMeta, splitCounts, parseWords, parseSpots, mdRender };
+    module.exports = { parseMeta, splitCounts, parseWords, parseSpots, mdRender, glossaryDraft };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

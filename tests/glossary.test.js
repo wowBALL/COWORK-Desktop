@@ -223,3 +223,39 @@ test('planWrite: ไฟล์ CRLF ต้องเขียนกลับเป
   assert.ok(r.newText.includes('\r\n'));
   assert.ok(!/[^\r]\n/.test(r.newText), 'ห้ามมี LF โดด ๆ ปนในไฟล์ CRLF');
 });
+
+// BASE มีแค่ section exact กับ fuzzy -- project-names และ aliases ไม่มีอยู่ในไฟล์เลย
+test('planWrite: section ที่ไม่มีในไฟล์ -> ต้องเข้า skipped พร้อมเหตุผลระบุชื่อ section ห้ามหายเงียบ', () => {
+  const r = planWrite(BASE, [{ term: 'Odoo', forms: ['Udo'], section: 'project-names' }], META);
+  assert.strictEqual(r.added.length, 0);
+  assert.strictEqual(r.merged.length, 0);
+  assert.strictEqual(r.skipped.length, 1);
+  assert.strictEqual(r.skipped[0].term, 'Odoo');
+  assert.match(r.skipped[0].reason, /project-names/);
+  // เมื่อเป็น entry เดียวที่ส่งเข้ามา และเขียนอะไรไม่ได้เลย newText ต้องเป็น null
+  assert.strictEqual(r.newText, null);
+});
+
+test('planWrite: สอง entries เติมคำใหม่คำเดียวกันในการกดครั้งเดียว -> ได้บรรทัดใหม่บรรทัดเดียว ไม่ใช่สอง', () => {
+  const r = planWrite(BASE, [
+    { term: 'Odoo', forms: ['Udo'], section: 'exact' },
+    { term: 'Odoo', forms: ['UDU'], section: 'exact' },
+  ], META);
+  assert.strictEqual(r.added.length, 1);
+  assert.deepStrictEqual(r.added[0], { term: 'Odoo', forms: ['Udo', 'UDU'], section: 'exact' });
+  const lines = r.newText.split('\n').filter(l => l.startsWith('Odoo:'));
+  assert.strictEqual(lines.length, 1, `ต้องมีบรรทัด Odoo แค่บรรทัดเดียว ได้ ${JSON.stringify(lines)}`);
+  assert.strictEqual(lines[0], 'Odoo: Udo, UDU');
+  // เขียนแล้วต้องไม่มีคีย์ซ้ำงอกเพิ่ม (ถ้าโค้ดเก่ากลับมา จะมี Odoo สองบรรทัดในไฟล์เดียวกัน)
+  assert.strictEqual(parseGlossary(r.newText).duplicates.length, parseGlossary(BASE).duplicates.length);
+});
+
+test('planWrite: สอง entries เติมฟอร์มเดียวกันเข้าคำเดิมในการกดครั้งเดียว -> เติมครั้งเดียว ไม่ซ้ำ', () => {
+  const r = planWrite(BASE, [
+    { term: 'Kubernetes', forms: ['A'], section: 'exact' },
+    { term: 'Kubernetes', forms: ['A'], section: 'exact' },
+  ], META);
+  assert.strictEqual(r.merged.length, 1);
+  assert.strictEqual(r.newText.split('\n')[1], 'Kubernetes: ครูป, ฟลูก, A');
+  assert.strictEqual(parseGlossary(r.newText).duplicates.length, parseGlossary(BASE).duplicates.length);
+});

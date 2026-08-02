@@ -100,22 +100,52 @@ function planWrite(text, entries, meta) {
   const inserts = new Map();        // 1-based line -> บรรทัดที่จะแทรก "ต่อจาก" บรรทัดนั้น
   const headerDone = new Set();     // เขียน header ครั้งเดียวต่อ section ต่อการกดหนึ่งครั้ง
 
+  // รวม entries ที่ section+term เดียวกันเป็นกลุ่มเดียวก่อนวางแผน -- ถ้าปล่อยให้แต่ละแถว
+  // เดินลอจิกแยกกัน สอง entries คำใหม่คำเดียวกันจะแทรกสองบรรทัด หรือสอง entries เติมคำเดิม
+  // จะเติมฟอร์มเดียวกันซ้ำสองครั้ง กลายเป็นของตายแบบเดียวกับที่ฟีเจอร์นี้เกิดมาเพื่อป้องกัน
+  // union forms แบบ first-seen ตัดตัวซ้ำในกลุ่มออกไปในตัว
+  const groups = new Map();
+  const order = [];
   for (const entry of entries || []) {
-    const section = entry.section;
-    const term = String(entry.term || '').trim();
+    const section = entry && entry.section;
+    const term = String((entry && entry.term) || '').trim();
+    const key = section + ' ' + term;
+    let group = groups.get(key);
+    if (!group) {
+      group = { section, term, forms: [] };
+      groups.set(key, group);
+      order.push(group);
+    }
+    for (const raw of (entry && entry.forms) || []) {
+      const form = String(raw).trim();
+      if (!form || group.forms.includes(form)) continue;
+      group.forms.push(form);
+    }
+  }
+
+  for (const { section, term, forms } of order) {
+    if (!term) {
+      out.skipped.push({ term, forms, section, reason: 'ชื่อคำว่างเปล่า' });
+      continue;
+    }
     const bucket = g.sections[section];
-    if (!term || !bucket) continue;
+    if (!bucket) {
+      // glossary.md เขียนมือ ไม่การันตีว่ามีครบ 4 section เสมอ -- ถ้า section ที่ผู้ใช้เลือก
+      // ไม่อยู่ในไฟล์จริง ต้องรายงานเป็น skipped เสมอ ห้ามหายเงียบ ๆ ไม่งั้น UI จะบอกว่าสำเร็จ
+      // ทั้งที่ไม่ได้เขียนอะไรลงไฟล์เลย
+      out.skipped.push({ term, forms, section, reason: `ไม่พบ section ${section} ในไฟล์` });
+      continue;
+    }
 
     const existing = bucket[term];
     const have = new Set(existing ? existing.forms : []);
     const fresh = [];
-    for (const raw of entry.forms || []) {
-      const form = String(raw).trim();
-      if (!form || have.has(form) || fresh.includes(form)) continue;
+    for (const form of forms) {
+      if (have.has(form) || fresh.includes(form)) continue;
       fresh.push(form);
     }
     if (!fresh.length) {
-      out.skipped.push({ term, forms: entry.forms || [], section, reason: 'มีอยู่แล้วทั้งหมด' });
+      out.skipped.push({ term, forms, section, reason: 'มีอยู่แล้วทั้งหมด' });
       continue;
     }
 
@@ -127,11 +157,10 @@ function planWrite(text, entries, meta) {
       edits.set(line, appendForms(base, fresh));
       out.merged.push({ term, forms: fresh, section, line });
     } else {
+      // bucket มีอยู่แปลว่า section นี้ถูกพบในไฟล์แน่นอน closeSection() ของ parseGlossary
+      // เซ็ต insertAfter[section] ให้เสมอตอนปิด section ที่เป็น MAPPING_SECTIONS จึง anchor
+      // ไม่มีทางเป็น null/undefined ตรงนี้ -- ไม่ต้อง guard ซ้ำ
       const anchor = g.insertAfter[section];
-      if (anchor == null) {
-        out.skipped.push({ term, forms: fresh, section, reason: `ไม่พบ section ${section} ในไฟล์` });
-        continue;
-      }
       const block = inserts.get(anchor) || [];
       if (!headerDone.has(section)) {
         headerDone.add(section);

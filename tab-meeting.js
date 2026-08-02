@@ -195,16 +195,28 @@
   // ไม่ติ๊กให้ แต่ยังโชว์คำผิดไว้ให้กรอกคำถูกเอง -- ทิ้งไปเลยจะเสียแถวที่มีค่าที่สุดบางแถว
   function glossaryDraft(words){
     return (words||[]).map(w=>{
-      // วงเล็บในฝั่งซ้ายเป็นบริบทที่โมเดลใส่มา ไม่ใช่คำที่ถอดเพี้ยน
-      const forms=String(w.heard||'').replace(/\s*\([^)]*\)/g,'')
-        .split('/').map(s=>s.trim()).filter(Boolean);
       const guess=String(w.guess||'');
+      // คำถูก: กฎกว้าง -- แค่ "เติมช่องให้" ผู้ใช้อ่านข้อความประเมินแล้วตัดสินใจติ๊กเอง
+      const term=termFromGuess(guess);
+      // วงเล็บในฝั่งซ้ายเป็นบริบทที่โมเดลใส่มา ไม่ใช่คำที่ถอดเพี้ยน
+      // อัญประกาศหัวท้ายก็ของโมเดล ไม่ใช่ตัวคำ -- ปล่อยไว้แล้วมันจะลงไฟล์จริงเป็นคีย์ที่ไม่มี
+      // วันแมตช์อะไรเลย (เกิดแล้วที่ glossary.md:183 `"Playwright": "PlayLight"`)
+      let forms=String(w.heard||'').replace(/\s*\([^)]*\)/g,'')
+        .split('/').map(s=>trimEdge(s).trim()).filter(Boolean);
+      // คำผิดที่เท่ากับคำถูกเป๊ะ = โมเดลบอกว่า "คำนี้ถูกอยู่แล้ว" (เจอจริง: Redmine → Redmine,
+      // Screenshot → Screenshot) ปล่อยไปถึงชั้นเขียนจะโดนกฎข้อ 1 บล็อกอยู่ดี แต่ผู้ใช้จะได้
+      // รายงาน "ชน · ไม่เขียน" ที่อ่านแล้วไม่รู้ว่าต้องทำอะไรต่อ
+      if(term) forms=forms.filter(f=>f.toLowerCase()!==term.toLowerCase());
+      // ติ๊กอัตโนมัติ: กฎ "เข้ม" ของเดิมเป๊ะ ห้ามเปลี่ยนไปผูกกับ termFromGuess -- การ์ดสองตัว
+      // ข้างล่าง (<=3 คำ, ไม่มี "หรือ") เคย confounded กันจนเทสผ่านทั้งที่ลบตัวใดตัวหนึ่งทิ้ง
+      // ถ้ายุบเข้าด้วยกัน เทสคู่นั้นจะกลายเป็นของปลอมทันที
       const hasPrefix=GUESS_PREFIX.test(guess);
-      const term=hasPrefix?guess.replace(GUESS_PREFIX,'').trim():'';
-      // "หรือ" = โมเดลเสนอสองคำตอบ, เกิน 3 คำ = เป็นประโยคไม่ใช่คำ
-      const clean=hasPrefix && !!term && !term.includes('หรือ') && term.split(/\s+/).length<=3;
-      return {heard:w.heard, n:w.n, forms, term:clean?term:'', section:'exact',
-              tick:clean && forms.length>0};
+      const strict=hasPrefix?guess.replace(GUESS_PREFIX,'').trim():'';
+      const clean=hasPrefix && !!strict && !strict.includes('หรือ') && strict.split(/\s+/).length<=3;
+      // ต้องมี term ที่ใช้ได้จริงด้วย ไม่ใช่แค่ clean -- clean ไม่มีเกณฑ์อักษรไทย ติ๊กแถวที่
+      // term ว่างไปจะกลายเป็นแถวที่กดส่งแล้วโดนฟ้องว่ายังไม่ได้กรอกคำถูก
+      return {heard:w.heard, guess, n:w.n, forms, term, section:'exact',
+              tick:clean && !!term && forms.length>0};
     });
   }
   // bullet "- 08:00–16:20 (…): เนื้อหา" → {ts,tx}  (ป้ายเวลาเป็น optional)

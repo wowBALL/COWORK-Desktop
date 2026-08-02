@@ -309,6 +309,65 @@ test('termFromGuess: วัดกับ summary.meta.md จริง -> 35 แ�
   assert.strictEqual(words.filter(w => termFromGuess(w.guess)).length, 20);
 });
 
+// ===== glossaryDraft: ของใหม่ในรอบนี้ =====
+test('glossaryDraft: เก็บข้อความประเมินดิบไว้ในแถว (guess)', () => {
+  const G = 'เดาว่าคือ "End-to-End Test" หรือ "UI Test"';
+  const [r] = glossaryDraft([{ heard: 'GORM Pro', guess: G, n: '' }]);
+  assert.strictEqual(r.guess, G, 'ต้องเก็บดิบ ๆ ไม่ตัดไม่แต่ง -- UI เป็นคนตัดด้วย CSS');
+  assert.strictEqual(r.term, '', 'ข้อความแบบนี้ยังไม่เติมช่องคำถูกให้');
+});
+
+test('glossaryDraft: แม็ปตรง ๆ ไม่มีคำนำ -> เติมคำถูกให้ แต่ยังไม่ติ๊ก', () => {
+  const [r] = glossaryDraft([{ heard: 'Bmat', guess: 'BMAD', n: '' }]);
+  assert.strictEqual(r.term, 'BMAD');
+  assert.strictEqual(r.tick, false, 'กฎติ๊กยังเป็นกฎเดิม -- ไม่มีคำนำก็ไม่ติ๊กให้');
+});
+
+test('glossaryDraft: ตัดอัญประกาศหัวท้ายออกจากคำผิด', () => {
+  // ถ้าไม่ตัด บรรทัดที่เขียนลง glossary.md จะเป็น `"Playwright": "PlayLight"` ซึ่งตายสนิท
+  // (เกิดขึ้นจริงแล้วที่ glossary.md:183) -- เป็นคนละคีย์กับ Playwright ที่มีอยู่
+  const [r] = glossaryDraft([{ heard: '"PlayLight"', guess: 'เดาว่าคือ "Playwright"', n: '' }]);
+  assert.deepStrictEqual(r.forms, ['PlayLight']);
+  assert.strictEqual(r.term, 'Playwright');
+});
+
+test('glossaryDraft: คำผิดที่เท่ากับคำถูก -> ตัดทิ้ง แถวนั้นส่งไม่ได้', () => {
+  // โมเดลกำลังบอกว่า "คำนี้ถูกอยู่แล้ว" ไม่ใช่ของที่ต้องเขียน
+  const [r] = glossaryDraft([{ heard: 'Redmine', guess: 'Redmine', n: '' }]);
+  assert.strictEqual(r.term, 'Redmine');
+  assert.deepStrictEqual(r.forms, []);
+  assert.strictEqual(r.tick, false);
+});
+
+test('glossaryDraft: เทียบคำผิด=คำถูกแบบไม่สนตัวพิมพ์ใหญ่เล็ก', () => {
+  const [r] = glossaryDraft([{ heard: 'redmine / RedMind', guess: 'Redmine', n: '' }]);
+  assert.deepStrictEqual(r.forms, ['RedMind']);
+});
+
+test('glossaryDraft: ติ๊กอัตโนมัติต้องมีคำถูกที่ใช้ได้จริงด้วย', () => {
+  // เส้นทาง clean ผ่านครบ (มีคำนำ, 1 คำ, ไม่มี "หรือ") แต่ termFromGuess ปัดตกเพราะเป็นไทย
+  // ถ้าติ๊กให้ทั้งที่ term ว่าง ผู้ใช้จะกดส่งแล้วโดนฟ้องว่า "แถวนี้ยังไม่มีคำถูก"
+  const [r] = glossaryDraft([{ heard: 'Sawasdee', guess: 'เดาว่าคือ สวัสดี', n: '' }]);
+  assert.strictEqual(r.term, '');
+  assert.strictEqual(r.tick, false);
+});
+
+test('glossaryDraft: วัดกับ summary.meta.md จริง -> 35 แถว, คำถูก 20, ติ๊ก 2', () => {
+  const fs = require('node:fs');
+  const REAL = 'D:/COWORK/meeting-notes/meetings/' +
+    '2026-07-31_19-59-Transfer Knowledge Session/summary.meta.md';
+  assert.ok(fs.existsSync(REAL), `ไม่พบ fixture ที่ ${REAL}`);
+  const meta = parseMeta(fs.readFileSync(REAL, 'utf8'));
+  const sec = meta.sections.find(s => s.title.startsWith('คำที่น่าจะถอดเพี้ยน'));
+  assert.ok(sec, 'ไม่พบหัวข้อ "คำที่น่าจะถอดเพี้ยน" ในไฟล์จริง');
+  const rows = glossaryDraft(parseWords(sec.body));
+  assert.strictEqual(rows.length, 35);
+  assert.strictEqual(rows.filter(r => r.term).length, 20);
+  assert.strictEqual(rows.filter(r => r.tick).length, 2, 'กฎติ๊กต้องไม่ขยับจากของเดิม');
+  assert.strictEqual(rows.filter(r => r.forms.some(f => /["']/.test(f))).length, 0,
+    'ไม่มีอัญประกาศเหลือในคำผิดสักแถว');
+});
+
 // ===== landedRows =====
 // ตัวนี้ตัดสินว่าแถวไหน "เขียนสำเร็จแล้ว" จึงเคลียร์ติ๊กได้ -- ถ้าตัดสินผิดฝั่งใดฝั่งหนึ่ง
 // ผู้ใช้จะเสียโอกาส retry (เคลียร์ติ๊กแถวที่ยังไม่ได้เขียน) หรือส่งซ้ำโดยไม่จำเป็น

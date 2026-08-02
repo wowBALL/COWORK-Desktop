@@ -280,6 +280,13 @@
     document.getElementById('mtReader').classList.add('hidden');
     document.getElementById('mtList').classList.remove('hidden');
   }
+  // ตรวจสอบว่าแถว glossary สามารถส่งได้หรือไม่
+  // ส่งได้เมื่อ: ติ๊กแล้ว AND ยังไม่ได้อยู่ใน glossary แล้ว (Task 7 จะใช้เช่นกัน)
+  const isSendable = (row, known) => {
+    const done = row.forms.length > 0 && row.forms.every(f => known.has(f));
+    return row.tick && !done;
+  };
+
   // แบบ B (ตารางตรวจงาน) ที่เลือกจาก summarymeta-mock.html — แถบ key:value บนสุด แล้วต่อด้วย
   // ทุกหัวข้อ ## ที่ parseMeta เจอ แยกเลย์เอาต์ตามว่า bullet ส่วนใหญ่ในหัวข้อนั้นมี "→" หรือไม่
   function renderMeta(meta){
@@ -301,8 +308,10 @@
       }
       // หัวข้อแบบ "คำ" เท่านั้นที่ส่งเข้า glossary ได้
       if(!mtGloss.rows) mtGloss.rows=glossaryDraft(words);
+      // คำนวณ done flag ครั้งเดียวต่อแถว เพื่อไม่ให้ logic ลอย ไปต่างหากระหว่างการแสดงผล และการนับจำนวนส่ง
+      const rowDone=mtGloss.rows.map(r=>r.forms.length>0 && r.forms.every(f=>known.has(f)));
       const rows=mtGloss.rows.map((r,i)=>{
-        const done=r.forms.length>0 && r.forms.every(f=>known.has(f));
+        const done=rowDone[i];
         return `<div class="mtq-word pick${done?' done':''}" data-gi="${i}">
           ${done
             ? `<span class="gdone">✓ อยู่ใน glossary แล้ว</span>`
@@ -315,7 +324,7 @@
           </select>
           ${r.n?`<span class="n">${esc(r.n)}</span>`:''}</div>`;
       }).join('');
-      const n=mtGloss.rows.filter(r=>r.tick).length;
+      const n=mtGloss.rows.filter(r=>isSendable(r,known)).length;
       return `<div class="mtq-sec" data-gsec="${si}">
         <h4><span>${esc(s.title)}</span>
           <button class="gsend"${n?'':' disabled'}>ส่งเข้า glossary (${n})</button></h4>

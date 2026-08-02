@@ -5,7 +5,7 @@ const assert = require('node:assert');
 // (แบบเดียวกับ datefilter.test.js) ให้ตั้ง global.COWORK.util / .dateFilter ให้เอง
 require('../util.js');
 require('../datefilter.js');
-const { parseMeta, splitCounts, parseWords, parseSpots, glossaryDraft } = require('../tab-meeting.js');
+const { parseMeta, splitCounts, parseWords, parseSpots, glossaryDraft, landedRows } = require('../tab-meeting.js');
 
 // ฟิกซ์เจอร์ทั้งหมดยกมาจากไฟล์จริง (ไม่ใช่ข้อมูลที่แต่งขึ้นเอง):
 // D:\COWORK\meeting-notes\meetings\2026-07-31_09-59-Stanup2\summary.meta.md
@@ -210,4 +210,49 @@ test('glossaryDraft: ตรวจสอบแยกต่างหาก: term �
   assert.strictEqual(r.forms[0], 'BillBin');
   assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะมี หรือ');
   assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
+});
+
+// ===== landedRows =====
+// ตัวนี้ตัดสินว่าแถวไหน "เขียนสำเร็จแล้ว" จึงเคลียร์ติ๊กได้ -- ถ้าตัดสินผิดฝั่งใดฝั่งหนึ่ง
+// ผู้ใช้จะเสียโอกาส retry (เคลียร์ติ๊กแถวที่ยังไม่ได้เขียน) หรือส่งซ้ำโดยไม่จำเป็น
+const KEY = (section, term) => section + '\u0000' + term;
+
+test('landedRows: เอาเฉพาะ added/merged ไม่เอา skipped/conflicts/warnings', () => {
+  const landed = landedRows({
+    added:     [{ section: 'exact', term: 'Odoo',  forms: ['Udo'] }],
+    merged:    [{ section: 'fuzzy', term: 'Role',  forms: ['Low'] }],
+    skipped:   [{ section: 'exact', term: 'JWT',   forms: ['cwt'] }],
+    conflicts: [{ section: 'exact', term: 'Bill',  form: 'Bi' }],
+    warnings:  [{ section: 'exact', term: 'GOM',   form: 'GOM' }],
+  });
+  assert.ok(landed.has(KEY('exact', 'Odoo')));
+  assert.ok(landed.has(KEY('fuzzy', 'Role')));
+  assert.ok(!landed.has(KEY('exact', 'JWT')), 'skipped ต้องไม่นับว่าเขียนแล้ว');
+  assert.ok(!landed.has(KEY('exact', 'Bill')), 'conflicts ต้องไม่นับว่าเขียนแล้ว');
+  assert.ok(!landed.has(KEY('exact', 'GOM')), 'warnings ไม่ได้แปลว่ามี entry ของตัวเอง');
+  assert.strictEqual(landed.size, 2);
+});
+
+// เคสที่เป็นเหตุผลทั้งหมดที่ต้องจับคู่ด้วย (section,term) แทนฟอร์ม
+test('landedRows: แถวที่ถูกปฏิเสธทั้งหมด ไม่ถูกนับ แม้จะแชร์ฟอร์มกับแถวที่เขียนสำเร็จ', () => {
+  const landed = landedRows({
+    added:     [{ section: 'exact', term: 'Written',  forms: ['a', 'b'] }],
+    skipped:   [{ section: 'exact', term: 'Rejected', forms: ['b', 'c'] }],
+    conflicts: [{ section: 'exact', term: 'Rejected', form: 'b' }],
+  });
+  assert.ok(landed.has(KEY('exact', 'Written')));
+  assert.ok(!landed.has(KEY('exact', 'Rejected')), "'b' โผล่ทั้งสองแถว แต่ Rejected ไม่ได้ถูกเขียน");
+});
+
+test('landedRows: term เดียวกันคนละ section เป็นคนละคีย์', () => {
+  const landed = landedRows({ added: [{ section: 'exact', term: 'GORM', forms: ['กรอม'] }] });
+  assert.ok(landed.has(KEY('exact', 'GORM')));
+  assert.ok(!landed.has(KEY('fuzzy', 'GORM')), 'GORM ใน fuzzy เป็นคนละแถว ห้าม match ข้ามชั้น');
+});
+
+test('landedRows: res ว่าง/null/ไม่มีคีย์ -> Set ว่าง ไม่ throw', () => {
+  assert.strictEqual(landedRows(null).size, 0);
+  assert.strictEqual(landedRows(undefined).size, 0);
+  assert.strictEqual(landedRows({}).size, 0);
+  assert.strictEqual(landedRows({ added: [], merged: [] }).size, 0);
 });

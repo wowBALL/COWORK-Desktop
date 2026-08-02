@@ -308,7 +308,9 @@
   // บริสุทธิ์ล้วน (ไม่แตะ DOM/mtGloss) เพื่อให้ทดสอบแยกได้โดยไม่ต้องพึ่ง harness ของ DOM
   function landedRows(res){
     const landed=new Set();
-    if(res) [...(res.added||[]), ...(res.merged||[])].forEach(e=>landed.add(e.section+'\u0000'+e.term));
+    // ใช้ rowKey ตัวเดียวกับฝั่งแถว -- เขียนนิพจน์คีย์แยกสองที่ วันที่แก้รูปแบบคีย์
+    // จะเหลือที่หนึ่งที่แก้ไม่ตาม แล้วจะไม่มีแถวไหน match เลย ติ๊กค้างทุกแถวโดยไม่มีอะไรฟ้อง
+    if(res) [...(res.added||[]), ...(res.merged||[])].forEach(e=>landed.add(rowKey(e)));
     return landed;
   }
 

@@ -251,12 +251,17 @@ test('planWrite: สอง entries เติมคำใหม่คำเดี
 });
 
 test('planWrite: สอง entries เติมฟอร์มเดียวกันเข้าคำเดิมในการกดครั้งเดียว -> เติมครั้งเดียว ไม่ซ้ำ', () => {
+  // เดิมใช้ฟอร์ม 'A' แต่ Task 3 เพิ่มการตรวจการชนแล้ว: 'A' เป็น substring ของ "Approve"
+  // ที่มีอยู่ใน BASE จริง ๆ (กฎข้อ 1) เลยชนโดยไม่ตั้งใจ เปลี่ยนเป็น 'Zorb' ที่ยาวพอ
+  // (กัน warning ข้อ 3) และไม่ชนคำถูกไหนใน BASE เพื่อให้เทสนี้ยังทดสอบเรื่อง dedup ล้วน ๆ
   const r = planWrite(BASE, [
-    { term: 'Kubernetes', forms: ['A'], section: 'exact' },
-    { term: 'Kubernetes', forms: ['A'], section: 'exact' },
+    { term: 'Kubernetes', forms: ['Zorb'], section: 'exact' },
+    { term: 'Kubernetes', forms: ['Zorb'], section: 'exact' },
   ], META);
   assert.strictEqual(r.merged.length, 1);
-  assert.strictEqual(r.newText.split('\n')[1], 'Kubernetes: ครูป, ฟลูก, A');
+  assert.strictEqual(r.newText.split('\n')[1], 'Kubernetes: ครูป, ฟลูก, Zorb');
+  assert.deepStrictEqual(r.conflicts, []);
+  assert.deepStrictEqual(r.warnings, []);
   assert.strictEqual(parseGlossary(r.newText).duplicates.length, parseGlossary(BASE).duplicates.length);
 });
 
@@ -290,4 +295,88 @@ test('planWrite: สอง entries ที่ (section, term) ต่างกั�
 
   // ไม่มี merged
   assert.strictEqual(r.merged.length, 0);
+});
+
+// ยืมกฎจาก tools/check_glossary.py ของ meeting-notes -- ไฟล์จริงวันนี้ไม่มีเคสข้อ 1 หรือ 2 เลย
+// (ยืนยันด้วย python -m tools.check_glossary) เคสสองข้อนี้จึงต้องใช้ fixture สังเคราะห์
+const CLASH = ['## exact', 'Bill: Bin', 'JWT: cwt'].join('\n') + '\n';
+
+test('ชนข้อ 1: คำผิดใหม่เป็น substring ของคำถูกที่มีอยู่ -> conflict ไม่เขียน', () => {
+  const r = planWrite(CLASH, [{ term: 'Beta', forms: ['Bi'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].form, 'Bi');
+  assert.strictEqual(r.conflicts[0].clashesWith, 'Bill');
+  assert.strictEqual(r.added.length, 0);
+  assert.strictEqual(r.newText, null);
+});
+
+test('ชนข้อ 2: คำผิดใหม่มีอยู่แล้วแต่ชี้ไปคำถูกอื่น -> conflict', () => {
+  const r = planWrite(CLASH, [{ term: 'Xero', forms: ['cwt'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].clashesWith, 'JWT');
+  assert.strictEqual(r.newText, null);
+});
+
+test('เตือนข้อ 3: คำผิดสั้นกว่า 4 อักขระ -> เตือนแต่ยังเขียนให้', () => {
+  const r = planWrite(CLASH, [{ term: 'Sumsub', forms: ['GOM'], section: 'exact' }], META);
+  assert.strictEqual(r.warnings.length, 1);
+  assert.strictEqual(r.warnings[0].form, 'GOM');
+  assert.strictEqual(r.added.length, 1);
+  assert.ok(r.newText.includes('Sumsub: GOM'));
+});
+
+test('fuzzy ไม่ถูกตรวจการชน -- ชั้นนั้นโมเดลตีความเอง คำที่มีความหมายจริงจึงปลอดภัย', () => {
+  const src = ['## exact', 'Bill: Bin', '## fuzzy', 'X: y'].join('\n') + '\n';
+  const r = planWrite(src, [{ term: 'Beta', forms: ['Bi'], section: 'fuzzy' }], META);
+  assert.deepStrictEqual(r.conflicts, []);
+  assert.deepStrictEqual(r.warnings, []);
+  assert.strictEqual(r.added.length, 1);
+});
+
+test('คำผิดบางตัวชน บางตัวผ่าน -> เขียนเฉพาะตัวที่ผ่าน', () => {
+  const r = planWrite(CLASH, [{ term: 'Beta', forms: ['Bi', 'Betaform'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.deepStrictEqual(r.added, [{ term: 'Beta', forms: ['Betaform'], section: 'exact' }]);
+});
+
+// เจอตอนรันแผนนี้จริง: กฎข้อ 1 ต้องเทียบกับคำถูก "ทุกตัว" รวมตัวมันเอง ไม่ใช่ตัวอื่นเท่านั้น
+// ใส่ Approv เป็นคำผิดของ Approve จะทำให้ "Approve" ในบทถอดเสียงกลายเป็น "Approvee"
+test('คำผิดที่เป็นส่วนหนึ่งของ "คำถูกของตัวเอง" ก็ต้องถูกบล็อก', () => {
+  const src = ['## exact', 'Approve: โกรธ'].join('\n') + '\n';
+  const r = planWrite(src, [{ term: 'Approve', forms: ['Approv'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].clashesWith, 'Approve');
+  assert.strictEqual(r.merged.length, 0);
+  assert.strictEqual(r.newText, null);
+});
+
+// เพิ่มนอกเหนือสเปกเดิม (ได้รับอนุญาตชัดเจน): '*' '[' ']' ประกอบหัว segment ของ transcript
+// (`**ผู้พูด 1** [00:00]:`) -- _parse_glossary_file ฝั่ง Python (src/glossary.py) ทิ้งทั้งบรรทัด
+// เงียบ ๆ เมื่อเจออักขระเหล่านี้ ไม่ว่าจะอยู่ใน section ไหน ถ้าเขียน form นี้ลงไป ฟอร์มอื่นที่
+// ถูกต้องซึ่งอยู่บรรทัดเดียวกันจะตายไปด้วย parseGlossary ฝั่ง read กันไว้แล้ว (hasMarkup)
+// นี่คือฝั่ง write ที่ยังไม่มีการกันมาก่อน Task 3
+test('คำถูกใหม่มี * -> conflict ทุก section เพราะ Python parser จะทิ้งทั้งบรรทัดตอนอ่าน', () => {
+  const r = planWrite(BASE, [{ term: 'Te*st', forms: ['x'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].term, 'Te*st');
+  assert.match(r.conflicts[0].reason, /\*/);
+  assert.strictEqual(r.added.length, 0);
+  assert.strictEqual(r.newText, null);
+});
+
+test('ฟอร์มใหม่มี [ ] -> conflict เฉพาะฟอร์มนั้น ฟอร์มอื่นของคำเดียวกันยังเขียนได้ปกติ', () => {
+  const r = planWrite(BASE, [{ term: 'Odoo', forms: ['Ud[o]', 'UDU'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].form, 'Ud[o]');
+  assert.deepStrictEqual(r.added, [{ term: 'Odoo', forms: ['UDU'], section: 'exact' }]);
+});
+
+// ต้องบล็อกแม้ section fuzzy ที่ปกติไม่ถูกตรวจการชน (REPLACING_SECTIONS ไม่รวม fuzzy)
+// เพราะ _parse_glossary_file ฝั่ง Python ทิ้งบรรทัด markup โดยไม่สนใจว่าอยู่ section ไหน
+test('markup ต้องถูกบล็อกแม้ section fuzzy ที่ไม่ถูกตรวจการชนตามปกติ', () => {
+  const r = planWrite(BASE, [{ term: 'Electron', forms: ['อี[เล็ค]ตรอน'], section: 'fuzzy' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].form, 'อี[เล็ค]ตรอน');
+  assert.strictEqual(r.merged.length, 0);
+  assert.strictEqual(r.newText, null);
 });

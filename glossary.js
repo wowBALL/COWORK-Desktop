@@ -90,6 +90,24 @@ function appendForms(raw, forms) {
   return body.replace(/\s+$/, '') + ', ' + forms.join(', ') + comment;
 }
 
+// ชั้นที่ apply_exact แทนที่จริง -- fuzzy/project-names ไม่อยู่ในนี้โดยเจตนา
+// สองชั้นนั้นโมเดลเป็นคนตีความตามบริบท คำที่มีความหมายของตัวเองจึงปลอดภัยเมื่ออยู่ที่นั่น
+// (นั่นคือเหตุผลทั้งหมดที่ชั้นนั้นมีอยู่) การเตือนเรื่องมันจึงเป็นการเตือนผิดที่
+const REPLACING_SECTIONS = ['exact', 'aliases'];
+const MIN_SAFE_LENGTH = 4;
+
+function replacingLayer(g) {
+  const correctTerms = [];
+  const formOwner = new Map();
+  for (const name of REPLACING_SECTIONS) {
+    for (const [term, e] of Object.entries(g.sections[name] || {})) {
+      correctTerms.push(term);
+      for (const f of e.forms) formOwner.set(f, term);
+    }
+  }
+  return { correctTerms, formOwner };
+}
+
 function planWrite(text, entries, meta) {
   const g = parseGlossary(text);
   const out = {
@@ -135,6 +153,22 @@ function planWrite(text, entries, meta) {
       out.skipped.push({ term, forms, section, reason: 'ชื่อคำว่างเปล่า' });
       continue;
     }
+
+    // คำถูกเองมี * [ ] -- อักขระเหล่านี้ประกอบหัว segment ของ transcript เช่น
+    // `**ผู้พูด 1** [00:00]:` -- _parse_glossary_file ฝั่ง Python (src/glossary.py) ทิ้งทั้ง
+    // บรรทัดเงียบ ๆ เมื่อเจออักขระเหล่านี้ ไม่ว่าจะอยู่ section ไหน (ไม่ได้แยกชั้นเหมือน
+    // REPLACING_SECTIONS ด้านบน) เขียนแล้วฟอร์มอื่นที่ถูกต้องในบรรทัดเดียวกันจะตายไปด้วย
+    // parseGlossary ฝั่ง read กันคำเหล่านี้ไว้แล้ว (hasMarkup) นี่คือฝั่ง write
+    if (hasMarkup(term)) {
+      const list = forms.length ? forms : [undefined];
+      for (const form of list) {
+        out.conflicts.push({ term, form, section, clashesWith: null,
+          reason: `คำถูก "${term}" มีอักขระ * [ ] ซึ่งเป็นหัว segment ของ transcript -- ` +
+            'Python parser จะทิ้งทั้งบรรทัดนี้ตอนอ่าน ฟอร์มอื่นที่ถูกต้องในบรรทัดเดียวกันจะหายไปด้วย' });
+      }
+      continue;
+    }
+
     const bucket = g.sections[section];
     if (!bucket) {
       // glossary.md เขียนมือ ไม่การันตีว่ามีครบ 4 section เสมอ -- ถ้า section ที่ผู้ใช้เลือก
@@ -146,9 +180,44 @@ function planWrite(text, entries, meta) {
 
     const existing = bucket[term];
     const have = new Set(existing ? existing.forms : []);
+    const layer = replacingLayer(g);
+    const guarded = REPLACING_SECTIONS.includes(section);
     const fresh = [];
     for (const form of forms) {
       if (have.has(form) || fresh.includes(form)) continue;
+
+      // ฟอร์มมี * [ ] -- เหตุผลเดียวกับคำถูกด้านบน แต่ตรวจแยกรายฟอร์ม เพราะฟอร์มอื่นในคำ
+      // เดียวกันที่ไม่มีอักขระนี้ยังปลอดภัยและควรเขียนต่อได้ตามปกติ ใช้ทุก section เหมือนกัน
+      // ไม่จำกัดแค่ guarded เพราะ Python parser ไม่แยกชั้นตอนเจอ markup
+      if (hasMarkup(form)) {
+        out.conflicts.push({ term, form, section, clashesWith: null,
+          reason: `"${form}" มีอักขระ * [ ] ซึ่งเป็นหัว segment ของ transcript -- ` +
+            'Python parser จะทิ้งทั้งบรรทัดนี้ตอนอ่าน' });
+        continue;
+      }
+
+      if (guarded) {
+        // 1. คำผิดที่กินคำถูก -- ทุกครั้งที่มีคนพูดถูก มันจะถูกแก้ให้เพี้ยน
+        const eaten = layer.correctTerms.find(t => t.includes(form));
+        if (eaten) {
+          out.conflicts.push({ term, form, section, clashesWith: eaten,
+            reason: `"${form}" เป็นส่วนหนึ่งของคำถูก "${eaten}" -- ใส่แล้วคำที่พูดถูกจะถูกแก้ให้เพี้ยน` });
+          continue;
+        }
+        // 2. คำผิดเดียวกันชี้ไปคำถูกคนละตัว -- กำกวม ต้องให้คนตัดสิน
+        const owner = layer.formOwner.get(form);
+        if (owner && owner !== term) {
+          out.conflicts.push({ term, form, section, clashesWith: owner,
+            reason: `"${form}" ถูกใช้เป็นคำผิดของ "${owner}" อยู่แล้ว` });
+          continue;
+        }
+        // 3. สั้นเกินไป -- กฎที่ glossary.md ประกาศไว้เอง เตือนแต่ไม่บล็อก
+        //    เพราะของจริงที่สั้นและถูกต้องมีอยู่ (Bin, cwt, jks, Udo)
+        if (form.length < MIN_SAFE_LENGTH) {
+          out.warnings.push({ term, form, section,
+            reason: `"${form}" สั้นกว่า ${MIN_SAFE_LENGTH} อักขระ -- อาจไปโดนกลางคำอื่น` });
+        }
+      }
       fresh.push(form);
     }
     if (!fresh.length) {

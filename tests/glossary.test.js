@@ -122,13 +122,29 @@ test('parseGlossary: บรรทัดผิดรูป (ไม่มี : ห
   assert.deepStrictEqual(g.duplicates, []);
 });
 
-// เทสนี้คือเหตุผลที่ฟีเจอร์นี้ต้อง merge ไม่ใช่ append -- พิสูจน์ว่าไฟล์จริงมีของตายอยู่
-test('parseGlossary: ไฟล์จริงมีคีย์ซ้ำที่ src/glossary.py มองไม่เห็น', () => {
-  const g = parseGlossary(realText);
-  const dup = g.duplicates.map(d => `${d.section}/${d.term}`);
-  assert.ok(dup.includes('exact/JWKS'), `ควรเจอ exact/JWKS แต่ได้ ${JSON.stringify(dup)}`);
-  assert.ok(dup.includes('exact/Approve'));
-  assert.ok(dup.includes('exact/Merge Request'));
+// เทสนี้คือเหตุผลที่ฟีเจอร์นี้ต้อง merge ไม่ใช่ append
+//
+// ของเดิมพิสูจน์ข้อนี้ด้วยการ assert ว่า glossary.md "ตัวจริง" ยังมีคีย์ซ้ำที่ตายอยู่
+// (exact/JWKS, exact/Approve, exact/Merge Request) ซึ่งใช้ได้อยู่พักหนึ่งแล้วพังทันทีที่
+// ไปกู้ไฟล์จริงเมื่อ 2026-08-02 -- ตอนนั้นมีของตาย 4 บรรทัด รวม 11 คำผิด และหลังกู้
+// tools/check_glossary.py รายงานว่าคำที่แมตช์ transcript ได้จริงเพิ่มจาก 114 เป็น 124
+//
+// บทเรียน: เทสที่ผูกกับ "สภาพเสียหายของข้อมูลจริง" จะแดงตอนซ่อมข้อมูลสำเร็จ ซึ่งกลับหัว
+// กลับหาง -- ความสำเร็จไม่ควรทำให้ชุดเทสแดง ย้ายมาใช้ฟิกซ์เจอร์ในไฟล์แทน พฤติกรรมที่
+// ทดสอบคือ "parseGlossary ตรวจคีย์ซ้ำเจอ" ซึ่งไม่ได้ขึ้นกับว่าไฟล์ของผู้ใช้พังอยู่หรือเปล่า
+test('parseGlossary: คีย์ซ้ำใน section เดียวกัน -> รายงานบรรทัดที่ตาย', () => {
+  const g = parseGlossary([
+    '## exact',                          // 1
+    'JWKS: JWT-KS, JWTKS, JWK-S',        // 2 <- ตาย ถูกบรรทัด 4 ทับ
+    'Docker: ด็อกเกอร์',                  // 3
+    'JWKS: jks, cwks',                   // 4 <- ตัวที่ Python อ่านจริง
+    '## fuzzy',                          // 5
+    'JWKS: อะไรสักอย่าง',                 // 6 <- คนละ section ไม่นับซ้ำ
+  ].join('\n'));
+  assert.deepStrictEqual(g.duplicates,
+    [{ section: 'exact', term: 'JWKS', line: 2, shadowedBy: 4 }]);
+  // ยืนยันว่ามันเก็บ "ตัวหลัง" ไว้แบบเดียวกับ buckets[section][correct] = parsed ฝั่ง Python
+  assert.deepStrictEqual(g.sections.exact.JWKS.forms, ['jks', 'cwks']);
 });
 
 const { planWrite, MAPPING_SECTIONS } = require('../glossary.js');

@@ -280,12 +280,12 @@
     document.getElementById('mtReader').classList.add('hidden');
     document.getElementById('mtList').classList.remove('hidden');
   }
-  // ตรวจสอบว่าแถว glossary สามารถส่งได้หรือไม่
-  // ส่งได้เมื่อ: ติ๊กแล้ว AND ยังไม่ได้อยู่ใน glossary แล้ว (Task 7 จะใช้เช่นกัน)
-  const isSendable = (row, known) => {
-    const done = row.forms.length > 0 && row.forms.every(f => known.has(f));
-    return row.tick && !done;
-  };
+  // "อยู่ใน glossary แล้ว" — ดูจากคำผิดทุกตัวของแถวนั้น ไม่ใช่คำถูก เพราะคำถูกเดียวกัน
+  // อยู่ได้หลายชั้น กฎนี้ต้องมีที่เดียว: ป้ายในแถวกับตัวเลขบนปุ่มต้องเลื่อนตามกันเสมอ
+  // ถ้าแยกเขียนสองที่ วันที่แก้กฎจะเหลือที่หนึ่งที่แก้ไม่ตาม แล้วปุ่มจะโกหกเงียบ ๆ
+  const isDone = (row, known) => row.forms.length > 0 && row.forms.every(f => known.has(f));
+  // ส่งได้เมื่อ: ติ๊กแล้ว AND ยังไม่อยู่ใน glossary (Task 7 ใช้ตัวเดียวกันตอนประกอบ payload)
+  const isSendable = (row, known) => row.tick && !isDone(row, known);
 
   // แบบ B (ตารางตรวจงาน) ที่เลือกจาก summarymeta-mock.html — แถบ key:value บนสุด แล้วต่อด้วย
   // ทุกหัวข้อ ## ที่ parseMeta เจอ แยกเลย์เอาต์ตามว่า bullet ส่วนใหญ่ในหัวข้อนั้นมี "→" หรือไม่
@@ -308,8 +308,8 @@
       }
       // หัวข้อแบบ "คำ" เท่านั้นที่ส่งเข้า glossary ได้
       if(!mtGloss.rows) mtGloss.rows=glossaryDraft(words);
-      // คำนวณ done flag ครั้งเดียวต่อแถว เพื่อไม่ให้ logic ลอย ไปต่างหากระหว่างการแสดงผล และการนับจำนวนส่ง
-      const rowDone=mtGloss.rows.map(r=>r.forms.length>0 && r.forms.every(f=>known.has(f)));
+      // คำนวณครั้งเดียวต่อแถว แล้วใช้ร่วมกับ isSendable ที่เรียก isDone ตัวเดียวกัน
+      const rowDone=mtGloss.rows.map(r=>isDone(r,known));
       const rows=mtGloss.rows.map((r,i)=>{
         const done=rowDone[i];
         return `<div class="mtq-word pick${done?' done':''}" data-gi="${i}">

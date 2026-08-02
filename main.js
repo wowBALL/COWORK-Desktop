@@ -744,8 +744,21 @@ ipcMain.handle('append-glossary', (_e, entries, meta) => {
   catch { return { ok: false, error: `ไม่พบไฟล์ glossary.md ที่ ${file}` }; }
   const plan = planWrite(text, entries, meta);
   if (plan.newText !== null) {
-    try { fs.writeFileSync(file, plan.newText, 'utf8'); }
-    catch (e) { return { ok: false, error: `เขียนไฟล์ไม่สำเร็จ: ${e.message}` }; }
+    // Important 5: glossary.md เขียนมือ ไม่มี git คุ้มครอง (.gitignore) และไม่มีสำเนาสำรองที่ไหน
+    // เลย -- fs.writeFileSync ตรง ๆ เปิดไฟล์แบบ truncate-then-write ถ้าโปรเซสถูกฆ่ากลางคัน
+    // (แครช/ปิดเครื่อง/OOM) ระหว่างเขียน ไฟล์จะเหลือครึ่งเดียวถาวรโดยไม่มีทางกู้คืน
+    // เขียนลงไฟล์ temp ในโฟลเดอร์เดียวกันก่อน (ต้องอยู่โฟลเดอร์เดียวกันให้ fs.renameSync เป็น
+    // atomic rename ในระบบไฟล์เดียวกัน ข้าม filesystem แล้ว rename จะไม่ atomic อีกต่อไป) แล้ว
+    // ค่อย rename ทับ -- rename เป็น atomic operation ระดับ OS ผลลัพธ์จึงมีแค่สองสถานะ คือ
+    // ไฟล์เดิมทั้งก้อน หรือไฟล์ใหม่ทั้งก้อน ไม่มีสถานะครึ่ง ๆ กลาง ๆ ให้เห็นเลย
+    const tmp = path.join(path.dirname(file), `.glossary.md.tmp-${process.pid}-${Date.now()}`);
+    try {
+      fs.writeFileSync(tmp, plan.newText, 'utf8');
+      fs.renameSync(tmp, file);
+    } catch (e) {
+      try { fs.unlinkSync(tmp); } catch { /* ไฟล์ temp อาจไม่ถูกสร้างเลยด้วยซ้ำถ้า writeFileSync พังก่อน */ }
+      return { ok: false, error: `เขียนไฟล์ไม่สำเร็จ: ${e.message}` };
+    }
   }
   const { newText, ...report } = plan;
   return { ok: true, error: null, ...report };

@@ -5,7 +5,26 @@ const assert = require('node:assert');
 // (แบบเดียวกับ datefilter.test.js) ให้ตั้ง global.COWORK.util / .dateFilter ให้เอง
 require('../util.js');
 require('../datefilter.js');
-const { parseMeta, splitCounts, parseWords, parseSpots, glossaryDraft, landedRows } = require('../tab-meeting.js');
+
+// util.js esc() สร้าง <div> จริงแล้วอ่าน textContent->innerHTML เพื่อ escape ให้ถูกต้อง (ดู
+// คอมเมนต์ในไฟล์นั้น: ห้ามเขียนใหม่เป็น regex ทั้งก้อน) renderMeta เรียก esc() ทุกจุด จึงต้องมี
+// document.createElement('div') ขั้นต่ำให้เรียกได้ -- ไม่ใช่ DOM เต็ม (แบบเดียวกับ El() ใน
+// tab-redmine.dom.test.js) แค่พอให้ esc() ไม่ throw 'document is not defined'
+global.document = {
+  createElement() {
+    return {
+      _text: '',
+      set textContent(v) { this._text = String(v); },
+      get textContent() { return this._text; },
+      get innerHTML() {
+        return this._text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      },
+    };
+  },
+};
+
+const { parseMeta, splitCounts, parseWords, parseSpots, glossaryDraft, landedRows,
+  isDone, glossKnown, renderMeta } = require('../tab-meeting.js');
 
 // ฟิกซ์เจอร์ทั้งหมดยกมาจากไฟล์จริง (ไม่ใช่ข้อมูลที่แต่งขึ้นเอง):
 // D:\COWORK\meeting-notes\meetings\2026-07-31_09-59-Stanup2\summary.meta.md
@@ -255,4 +274,56 @@ test('landedRows: res ว่าง/null/ไม่มีคีย์ -> Set ว�
   assert.strictEqual(landedRows(undefined).size, 0);
   assert.strictEqual(landedRows({}).size, 0);
   assert.strictEqual(landedRows({ added: [], merged: [] }).size, 0);
+});
+
+// === Final review (final-review-fixes): Important 4, Minor 8 ===
+
+// Important 4: badge "อยู่ใน glossary แล้ว" เดิม section-blind (known เป็น Set แบนรวมทุก section)
+// -- ฟอร์มที่มีอยู่จริงใน section หนึ่งทำให้แถวของ section อื่นที่บังเอิญใช้ฟอร์มชื่อเดียวกัน
+// (แต่ตั้งใจชี้ไปคำถูกคนละตัว) ถูกตีว่า "เสร็จแล้ว" ทั้งที่ planWrite จะเขียนให้จริง
+test('Important 4: isDone ต้องดูเฉพาะ known ของ section เป้าหมายของแถวนั้น ไม่ union รวมทุก section', () => {
+  // 'proof' มีอยู่จริงใน fuzzy (→ Kubernetes) แต่ไม่มีใน exact เลย
+  const known = glossKnown({ sections: { fuzzy: { Kubernetes: ['proof'] }, exact: {} } });
+  const rowExact = { term: 'SomeNewTerm', forms: ['proof'], section: 'exact', tick: true };
+  assert.strictEqual(isDone(rowExact, known), false,
+    "แถว exact ที่ใช้ฟอร์ม 'proof' ต้องไม่ถูกตีว่าเสร็จแล้ว เพราะ 'proof' ไม่ได้อยู่ใน exact");
+  const rowFuzzy = { term: 'Kubernetes', forms: ['proof'], section: 'fuzzy', tick: true };
+  assert.strictEqual(isDone(rowFuzzy, known), true, "แถว fuzzy ที่ตรงกับของในไฟล์จริงต้องเสร็จแล้ว");
+});
+
+test('Important 4: glossKnown สร้าง Map แยกตาม section ไม่ union ฟอร์มรวมกันข้าม section', () => {
+  const known = glossKnown({ sections: { fuzzy: { Kubernetes: ['proof'] }, exact: { Foo: ['bar'] } } });
+  assert.ok(known.get('fuzzy').has('proof'));
+  assert.ok(!known.get('fuzzy').has('bar'), 'fuzzy ต้องไม่เห็นฟอร์มของ exact');
+  assert.ok(known.get('exact').has('bar'));
+  assert.ok(!known.get('exact').has('proof'), 'exact ต้องไม่เห็นฟอร์มของ fuzzy');
+});
+
+test('Important 4: isDone -- section ที่ไม่มี known เลย (undefined) ต้องได้ false ไม่ throw', () => {
+  const known = glossKnown({ sections: {} });
+  assert.strictEqual(isDone({ term: 'X', forms: ['a'], section: 'exact' }, known), false);
+});
+
+// Minor 8: mtGloss.rows เดิมเป็น array แบนก้อนเดียวใช้ร่วมกันทุกหัวข้อแบบคำในประชุมเดียว --
+// หัวข้อที่สองจะเห็นธง "ร่างแล้ว" จากหัวข้อแรกแล้วไม่ร่างของตัวเอง ทำให้ข้อมูลของหัวข้อแรก
+// ไปโผล่ซ้ำใต้หัวข้อที่สอง เทสนี้ประกอบ meta ที่มีสองหัวข้อแบบคำ แล้วตรวจว่าแต่ละ section
+// แสดงเฉพาะคำของตัวเอง ไม่เห็นคำของอีก section เลย
+test('Minor 8: renderMeta -- สองหัวข้อแบบคำในประชุมเดียวกัน ต้องไม่ทับ/ปนกัน', () => {
+  const meta = {
+    model: 'test-model', modelNote: '', profile: 'dev', glossary: [], fuzzy: [], other: [],
+    sections: [
+      { title: 'หัวข้อหนึ่ง', body: '- Udo / UDU → เดาว่าคือ Odoo (ได้ยิน 5 ครั้ง)' },
+      { title: 'หัวข้อสอง', body: '- Foo / Bar → เดาว่าคือ Baz (ได้ยิน 3 ครั้ง)' },
+    ],
+  };
+  const html = renderMeta(meta);
+  const i0 = html.indexOf('data-gsec="0"');
+  const i1 = html.indexOf('data-gsec="1"');
+  assert.ok(i0 !== -1 && i1 !== -1, 'ต้องวาดทั้งสอง section ออกมา');
+  const block0 = html.slice(i0, i1);
+  const block1 = html.slice(i1);
+  assert.ok(block0.includes('Odoo'), 'section แรกต้องมีคำของตัวเอง (Odoo)');
+  assert.ok(!block0.includes('Baz'), 'section แรกต้องไม่เห็นคำของ section สอง (Baz)');
+  assert.ok(block1.includes('Baz'), 'section สองต้องมีคำของตัวเอง (Baz)');
+  assert.ok(!block1.includes('Odoo'), 'section สองต้องไม่เห็นคำของ section แรกซ้ำ (Odoo)');
 });

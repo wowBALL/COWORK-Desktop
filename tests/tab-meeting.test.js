@@ -187,3 +187,27 @@ test('glossaryDraft: วัดกับ summary.meta.md จริง -> ติ�
   assert.strictEqual(rows.length, 32);
   assert.strictEqual(rows.filter(r => r.tick).length, 24);
 });
+
+test('glossaryDraft: ตรวจสอบแยกต่างหาก: term > 3 คำ (ไม่มี หรือ) → ไม่ติ๊ก', () => {
+  // ฟิกซ์เจอร์นี้ตรวจสอบเฉพาะ condition term.split(/\\s+/).length <= 3
+  // โดยให้ term ยาว 4 คำแต่ไม่มี หรือ (ตัดการรวมกันกับ !term.includes('หรือ'))
+  const [r] = glossaryDraft([
+    { heard: 'ClearRoomDS', guess: 'เดาว่าคือ Clean Room Design System', n: '' },
+  ]);
+  assert.strictEqual(r.forms.length, 1);
+  assert.strictEqual(r.forms[0], 'ClearRoomDS');
+  assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะ 4 คำเกิน');
+  assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
+});
+
+test('glossaryDraft: ตรวจสอบแยกต่างหาก: term มี หรือ แต่ <= 3 คำ → ไม่ติ๊ก', () => {
+  // ฟิกซ์เจอร์นี้ตรวจสอบเฉพาะ condition !term.includes('หรือ')
+  // โดยให้ term มี หรือ แต่นับคำแล้วได้ 3 คำ (ตัดการรวมกันกับ term.split(/\\s+/).length <= 3)
+  const [r] = glossaryDraft([
+    { heard: 'BillBin', guess: 'เดาว่าคือ Bill หรือ Bin', n: '' },
+  ]);
+  assert.strictEqual(r.forms.length, 1);
+  assert.strictEqual(r.forms[0], 'BillBin');
+  assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะมี หรือ');
+  assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
+});

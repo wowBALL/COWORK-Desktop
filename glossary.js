@@ -96,12 +96,22 @@ function appendForms(raw, forms) {
 const REPLACING_SECTIONS = ['exact', 'aliases'];
 const MIN_SAFE_LENGTH = 4;
 
+// กฎข้อ 1 (คำผิดกินคำถูก) ต้องเทียบกับคำถูกจาก "ทุก" section ไม่ใช่แค่ exact/aliases --
+// tools/check_glossary.py (all_correct, ~บรรทัด 63-70) รวม fuzzy และ project-names เข้ามา
+// ด้วยเจตนาชัดเจน: คำถูกใน fuzzy ก็เป็นคำที่คนพูดออกมาถูกได้เหมือนกัน ถ้าคำผิดของ exact
+// ไปกินมัน ความเสียหายก็เท่ากับกินคำถูกใน exact เอง
+//
+// กฎข้อ 2 (formOwner) ยังคง exact+aliases เท่านั้นโดยเจตนา -- ตรงกับ _replacing_layers
+// ฝั่ง Python ที่ไม่รวม fuzzy/project-names เพราะสองชั้นนั้นโมเดลตีความเอง (ดูคอมเมนต์
+// REPLACING_SECTIONS ด้านบน) ห้ามขยายฝั่งนี้ตามฝั่ง correctTerms
 function replacingLayer(g) {
   const correctTerms = [];
+  for (const name of MAPPING_SECTIONS) {
+    for (const term of Object.keys(g.sections[name] || {})) correctTerms.push(term);
+  }
   const formOwner = new Map();
   for (const name of REPLACING_SECTIONS) {
     for (const [term, e] of Object.entries(g.sections[name] || {})) {
-      correctTerms.push(term);
       for (const f of e.forms) formOwner.set(f, term);
     }
   }
@@ -148,6 +158,22 @@ function planWrite(text, entries, meta) {
     }
   }
 
+  // ข้อ 5 (Minor): g ไม่เปลี่ยนระหว่าง entries ในคอลนี้ -- สร้าง layer จากไฟล์แค่ครั้งเดียว
+  // แล้ว "ขยาย" มันด้วยสิ่งที่กำลังจะเขียนในคอลเดียวกันนี้เอง (ข้อ Critical 1 และ Important 3):
+  //  - correctTerms: เติมคำถูกของ "ทุกกลุ่ม" ในคอลนี้ล่วงหน้าก่อนวนลูป เพราะคำที่กำลังจะถูก
+  //    เขียน (รวมทั้งคำของกลุ่มตัวเอง) ต้องได้รับการป้องกันเหมือนคำถูกที่มีอยู่แล้วในไฟล์อยู่
+  //    ก่อน -- ถ้าไม่มีขั้นนี้ คำใหม่ที่ยังไม่เคยอยู่ใน glossary.md จะไม่ถูกป้องกันเลยระหว่าง
+  //    กำลังเขียนมันเข้าไปครั้งแรก (Critical 1: `Approve` + form `Approv` ต้องชนแม้ `Approve`
+  //    ยังไม่มีในไฟล์)
+  //  - formOwner: อัพเดต "ระหว่าง" วนลูป ไม่ใช่ล่วงหน้า เพราะ "ฟอร์มที่ถูกรับไปแล้วก่อนหน้า
+  //    ในคอลนี้" มีความหมายเป็นลำดับ (Important 3) -- กลุ่มหลังต้องเห็นสิ่งที่กลุ่มก่อนหน้า
+  //    เพิ่งรับไปเท่านั้น ไม่ใช่เห็นล่วงหน้าทุกกลุ่มเหมือน correctTerms
+  const layer = replacingLayer(g);
+  for (const grp of order) {
+    const t = String((grp && grp.term) || '').trim();
+    if (t && !layer.correctTerms.includes(t)) layer.correctTerms.push(t);
+  }
+
   for (const { section, term, forms } of order) {
     if (!term) {
       out.skipped.push({ term, forms, section, reason: 'ชื่อคำว่างเปล่า' });
@@ -180,9 +206,12 @@ function planWrite(text, entries, meta) {
 
     const existing = bucket[term];
     const have = new Set(existing ? existing.forms : []);
-    const layer = replacingLayer(g);
     const guarded = REPLACING_SECTIONS.includes(section);
     const fresh = [];
+    // Important 4: ต้องแยกให้ออกว่า fresh ว่างเปล่าเพราะ "มีอยู่แล้วทั้งหมด" (ของจริง)
+    // หรือเพราะ "ถูกปฏิเสธทั้งหมด" (ชนกฎ/มี markup) -- สองเหตุผลนี้ไม่เหมือนกัน ผู้ใช้ต้องรู้
+    // ว่าเกิดอะไรขึ้นจริง ไม่ใช่โดนบอกว่า "มีอยู่แล้ว" ทั้งที่ไม่มี
+    let anyRejected = false;
     for (const form of forms) {
       if (have.has(form) || fresh.includes(form)) continue;
 
@@ -193,15 +222,20 @@ function planWrite(text, entries, meta) {
         out.conflicts.push({ term, form, section, clashesWith: null,
           reason: `"${form}" มีอักขระ * [ ] ซึ่งเป็นหัว segment ของ transcript -- ` +
             'Python parser จะทิ้งทั้งบรรทัดนี้ตอนอ่าน' });
+        anyRejected = true;
         continue;
       }
 
       if (guarded) {
         // 1. คำผิดที่กินคำถูก -- ทุกครั้งที่มีคนพูดถูก มันจะถูกแก้ให้เพี้ยน
-        const eaten = layer.correctTerms.find(t => t.includes(form));
+        //    เทียบแบบเดียวกับ Python เป๊ะ ๆ: `wrong != target and wrong in target`
+        //    ต้องกันเคส form === t (ฟอร์มเท่ากับคำถูกเป๊ะ) ไม่งั้น .includes จะ match ตัวเอง
+        //    เสมอ (string ใด ๆ includes ตัวเอง) กลายเป็น false positive ที่ Python ไม่ทำ
+        const eaten = layer.correctTerms.find(t => t !== form && t.includes(form));
         if (eaten) {
           out.conflicts.push({ term, form, section, clashesWith: eaten,
             reason: `"${form}" เป็นส่วนหนึ่งของคำถูก "${eaten}" -- ใส่แล้วคำที่พูดถูกจะถูกแก้ให้เพี้ยน` });
+          anyRejected = true;
           continue;
         }
         // 2. คำผิดเดียวกันชี้ไปคำถูกคนละตัว -- กำกวม ต้องให้คนตัดสิน
@@ -209,6 +243,7 @@ function planWrite(text, entries, meta) {
         if (owner && owner !== term) {
           out.conflicts.push({ term, form, section, clashesWith: owner,
             reason: `"${form}" ถูกใช้เป็นคำผิดของ "${owner}" อยู่แล้ว` });
+          anyRejected = true;
           continue;
         }
         // 3. สั้นเกินไป -- กฎที่ glossary.md ประกาศไว้เอง เตือนแต่ไม่บล็อก
@@ -217,11 +252,21 @@ function planWrite(text, entries, meta) {
           out.warnings.push({ term, form, section,
             reason: `"${form}" สั้นกว่า ${MIN_SAFE_LENGTH} อักขระ -- อาจไปโดนกลางคำอื่น` });
         }
+        // Important 3: ฟอร์มที่เพิ่งผ่านการตรวจในกลุ่มนี้ต้องเข้า formOwner "ทันที" ไม่ใช่
+        // รอรอบถัดไปของ planWrite -- กลุ่มถัดไปในคอลเดียวกันที่ใช้ฟอร์มเดียวกันแต่คำถูกคนละตัว
+        // ต้องเห็นเจ้าของตัวนี้ผ่านกฎข้อ 2 ด้านบน ไม่งั้นฟอร์มเดียวกันจะแมปไปคำถูกสองตัวเงียบ ๆ
+        layer.formOwner.set(form, term);
       }
       fresh.push(form);
     }
     if (!fresh.length) {
-      out.skipped.push({ term, forms, section, reason: 'มีอยู่แล้วทั้งหมด' });
+      // Important 4: 'มีอยู่แล้วทั้งหมด' เป็นความจริงเฉพาะตอนไม่มีฟอร์มไหนถูกปฏิเสธเลย
+      // ถ้ามีฟอร์มถูกปฏิเสธ (ชนกฎข้อ 1/2 หรือมี markup) ต้องบอกเหตุผลที่แท้จริง ไม่งั้น UI
+      // จะบอกผู้ใช้ว่า "ไม่ต้องทำอะไร มีอยู่แล้ว" ทั้งที่จริง ๆ มันถูกบล็อกไว้
+      const reason = anyRejected
+        ? `ทุกฟอร์มของ "${term}" ถูกปฏิเสธ (ชนกับคำถูกอื่นหรือมีอักขระต้องห้าม) ไม่ใช่เพราะมีอยู่แล้ว`
+        : 'มีอยู่แล้วทั้งหมด';
+      out.skipped.push({ term, forms, section, reason });
       continue;
     }
 

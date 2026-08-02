@@ -272,18 +272,23 @@ test('planWrite: สอง entries ที่ (section, term) ต่างกั�
   // ("exact Foo", "Bar") ก็ได้ key "exact Foo Bar" ด้วย
   // ต้องใช้ JSON.stringify([section, term]) แทน
   //
-  // ทดสอบว่า entry ที่สองไม่ได้หายไปในกลุ่มแรก: forms ของ entry แรกต้องเป็นแค่ ['a']
-  // (ไม่ใช่ ['a', 'b'] ซึ่งจะเกิดขึ้นถ้าคีย์ชนแล้ว form 'b' ของ entry ที่สองเพิ่มเข้าไป)
+  // ทดสอบว่า entry ที่สองไม่ได้หายไปในกลุ่มแรก: forms ของ entry แรกต้องเป็นแค่ ['Zorb']
+  // (ไม่ใช่ ['Zorb', 'b'] ซึ่งจะเกิดขึ้นถ้าคีย์ชนแล้ว form 'b' ของ entry ที่สองเพิ่มเข้าไป)
   // และ entry ที่สองต้องเข้า skipped เพราะ section "exact Foo" ไม่มีในไฟล์
+  //
+  // หมายเหตุ (Task 3, Critical 1): เดิมใช้ฟอร์ม 'a' แต่หลัง Critical 1 คำถูกของกลุ่มตัวเอง
+  // ('Foo Bar') เข้า correctTerms ของกฎข้อ 1 ด้วย และ 'a' ดันเป็น substring ของ "Foo Bar"
+  // เอง (ตัว a ใน "Bar") ทำให้ชนกฎข้อ 1 เข้าตัวเองโดยไม่ตั้งใจ ทั้งที่เทสนี้ทดสอบเรื่องคีย์
+  // การจัดกลุ่มล้วน ๆ ไม่เกี่ยวกับกฎการชน เปลี่ยนเป็น 'Zorb' ที่ไม่ชนอะไรใน BASE หรือ "Foo Bar"
   const r = planWrite(BASE, [
-    { term: 'Foo Bar', forms: ['a'], section: 'exact' },
+    { term: 'Foo Bar', forms: ['Zorb'], section: 'exact' },
     { term: 'Bar', forms: ['b'], section: 'exact Foo' },
   ], META);
 
-  // entry แรก ต้องเข้า added ด้วย form 'a' เท่านั้น
+  // entry แรก ต้องเข้า added ด้วย form 'Zorb' เท่านั้น
   assert.strictEqual(r.added.length, 1);
   assert.deepStrictEqual(r.added[0].term, 'Foo Bar');
-  assert.deepStrictEqual(r.added[0].forms, ['a']);  // ห้ามมี 'b' ที่มาจาก entry ที่สอง
+  assert.deepStrictEqual(r.added[0].forms, ['Zorb']);  // ห้ามมี 'b' ที่มาจาก entry ที่สอง
   assert.deepStrictEqual(r.added[0].section, 'exact');
 
   // entry ที่สอง ต้องเข้า skipped เพราะ section ไม่มี
@@ -379,4 +384,79 @@ test('markup ต้องถูกบล็อกแม้ section fuzzy ที�
   assert.strictEqual(r.conflicts[0].form, 'อี[เล็ค]ตรอน');
   assert.strictEqual(r.merged.length, 0);
   assert.strictEqual(r.newText, null);
+});
+
+// === Task 3 (code review): ห้าข้อ -- Critical 1, Critical 2, Important 3, Important 4, Minor 5 ===
+
+test('Critical 1: กฎข้อ 1 ต้องเห็นคำถูกที่กำลังเขียนในคอลนี้เอง แม้มันยังไม่มีใน glossary.md มาก่อน', () => {
+  // "Approve" ยังไม่มีอยู่ในไฟล์เลย (มีแค่ Bill: Bin) -- ก่อนแก้ Critical 1 correctTerms
+  // สร้างจากไฟล์ก่อนเขียนเท่านั้น (replacingLayer(g) ไม่รู้จัก Approve) จึงปล่อยให้ Approv
+  // (substring ของ Approve) เขียนผ่านไปเงียบ ๆ แล้วบทถอดเสียงที่พูด "Approve" ถูกต้องจะถูก
+  // แก้เป็น "Approvee" -- ตรงกับ pattern ของเคส Engage/Ingress ที่เกิดขึ้นจริง
+  const r = planWrite('## exact\nBill: Bin\n',
+    [{ term: 'Approve', forms: ['Approv'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].form, 'Approv');
+  assert.strictEqual(r.conflicts[0].clashesWith, 'Approve');
+  assert.strictEqual(r.added.length, 0);
+  assert.strictEqual(r.newText, null);
+});
+
+test('Critical 2: กฎข้อ 1 ต้องรวมคำถูกจาก fuzzy/project-names ด้วย ไม่ใช่แค่ exact/aliases (ยืนยันกับไฟล์จริง)', () => {
+  // 'Role' อยู่เฉพาะใน fuzzy ของไฟล์จริง ไม่อยู่ใน exact/aliases เลย -- ยืนยันก่อนว่าเทสนี้
+  // ทดสอบสิ่งที่ตั้งใจจริง ๆ (ไม่ใช่บังเอิญชนกับคำถูกใน exact ที่เดิมก็ถูกตรวจอยู่แล้ว)
+  assert.ok(realText, `ไม่พบ fixture ที่ ${REAL}`);
+  const g = parseGlossary(realText);
+  assert.ok(g.sections.fuzzy && g.sections.fuzzy.Role, 'fixture ต้องมี Role ใน fuzzy');
+  assert.ok(!(g.sections.exact && g.sections.exact.Role), 'Role ต้องไม่อยู่ใน exact');
+  assert.ok(!(g.sections.aliases && g.sections.aliases.Role), 'Role ต้องไม่อยู่ใน aliases');
+
+  const r = planWrite(realText, [{ term: 'RoleTest', forms: ['Rol'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].clashesWith, 'Role');
+  assert.strictEqual(r.newText, null);
+});
+
+test('Important 3: ฟอร์มเดียวกันชี้ไปคำถูกสองตัวในคอลเดียวกัน -- ตัวที่สองต้องเป็น conflict', () => {
+  // เดิม formOwner สร้างจากไฟล์เท่านั้น ไม่อัพเดตระหว่าง entries ในคอลเดียวกัน ฟอร์ม 'Zorb'
+  // จึงเขียนทับได้ทั้งสองครั้ง แมป 'Zorb' ไปทั้ง Alpha และ Gamma -- _wrong_to_correct ฝั่ง
+  // Python จะเก็บแค่ตัวหลังไว้เงียบ ๆ (dict ปกติ) ทำให้ Alpha สูญเสียคำผิดของตัวเอง
+  const r = planWrite(CLASH, [
+    { term: 'Alpha', forms: ['Zorb'], section: 'exact' },
+    { term: 'Gamma', forms: ['Zorb'], section: 'exact' },
+  ], META);
+  assert.strictEqual(r.added.length, 1);
+  assert.deepStrictEqual(r.added[0], { term: 'Alpha', forms: ['Zorb'], section: 'exact' });
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].term, 'Gamma');
+  assert.strictEqual(r.conflicts[0].form, 'Zorb');
+  assert.strictEqual(r.conflicts[0].clashesWith, 'Alpha');
+});
+
+test('Important 4: ทุกฟอร์มถูกปฏิเสธ (ไม่ใช่มีอยู่แล้ว) -> reason ต้องไม่ใช่ "มีอยู่แล้วทั้งหมด"', () => {
+  // 'Bi' ชนกฎข้อ 1 (substring ของ Bill) เลยถูกปฏิเสธ -- ไม่ใช่ว่ามันมีอยู่แล้วในไฟล์
+  // เดิม fresh.length === 0 ทุกกรณีถูกรายงานว่า 'มีอยู่แล้วทั้งหมด' ทั้งที่ไม่จริง
+  const r = planWrite(CLASH, [{ term: 'Beta', forms: ['Bi'], section: 'exact' }], META);
+  assert.strictEqual(r.skipped.length, 1);
+  assert.notStrictEqual(r.skipped[0].reason, 'มีอยู่แล้วทั้งหมด');
+  assert.match(r.skipped[0].reason, /ปฏิเสธ/);
+  // เคส "มีอยู่แล้วจริง" (ครูป มีอยู่แล้วในไฟล์) ต้องยังได้เหตุผลเดิม ไม่ถูกกลืนหายไปด้วย
+  const already = planWrite(BASE, [{ term: 'Kubernetes', forms: ['ครูป'], section: 'exact' }], META);
+  assert.strictEqual(already.skipped[0].reason, 'มีอยู่แล้วทั้งหมด');
+});
+
+test('Minor 5: layer สะสมสถานะข้ามกลุ่มในคอลเดียวกัน แม้มีกลุ่มคั่นกลางที่ถูกข้ามไปเพราะ markup', () => {
+  // ถ้า layer ถูกสร้างใหม่ทุกรอบวนลูป (ไม่ hoist) การสะสม formOwner ของ Important 3
+  // จะใช้ไม่ได้เลย เทสนี้ยืนยันว่าการข้ามกลุ่มกลาง (Te*st มี markup) ไม่ได้ไปรีเซ็ต
+  // สถานะที่กลุ่มแรกเพิ่งสะสมไว้ก่อนกลุ่มสุดท้ายจะอ่านมัน
+  const r = planWrite(CLASH, [
+    { term: 'Alpha', forms: ['Zorb'], section: 'exact' },
+    { term: 'Te*st', forms: ['x'], section: 'exact' },
+    { term: 'Gamma', forms: ['Zorb'], section: 'exact' },
+  ], META);
+  assert.strictEqual(r.added.length, 1);
+  assert.strictEqual(r.added[0].term, 'Alpha');
+  const gammaConflict = r.conflicts.find(c => c.term === 'Gamma');
+  assert.ok(gammaConflict, 'Gamma ต้องเป็น conflict เพราะ Zorb ถูก Alpha จองไปแล้ว');
+  assert.strictEqual(gammaConflict.clashesWith, 'Alpha');
 });

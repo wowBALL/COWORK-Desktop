@@ -19,6 +19,9 @@
   let mtTab='s';                   // s=สรุป t=ถอดเสียง f=ไฟล์
   let mtTq='', mtSpk=null;         // ค้นหา / กรองผู้พูด ในหน้าถอดเสียง
   const mtCache=new Map();         // id → { speakers, utterances }
+  // ร่างคำที่จะส่งเข้า glossary + สถานะไฟล์ปลายทาง + ผลการส่งครั้งล่าสุด
+  // รีเซ็ตทุกครั้งที่เปลี่ยนประชุม (mtOpenMeeting) เพราะร่างผูกกับประชุมเดียว
+  let mtGloss={rows:null, state:null, report:null};
 
   function mtDate(d){
     const dt=new Date(d+'T00:00:00');
@@ -266,6 +269,7 @@
   }
   function mtOpenMeeting(m){
     mtOpen=m; mtTab='s'; mtTq=''; mtSpk=null;
+    mtGloss={rows:null, state:null, report:null};
     document.getElementById('mtList').classList.add('hidden');
     document.getElementById('mtReader').classList.remove('hidden');
     renderMtReader();
@@ -281,18 +285,41 @@
   function renderMeta(meta){
     const row=(k,v,cls)=>v?`<dt>${esc(k)}</dt><dd class="${cls||''}">${v}</dd>`:'';
     const counts=a=>a.map(i=>esc(i.term)+(i.n?` <span style="color:var(--dim)">${esc(i.n)}</span>`:'')).join(' · ');
-    const sec=s=>{
+    const SECTIONS=['exact','fuzzy','project-names','aliases'];
+    // คำที่อยู่ใน glossary แล้ว -- ดูจาก "คำผิด" ไม่ใช่คำถูก เพราะคำถูกเดียวกันอยู่ได้หลายชั้น
+    const known=new Set();
+    if(mtGloss.state&&mtGloss.state.sections)
+      for(const bucket of Object.values(mtGloss.state.sections))
+        for(const forms of Object.values(bucket)) forms.forEach(f=>known.add(f));
+    const sec=(s,si)=>{
       const words=parseWords(s.body), spots=parseSpots(s.body);
       const looksLikeWords=words.filter(w=>w.heard).length>words.length/2;
-      const rows=looksLikeWords
-        ? words.map(w=>`<div class="mtq-word">
-              <span class="heard">${esc(w.heard)}</span><span class="ar">→</span>
-              <span class="guess">${esc(w.guess)}</span>
-              ${w.n?`<span class="n">${esc(w.n)}</span>`:''}</div>`).join('')
-        : spots.map(p=>`<div class="mtq-spot">
+      if(!looksLikeWords){
+        const rows=spots.map(p=>`<div class="mtq-spot">
               <span class="ts">${esc(p.ts||'—')}</span><span class="tx">${esc(p.tx)}</span></div>`).join('');
-      const n=looksLikeWords?words.length:spots.length;
-      return `<div class="mtq-sec"><h4><span>${esc(s.title)}</span><span class="n">${n}</span></h4>${rows}</div>`;
+        return `<div class="mtq-sec"><h4><span>${esc(s.title)}</span><span class="n">${spots.length}</span></h4>${rows}</div>`;
+      }
+      // หัวข้อแบบ "คำ" เท่านั้นที่ส่งเข้า glossary ได้
+      if(!mtGloss.rows) mtGloss.rows=glossaryDraft(words);
+      const rows=mtGloss.rows.map((r,i)=>{
+        const done=r.forms.length>0 && r.forms.every(f=>known.has(f));
+        return `<div class="mtq-word pick${done?' done':''}" data-gi="${i}">
+          ${done
+            ? `<span class="gdone">✓ อยู่ใน glossary แล้ว</span>`
+            : `<input type="checkbox" class="gk" ${r.tick?'checked':''} title="เลือกส่งเข้า glossary">`}
+          <input class="gin wrong" value="${esc(r.forms.join(', '))}" placeholder="คำผิด1, คำผิด2"${done?' disabled':''}>
+          <span class="ar">→</span>
+          <input class="gin right" value="${esc(r.term)}" placeholder="พิมพ์คำถูก"${done?' disabled':''}>
+          <select class="gsec"${done?' disabled':''}>
+            ${SECTIONS.map(x=>`<option value="${x}"${r.section===x?' selected':''}>${x}</option>`).join('')}
+          </select>
+          ${r.n?`<span class="n">${esc(r.n)}</span>`:''}</div>`;
+      }).join('');
+      const n=mtGloss.rows.filter(r=>r.tick).length;
+      return `<div class="mtq-sec" data-gsec="${si}">
+        <h4><span>${esc(s.title)}</span>
+          <button class="gsend"${n?'':' disabled'}>ส่งเข้า glossary (${n})</button></h4>
+        ${renderGlossReport()}${rows}</div>`;
     };
     return `<div class="mtq">
       <dl class="mtq-strip">
@@ -305,6 +332,24 @@
       </dl>
       ${meta.sections.map(sec).join('')}
     </div>`;
+  }
+  // ผลการส่งครั้งล่าสุด -- สตริงว่างเมื่อยังไม่เคยกด (Task 7 เป็นคนตั้งค่า mtGloss.report)
+  function renderGlossReport(){
+    const rep=mtGloss.report;
+    if(!rep) return '';
+    if(rep.error) return `<div class="mtq-report"><div class="err">⚠ ${esc(rep.error)}</div></div>`;
+    const line=(tag,cls,txt,why)=>`<div class="row"><span class="tag ${cls}">${tag}</span>
+      <span class="why"><strong>${esc(txt)}</strong>${why?' — '+esc(why):''}</span></div>`;
+    const body=[
+      ...rep.added.map(e=>line('เพิ่มใหม่','add',`${e.section}  ${e.term} ← ${e.forms.join(', ')}`,'')),
+      ...rep.merged.map(e=>line('รวมบรรทัดเดิม','mrg',`${e.section}  ${e.term} ← ${e.forms.join(', ')}`,`บรรทัด ${e.line}`)),
+      ...rep.skipped.map(e=>line('ข้าม','skp',`${e.section}  ${e.term}`,e.reason)),
+      ...rep.warnings.map(e=>line('เตือน','wrn',`${e.section}  ${e.term} ← ${e.form}`,e.reason)),
+      ...rep.conflicts.map(e=>line('ชน · ไม่เขียน','cfl',`${e.section}  ${e.term} ← ${e.form}`,e.reason)),
+    ].join('');
+    const sum=`เพิ่มใหม่ ${rep.added.length} · รวมเข้าบรรทัดเดิม ${rep.merged.length} · `+
+      `ข้าม ${rep.skipped.length} · เตือน ${rep.warnings.length} · ชน ${rep.conflicts.length}`;
+    return `<div class="mtq-report"><div class="sum">${esc(sum)}</div>${body}</div>`;
   }
   function renderTranscript(tr){
     if(!tr) return '<div class="hint">กำลังโหลดบทถอดเสียง...</div>';
@@ -387,6 +432,14 @@
     } else if(mtTab==='q'){
       const meta=parseMeta(m.meta);
       body.innerHTML=meta?renderMeta(meta):'<div class="empty">ไม่มีไฟล์ summary.meta.md</div>';
+      const api=shell().api;
+      // โหลดครั้งเดียวต่อประชุม แล้ววาดใหม่ให้แถวที่อยู่ใน glossary แล้วขึ้นป้าย
+      if(meta && !mtGloss.state && api && api.getGlossaryState){
+        api.getGlossaryState().then(st=>{
+          mtGloss.state=st||{sections:{}};
+          if(mtOpen===m && mtTab==='q') renderMtReader();
+        });
+      }
     } else {
       body.innerHTML=`<div class="mt-files">${m.files.map(f=>`
         <div class="mt-file" data-p="${esc(f.path)}">

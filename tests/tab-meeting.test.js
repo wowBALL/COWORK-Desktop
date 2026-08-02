@@ -24,7 +24,7 @@ global.document = {
 };
 
 const { parseMeta, splitCounts, parseWords, parseSpots, glossaryDraft, landedRows,
-  isDone, glossKnown, renderMeta, termFromGuess } = require('../tab-meeting.js');
+  isDone, glossKnown, renderMeta, termFromGuess, resetGloss } = require('../tab-meeting.js');
 
 // ฟิกซ์เจอร์ทั้งหมดยกมาจากไฟล์จริง (ไม่ใช่ข้อมูลที่แต่งขึ้นเอง):
 // D:\COWORK\meeting-notes\meetings\2026-07-31_09-59-Stanup2\summary.meta.md
@@ -446,6 +446,7 @@ test('Important 4: isDone -- section ที่ไม่มี known เลย (u
 // ไปโผล่ซ้ำใต้หัวข้อที่สอง เทสนี้ประกอบ meta ที่มีสองหัวข้อแบบคำ แล้วตรวจว่าแต่ละ section
 // แสดงเฉพาะคำของตัวเอง ไม่เห็นคำของอีก section เลย
 test('Minor 8: renderMeta -- สองหัวข้อแบบคำในประชุมเดียวกัน ต้องไม่ทับ/ปนกัน', () => {
+  resetGloss();
   const meta = {
     model: 'test-model', modelNote: '', profile: 'dev', glossary: [], fuzzy: [], other: [],
     sections: [
@@ -463,4 +464,32 @@ test('Minor 8: renderMeta -- สองหัวข้อแบบคำในป
   assert.ok(!block0.includes('Baz'), 'section แรกต้องไม่เห็นคำของ section สอง (Baz)');
   assert.ok(block1.includes('Baz'), 'section สองต้องมีคำของตัวเอง (Baz)');
   assert.ok(!block1.includes('Odoo'), 'section สองต้องไม่เห็นคำของ section แรกซ้ำ (Odoo)');
+});
+
+// ตัวช่วยประกอบ meta ขั้นต่ำที่ renderMeta รับได้ -- ฟิลด์ครบตามที่ renderMeta อ่านจริง
+const metaWith = body => ({
+  model: 'test-model', modelNote: '', profile: 'dev', glossary: [], fuzzy: [], other: [],
+  sections: [{ title: 'คำที่น่าจะถอดเพี้ยน', body }],
+});
+
+test('renderMeta: วาดข้อความประเมินของ AI พร้อม tooltip ข้อความเต็ม', () => {
+  resetGloss();
+  const html = renderMeta(metaWith('- Bmat → BMAD (ได้ยิน 2 ครั้ง)'));
+  assert.ok(html.includes('class="gai"'), 'ต้องมีคอลัมน์ข้อความประเมิน');
+  assert.ok(html.includes('title="BMAD"'), 'ส่วนที่ล้นต้องอ่านได้จาก tooltip');
+});
+
+test('renderMeta: ไม่มีข้อความประเมิน -> ไม่วาดคอลัมน์เปล่า', () => {
+  resetGloss();
+  const html = renderMeta(metaWith('- Bmat →  (ได้ยิน 2 ครั้ง)'));
+  assert.ok(!html.includes('class="gai"'), 'แถวที่ฝั่งขวาว่างไม่ควรมีช่องว่างลอย ๆ');
+});
+
+test('renderMeta: อัญประกาศในข้อความประเมินต้องถูก escape ก่อนใส่ใน title', () => {
+  // util.js esc() escape " เป็น &quot; ต่อจาก textContent->innerHTML โดยเฉพาะเพื่อกรณีนี้
+  // ถ้าไม่ผ่าน esc() เครื่องหมาย " ตัวแรกจะปิด attribute แล้วที่เหลืองอกเป็น attribute ขยะ
+  resetGloss();
+  const html = renderMeta(metaWith('- X → เดาว่าคือ "Playwright" (ได้ยิน 1 ครั้ง)'));
+  assert.ok(html.includes('title="เดาว่าคือ &quot;Playwright&quot;"'),
+    'title ต้องเก็บข้อความเต็มในรูปที่ escape แล้ว');
 });

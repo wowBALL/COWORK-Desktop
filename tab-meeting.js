@@ -24,6 +24,9 @@
   // rows คีย์ด้วยเลข section (si) -- Minor 8: กันหัวข้อแบบคำสองหัวข้อในประชุมเดียวแย่งกันใช้
   // array แบนก้อนเดียว (ดูคอมเมนต์จุด mtGloss.rows[si]=glossaryDraft(words) ใน renderMeta)
   let mtGloss={rows:{}, state:null, report:null};
+  // ล้างสถานะร่าง/ผลส่งของแท็บคำ -- เรียกตอนเปิดประชุมใหม่ ถ้าไม่ล้าง ประชุมถัดไปจะเห็นแถว
+  // ที่ร่างไว้ของประชุมก่อน (rows ถูก key ด้วยเลข section ไม่ใช่ด้วยตัวประชุม)
+  const resetGloss=()=>{ mtGloss={rows:{}, state:null, report:null}; };
 
   function mtDate(d){
     const dt=new Date(d+'T00:00:00');
@@ -315,7 +318,7 @@
   }
   function mtOpenMeeting(m){
     mtOpen=m; mtTab='s'; mtTq=''; mtSpk=null;
-    mtGloss={rows:{}, state:null, report:null};
+    resetGloss();
     document.getElementById('mtList').classList.add('hidden');
     document.getElementById('mtReader').classList.remove('hidden');
     renderMtReader();
@@ -410,6 +413,7 @@
             ? `<span class="gdone">✓ อยู่ใน glossary แล้ว</span>`
             : `<input type="checkbox" class="gk" ${r.tick?'checked':''} title="เลือกส่งเข้า glossary">`}
           <input class="gin wrong" value="${esc(r.forms.join(', '))}" placeholder="คำผิด1, คำผิด2"${done?' disabled':''}>
+          ${r.guess?`<span class="gai" title="${esc(r.guess)}">${esc(r.guess)}</span>`:''}
           <span class="ar">→</span>
           <input class="gin right" value="${esc(r.term)}" placeholder="พิมพ์คำถูก"${done?' disabled':''}>
           <select class="gsec"${done?' disabled':''}>
@@ -761,6 +765,6 @@
   // ที่ไม่ต้องใช้ DOM (renderMeta ใช้ esc จาก global.COWORK.util เลยไม่ export)
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { parseMeta, splitCounts, parseWords, parseSpots, mdRender, glossaryDraft, landedRows,
-      isDone, glossKnown, renderMeta, termFromGuess };
+      isDone, glossKnown, renderMeta, termFromGuess, resetGloss };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

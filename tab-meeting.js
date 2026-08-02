@@ -286,6 +286,15 @@
   const isDone = (row, known) => row.forms.length > 0 && row.forms.every(f => known.has(f));
   // ส่งได้เมื่อ: ติ๊กแล้ว AND ยังไม่อยู่ใน glossary (Task 7 ใช้ตัวเดียวกันตอนประกอบ payload)
   const isSendable = (row, known) => row.tick && !isDone(row, known);
+  // set ของ "คำผิด" ทุกตัวที่อยู่ใน glossary.md แล้ว -- ที่เดียวที่คำนวณ known ใช้ร่วมกันทั้ง
+  // renderMeta (วาดป้าย/ตัวเลขปุ่ม) และ sendGlossary (คัดแถวที่จะส่งจริง) กันสองที่เพี้ยนไม่ตรงกัน
+  function glossKnown(){
+    const known=new Set();
+    if(mtGloss.state&&mtGloss.state.sections)
+      for(const bucket of Object.values(mtGloss.state.sections))
+        for(const forms of Object.values(bucket)) forms.forEach(f=>known.add(f));
+    return known;
+  }
 
   // แบบ B (ตารางตรวจงาน) ที่เลือกจาก summarymeta-mock.html — แถบ key:value บนสุด แล้วต่อด้วย
   // ทุกหัวข้อ ## ที่ parseMeta เจอ แยกเลย์เอาต์ตามว่า bullet ส่วนใหญ่ในหัวข้อนั้นมี "→" หรือไม่
@@ -294,10 +303,7 @@
     const counts=a=>a.map(i=>esc(i.term)+(i.n?` <span style="color:var(--dim)">${esc(i.n)}</span>`:'')).join(' · ');
     const SECTIONS=['exact','fuzzy','project-names','aliases'];
     // คำที่อยู่ใน glossary แล้ว -- ดูจาก "คำผิด" ไม่ใช่คำถูก เพราะคำถูกเดียวกันอยู่ได้หลายชั้น
-    const known=new Set();
-    if(mtGloss.state&&mtGloss.state.sections)
-      for(const bucket of Object.values(mtGloss.state.sections))
-        for(const forms of Object.values(bucket)) forms.forEach(f=>known.add(f));
+    const known=glossKnown();
     const sec=(s,si)=>{
       const words=parseWords(s.body), spots=parseSpots(s.body);
       const looksLikeWords=words.filter(w=>w.heard).length>words.length/2;
@@ -359,6 +365,46 @@
     const sum=`เพิ่มใหม่ ${rep.added.length} · รวมเข้าบรรทัดเดิม ${rep.merged.length} · `+
       `ข้าม ${rep.skipped.length} · เตือน ${rep.warnings.length} · ชน ${rep.conflicts.length}`;
     return `<div class="mtq-report"><div class="sum">${esc(sum)}</div>${body}</div>`;
+  }
+  // ส่งแถวที่ "ส่งได้" จริงเข้า glossary.md แล้ววาดผลกลับที่เดิม
+  //
+  // ใช้ isSendable+known ตัวเดียวกับปุ่ม ไม่ใช่แค่ r.tick -- แถวที่อยู่ใน glossary แล้วไม่มี
+  // checkbox ให้ติ๊กใหม่ แต่ยังอาจมี tick:true ค้างมาจาก glossaryDraft() ถ้าส่งแถวนั้นไปด้วย
+  // จะได้รายงาน "ข้าม" ที่ไม่มีความหมายอะไรกับผู้ใช้
+  //
+  // แถวที่ติ๊กแต่ยังไม่มีคำถูกถือเป็น error ฝั่ง UI ไม่ส่งไปให้ main ตัดสิน -- ผู้ใช้ต้อง
+  // เห็นว่าแถวไหนขาด ไม่ใช่ได้รายงาน "ข้าม" กลับมาทีหลังโดยไม่รู้ว่าต้องทำอะไร
+  function sendGlossary(m, btn){
+    const api=shell().api;
+    if(!api||!api.appendGlossary) return;
+    const known=glossKnown();
+    const picked=(mtGloss.rows||[]).filter(r=>isSendable(r,known));
+    const blank=picked.filter(r=>!r.term||!r.forms.length);
+    if(blank.length){
+      mtGloss.report={error:`มี ${blank.length} แถวที่ติ๊กไว้แต่ยังกรอกไม่ครบ — ต้องมีทั้งคำผิดและคำถูก`,
+        added:[],merged:[],skipped:[],warnings:[],conflicts:[]};
+      renderMtReader(); return;
+    }
+    if(!picked.length) return;
+    btn.disabled=true; btn.textContent='กำลังส่ง…';
+    const entries=picked.map(r=>({term:r.term, forms:r.forms, section:r.section}));
+    api.appendGlossary(entries, {title:m.title, date:m.date}).then(res=>{
+      if(!res||!res.ok){
+        mtGloss.report={error:(res&&res.error)||'ส่งไม่สำเร็จ',
+          added:[],merged:[],skipped:[],warnings:[],conflicts:[]};
+        renderMtReader(); return;
+      }
+      mtGloss.report=res;
+      // เคลียร์ติ๊กเฉพาะแถวที่เขียนสำเร็จจริง -- แถวที่ชนยังต้องติ๊กค้างไว้ให้แก้ต่อ
+      const wrote=new Set();
+      [...res.added,...res.merged].forEach(e=>e.forms.forEach(f=>wrote.add(f)));
+      (mtGloss.rows||[]).forEach(r=>{ if(r.tick&&r.forms.some(f=>wrote.has(f))) r.tick=false; });
+      // อ่านสถานะไฟล์ใหม่ ป้าย "อยู่ใน glossary แล้ว" จะได้ตรงกับไฟล์จริงหลังเขียน
+      api.getGlossaryState().then(st=>{
+        mtGloss.state=st||{sections:{}};
+        if(mtOpen===m && mtTab==='q') renderMtReader();
+      });
+    });
   }
   function renderTranscript(tr){
     if(!tr) return '<div class="hint">กำลังโหลดบทถอดเสียง...</div>';
@@ -441,6 +487,22 @@
     } else if(mtTab==='q'){
       const meta=parseMeta(m.meta);
       body.innerHTML=meta?renderMeta(meta):'<div class="empty">ไม่มีไฟล์ summary.meta.md</div>';
+      // อินพุตทุกช่องเขียนกลับเข้า mtGloss.rows ทันที -- ไม่ re-render ระหว่างพิมพ์
+      // (จะเด้ง cursor) วาดใหม่เฉพาะตอนติ๊ก เพราะตัวเลขบนปุ่มต้องเปลี่ยนตาม
+      body.querySelectorAll('[data-gi]').forEach(el=>{
+        const r=mtGloss.rows[Number(el.dataset.gi)];
+        if(!r) return;
+        const wrong=el.querySelector('.gin.wrong');
+        const right=el.querySelector('.gin.right');
+        const sel=el.querySelector('.gsec');
+        const box=el.querySelector('.gk');
+        if(wrong) wrong.oninput=()=>{ r.forms=wrong.value.split(',').map(s=>s.trim()).filter(Boolean); };
+        if(right) right.oninput=()=>{ r.term=right.value.trim(); };
+        if(sel) sel.onchange=()=>{ r.section=sel.value; };
+        if(box) box.onchange=()=>{ r.tick=box.checked; renderMtReader(); };
+      });
+      const send=body.querySelector('.gsend');
+      if(send) send.onclick=()=>sendGlossary(m, send);
       const api=shell().api;
       // โหลดครั้งเดียวต่อประชุม แล้ววาดใหม่ให้แถวที่อยู่ใน glossary แล้วขึ้นป้าย
       if(meta && !mtGloss.state && api && api.getGlossaryState){

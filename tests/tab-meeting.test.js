@@ -219,16 +219,31 @@ test('glossaryDraft: ตรวจสอบแยกต่างหาก: term >
   assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
 });
 
-test('glossaryDraft: ตรวจสอบแยกต่างหาก: term มี หรือ แต่ <= 3 คำ → ไม่ติ๊ก', () => {
-  // ฟิกซ์เจอร์นี้ตรวจสอบเฉพาะ condition !term.includes('หรือ')
-  // โดยให้ term มี หรือ แต่นับคำแล้วได้ 3 คำ (ตัดการรวมกันกับ term.split(/\\s+/).length <= 3)
+// เดิมคอมเมนต์นี้อ้างว่าฟิกซ์เจอร์ตรวจ condition !strict.includes('หรือ') ใน clean โดยเฉพาะ --
+// ไม่จริงอีกต่อไปหลังใส่ `&& !!term` เข้า tick: guess มี "หรือ" ซึ่งเป็นอักษรไทย ทำให้
+// termFromGuess คืน '' ผ่าน THAI_CHAR เสมอ (ดักไว้ก่อนจะไปถึงเกณฑ์ "หรือ" ใด ๆ) -- term จึงว่าง
+// และ tick เป็น false ผ่าน !!term อยู่แล้ว ไม่ต้องพึ่งการ์ด !strict.includes('หรือ') เลย
+// ลบการ์ดนั้นออกจาก clean เทสนี้ก็ยังเขียว (ตรวจแล้ว) -- ฟิกซ์เจอร์ที่พิสูจน์การ์ดตัวนี้จริง ๆ
+// อยู่ที่ 'หรือ อยู่ในวงเล็บ...' ด้านล่าง (เส้นทางเดียวที่ strict มี "หรือ" แต่ term ไม่มี)
+test('glossaryDraft: term มี หรือ แต่ <= 3 คำ → ไม่ติ๊ก (เพราะ "หรือ" เป็นอักษรไทย ไม่ใช่เพราะการ์ดใน clean)', () => {
   const [r] = glossaryDraft([
     { heard: 'BillBin', guess: 'เดาว่าคือ Bill หรือ Bin', n: '' },
   ]);
   assert.strictEqual(r.forms.length, 1);
   assert.strictEqual(r.forms[0], 'BillBin');
-  assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะมี หรือ');
-  assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
+  assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะ term ว่าง');
+  assert.strictEqual(r.term, '', 'term ต้องว่างเพราะมีอักษรไทยปน (THAI_CHAR) ไม่ใช่เพราะการ์ด หรือ');
+});
+
+// นี่คือฟิกซ์เจอร์ที่พิสูจน์การ์ด !strict.includes('หรือ') ใน clean จริง ๆ -- ต้องใช้เส้นทางที่
+// "หรือ" อยู่ใน strict (ข้อความหลังตัดคำนำ "เดาว่าคือ") แต่ไม่อยู่ใน term ที่ termFromGuess คืนออกมา
+// เส้นทางเดียวที่เป็นแบบนั้นคือ "หรือ" อยู่ใน "วงเล็บ" -- termFromGuess ตัดวงเล็บทิ้งก่อนตรวจ
+// THAI_CHAR (ดูคอมเมนต์ที่ตัวมันเอง) แต่ strict ของ glossaryDraft ไม่ได้ตัดวงเล็บเลย
+test('glossaryDraft: หรือ อยู่ในวงเล็บที่ termFromGuess ตัดออก แต่ strict ยังเห็น -- การ์ดต้องกันติ๊กแม้ term ใช้ได้จริง', () => {
+  const [r] = glossaryDraft([{ heard: 'Foo', guess: 'เดาว่าคือ Bar (หรือ)', n: '' }]);
+  assert.strictEqual(r.term, 'Bar', 'termFromGuess ตัดวงเล็บออก ต้องได้ term ที่ใช้ได้จริง');
+  assert.strictEqual(r.tick, false,
+    'strict ("Bar (หรือ)") ยังมี "หรือ" อยู่เพราะไม่ได้ตัดวงเล็บ -- การ์ดต้องกันติ๊กแม้ term ผ่านแล้ว');
 });
 
 // ===== termFromGuess =====
@@ -439,6 +454,21 @@ test('Important 4: glossKnown สร้าง Map แยกตาม section ไ
 test('Important 4: isDone -- section ที่ไม่มี known เลย (undefined) ต้องได้ false ไม่ throw', () => {
   const known = glossKnown({ sections: {} });
   assert.strictEqual(isDone({ term: 'X', forms: ['a'], section: 'exact' }, known), false);
+});
+
+// Fix 4: forms.length > 0 เดิมดูเหมือนของแถม (Array.prototype.every บน [] คืน true เสมอ) แต่
+// วัดกับประชุมจริงแล้วพบว่า 5 จาก 35 แถวมี forms: [] จริง ๆ (Redmine, session file, Zinga, GLM,
+// Screenshot -- คำผิดที่โมเดลถอดมาเท่ากับคำถูกเป๊ะ ถูกกรองทิ้งใน glossaryDraft ดูคอมเมนต์
+// "คำผิดที่เท่ากับคำถูกเป๊ะ" ที่นั่น) ถ้าไม่มีการ์ดนี้ แถวพวกนั้นจะโดนตีว่า "อยู่ใน glossary แล้ว"
+// (done: true) ทั้งที่ไม่มีฟอร์มไหนเลยที่ยืนยันได้จริงว่าอยู่ใน known -- ป้ายจะโกหกและแถวจะถูก
+// disable การกรอกทั้งที่ยังไม่เคยถูกส่งไปไหนเลย
+test('Fix 4: isDone -- แถวที่ forms ว่างเปล่า (มิสทรานสคริปต์เท่ากับคำถูกเป๊ะ) ต้องไม่ถือว่าเสร็จแล้ว แม้ section มีอยู่ใน known', () => {
+  const known = glossKnown({ sections: { exact: { Foo: ['bar'] } } });
+  assert.strictEqual(
+    isDone({ term: 'Redmine', forms: [], section: 'exact' }, known),
+    false,
+    'forms ว่างเปล่าต้องไม่ถือว่า "เสร็จแล้ว" -- [].every(...) เป็น true เสมอโดยไม่มีอะไรถูกตรวจจริง'
+  );
 });
 
 // Minor 8: mtGloss.rows เดิมเป็น array แบนก้อนเดียวใช้ร่วมกันทุกหัวข้อแบบคำในประชุมเดียว --

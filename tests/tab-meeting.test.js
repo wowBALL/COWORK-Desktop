@@ -24,7 +24,7 @@ global.document = {
 };
 
 const { parseMeta, splitCounts, parseWords, parseSpots, glossaryDraft, landedRows,
-  isDone, glossKnown, renderMeta } = require('../tab-meeting.js');
+  isDone, glossKnown, renderMeta, termFromGuess } = require('../tab-meeting.js');
 
 // ฟิกซ์เจอร์ทั้งหมดยกมาจากไฟล์จริง (ไม่ใช่ข้อมูลที่แต่งขึ้นเอง):
 // D:\COWORK\meeting-notes\meetings\2026-07-31_09-59-Stanup2\summary.meta.md
@@ -229,6 +229,84 @@ test('glossaryDraft: ตรวจสอบแยกต่างหาก: term �
   assert.strictEqual(r.forms[0], 'BillBin');
   assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะมี หรือ');
   assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
+});
+
+// ===== termFromGuess =====
+// ฟิกซ์เจอร์ทุกตัวยกมาจากฝั่งขวาของ "## คำที่น่าจะถอดเพี้ยน" ในไฟล์จริง ไม่ได้แต่งขึ้นเอง
+//
+// เกณฑ์แต่ละข้อมีเทสของตัวเองที่ "ตกด้วยเกณฑ์นั้นข้อเดียว" -- ห้ามใช้ฟิกซ์เจอร์ที่ตกหลายข้อ
+// พร้อมกัน ไม่งั้นลบเกณฑ์ตัวใดตัวหนึ่งทิ้งแล้วเทสยังเขียว (เคยเกิดกับ glossaryDraft มาแล้ว)
+test('termFromGuess: แม็ปตรง ๆ ไม่มีคำนำ -> ได้คำถูก', () => {
+  assert.strictEqual(termFromGuess('BMAD'), 'BMAD');
+  assert.strictEqual(termFromGuess('GitLab'), 'GitLab');
+});
+
+test('termFromGuess: ตัดคำนำ "เดาว่าคือ" ออก', () => {
+  assert.strictEqual(termFromGuess('เดาว่าคือ Odoo'), 'Odoo');
+  assert.strictEqual(termFromGuess('ฟังไม่ออก เดาว่าคือ Payment'), 'Payment');
+});
+
+test('termFromGuess: คำนำที่โมเดลสะกดเพี้ยน "เด่าว่าคือ" ก็ตัดออก', () => {
+  assert.strictEqual(termFromGuess('เด่าว่าคือ Solo'), 'Solo');
+});
+
+test('termFromGuess: ตัดวงเล็บก่อนตรวจเกณฑ์อื่น -- บริบทในวงเล็บมีอะไรก็ได้', () => {
+  // ถ้าตรวจเกณฑ์ก่อนตัดวงเล็บ แถวนี้จะตกเพราะในวงเล็บมีทั้งอักษรไทยและ "หรือ"
+  assert.strictEqual(
+    termFromGuess('Attendance (ในบริบทคือชื่อ Agent หรือ Bot ที่ช่วยทำงาน)'), 'Attendance');
+  assert.strictEqual(termFromGuess('dock (โฟลเดอร์)'), 'dock');
+});
+
+test('termFromGuess: มีอักษรไทย -> เป็นคำอธิบาย ไม่ใช่คำถูก', () => {
+  // คำถูกใน glossary.md ตัวจริง 106 ตัว (exact 86 + fuzzy 19 + aliases 1) มีอักษรไทย 0
+  // ฟิกซ์เจอร์นี้นับได้ 3 คำและไม่มี / , จึงตกด้วยเกณฑ์อักษรไทยข้อเดียวเท่านั้น
+  assert.strictEqual(termFromGuess('เดาว่าเป็นชื่อบริษัท Partner สะกดยังไม่แน่'), '');
+  assert.strictEqual(termFromGuess('สิงค์ เมนู (Zinga)'), '');
+});
+
+test('termFromGuess: มี / -> โมเดลเสนอหลายคำตอบ ไม่เดาแทน', () => {
+  // 3 คำ ไม่มีไทย ยาว 14 ตัว -- ตกด้วยเกณฑ์ / ข้อเดียว
+  assert.strictEqual(termFromGuess('Chat / ChatGPT'), '');
+});
+
+test('termFromGuess: มี , -> ไม่ให้คำถูก', () => {
+  // 2 คำ ไม่มีไทย ยาว 9 ตัว -- ตกด้วยเกณฑ์ , ข้อเดียว
+  assert.strictEqual(termFromGuess('Bill, Bin'), '');
+});
+
+test('termFromGuess: เกิน 3 คำ -> เป็นประโยค ไม่ใช่คำ', () => {
+  // 4 คำ ไม่มีไทย ไม่มี / , ยาว 24 ตัว -- ตกด้วยเกณฑ์จำนวนคำข้อเดียว
+  assert.strictEqual(termFromGuess('เดาว่าคือ Clean Room Design System'), '');
+});
+
+test('termFromGuess: ยาวเกิน 40 ตัวอักษร -> ไม่ให้คำถูก', () => {
+  // 3 คำ ไม่มีไทย ไม่มี / , ยาว 61 ตัว -- ตกด้วยเกณฑ์ความยาวข้อเดียว
+  assert.strictEqual(
+    termFromGuess('Supercalifragilistic Expialidocious Antidisestablishmentarian'), '');
+});
+
+test('termFromGuess: ตัดอัญประกาศ/backtick หัวท้าย แต่ไม่แตะตรงกลาง', () => {
+  assert.strictEqual(termFromGuess('เดาว่าคือ "Playwright"'), 'Playwright');
+  assert.strictEqual(termFromGuess('`cheat sheet` (คู่มือลัด)'), 'cheat sheet');
+  assert.strictEqual(termFromGuess("O'Reilly"), "O'Reilly", "' กลางคำต้องรอด");
+});
+
+test('termFromGuess: ฝั่งขวาเป็นวงเล็บล้วน -> ว่าง', () => {
+  assert.strictEqual(termFromGuess('(ไม่แน่ใจ / ชื่อโปรเจกต์เฉพาะ)'), '');
+  assert.strictEqual(termFromGuess(''), '');
+});
+
+test('termFromGuess: วัดกับ summary.meta.md จริง -> 35 แถว ได้คำถูก 20', () => {
+  const fs = require('node:fs');
+  const REAL = 'D:/COWORK/meeting-notes/meetings/' +
+    '2026-07-31_19-59-Transfer Knowledge Session/summary.meta.md';
+  assert.ok(fs.existsSync(REAL), `ไม่พบ fixture ที่ ${REAL}`);
+  const meta = parseMeta(fs.readFileSync(REAL, 'utf8'));
+  const sec = meta.sections.find(s => s.title.startsWith('คำที่น่าจะถอดเพี้ยน'));
+  assert.ok(sec, 'ไม่พบหัวข้อ "คำที่น่าจะถอดเพี้ยน" ในไฟล์จริง');
+  const words = parseWords(sec.body);
+  assert.strictEqual(words.length, 35);
+  assert.strictEqual(words.filter(w => termFromGuess(w.guess)).length, 20);
 });
 
 // ===== landedRows =====

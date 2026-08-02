@@ -24,6 +24,9 @@
   // rows คีย์ด้วยเลข section (si) -- Minor 8: กันหัวข้อแบบคำสองหัวข้อในประชุมเดียวแย่งกันใช้
   // array แบนก้อนเดียว (ดูคอมเมนต์จุด mtGloss.rows[si]=glossaryDraft(words) ใน renderMeta)
   let mtGloss={rows:{}, state:null, report:null};
+  // ล้างสถานะร่าง/ผลส่งของแท็บคำ -- เรียกตอนเปิดประชุมใหม่ ถ้าไม่ล้าง ประชุมถัดไปจะเห็นแถว
+  // ที่ร่างไว้ของประชุมก่อน (rows ถูก key ด้วยเลข section ไม่ใช่ด้วยตัวประชุม)
+  const resetGloss=()=>{ mtGloss={rows:{}, state:null, report:null}; };
 
   function mtDate(d){
     const dt=new Date(d+'T00:00:00');
@@ -155,7 +158,39 @@
     });
   }
   // คำนำที่โมเดลใช้ขึ้นต้นฝั่ง "เดาว่าคือ" -- ตัดออกให้เหลือแต่ตัวคำ
+  // ตัวนี้เป็นกฎ "เข้ม" ใช้ตัดสินการติ๊กอัตโนมัติเท่านั้น ห้ามเอาไปรวมกับ GUESS_PREFIX_LOOSE
   const GUESS_PREFIX=/^(?:ฟังไม่ออก\s+)?(?:เดาว่าคือ|เดาว่าเป็น|น่าจะเป็น|น่าจะคือ)\s+/;
+  // คำนำแบบผ่อนปรน ใช้เฉพาะตอน "เติมช่องคำถูกให้" -- ครอบคำที่โมเดลสะกดเพี้ยน ("เด่าว่าคือ"
+  // เจอจริงในไฟล์) และไม่บังคับช่องว่างท้ายคำนำ เพราะโมเดลเขียน "เดาว่าคือชื่อ..." ติดกันก็มี
+  const GUESS_PREFIX_LOOSE=/^(?:ฟังไม่ออก\s+)?(?:เดาว่าคือ|เดาว่าเป็น|เด่าว่าคือ|เด่าว่าเป็น|น่าจะเป็น|น่าจะคือ)\s*/;
+  // อักขระที่โมเดลชอบคร่อมคำมา -- ตัดเฉพาะ "หัวกับท้าย" ไม่แตะตรงกลาง เพราะคำถูกจริงมี
+  // เครื่องหมายพวกนี้อยู่กลางคำได้ (O'Reilly, don't)
+  const EDGE_QUOTES=/^[\s"'“”‘’`]+|[\s"'“”‘’`]+$/g;
+  const trimEdge=s=>String(s||'').replace(EDGE_QUOTES,'');
+  // คำถูกใน glossary.md ตัวจริงไม่มีอักษรไทยเลยสักตัว (exact 86 + fuzzy 19 + aliases 1 = 106
+  // นับเมื่อ 2026-08-02) ภาษาไทยอยู่ฝั่ง "คำผิด" เสมอ เช่น `Playwright: เพลย์ไรท์`
+  //
+  // เกณฑ์นี้จำเป็น ไม่ใช่ของแถม: ตัวกรอง "ไม่เกิน 3 คำ" นับด้วยช่องว่าง แต่ภาษาไทยไม่เว้นวรรค
+  // ทั้งประโยคจึงนับได้ 1-3 คำแล้วรอดตัวกรองนั้นไปหมด ต้นแบบรอบแรกที่ไม่มีเกณฑ์นี้เติม
+  // "เดาว่าเป็นชื่อบริษัท Partner สะกดยังไม่แน่" ลงช่องคำถูกให้ 8 แถว
+  const THAI_CHAR=/[฀-๿]/;
+  // ดึง "คำถูก" ออกจากข้อความประเมินของโมเดล -- ใช้ "เติมช่องให้" เท่านั้น ไม่ใช่ตัวตัดสินการติ๊ก
+  // (ดูเหตุผลที่แยกกันใน glossaryDraft)
+  function termFromGuess(guess){
+    const g=trimEdge(String(guess||'')
+      .replace(GUESS_PREFIX_LOOSE,'')
+      // ต้องตัดวงเล็บ "ก่อน" ตรวจเกณฑ์ข้างล่าง -- บริบทในวงเล็บมีอักษรไทยและ / ได้เป็นปกติ
+      // เช่น "Attendance (ในบริบทคือชื่อ Agent หรือ Bot ที่ช่วยทำงาน)" ที่คำถูกคือ Attendance
+      .replace(/\s*\([^)]*\)/g,' ')
+      .replace(/\s+/g,' ')).trim();
+    if(!g) return '';
+    // ไม่ต้องเช็ค "หรือ" แยกอีกตัว -- "หรือ" เป็นอักษรไทย บรรทัดนี้ดักไว้ก่อนเสมอ
+    // ใส่เพิ่มจะได้การ์ดที่ไม่มีวันทำงาน และเทสที่อ้างว่าทดสอบมันจะผ่านทั้งที่ลบทิ้งแล้ว
+    if(THAI_CHAR.test(g)) return '';
+    if(g.includes('/')||g.includes(',')) return '';
+    if(g.split(/\s+/).length>3||g.length>40) return '';
+    return g;
+  }
   // ร่าง entry สำหรับส่งเข้า glossary.md จากแถว parseWords
   //
   // วัดกับประชุมจริง (Stanup 2026-07-31, 32 แถว): แปลงอัตโนมัติได้ 24 อีก 8 ฝั่งขวาเป็น
@@ -163,16 +198,28 @@
   // ไม่ติ๊กให้ แต่ยังโชว์คำผิดไว้ให้กรอกคำถูกเอง -- ทิ้งไปเลยจะเสียแถวที่มีค่าที่สุดบางแถว
   function glossaryDraft(words){
     return (words||[]).map(w=>{
-      // วงเล็บในฝั่งซ้ายเป็นบริบทที่โมเดลใส่มา ไม่ใช่คำที่ถอดเพี้ยน
-      const forms=String(w.heard||'').replace(/\s*\([^)]*\)/g,'')
-        .split('/').map(s=>s.trim()).filter(Boolean);
       const guess=String(w.guess||'');
+      // คำถูก: กฎกว้าง -- แค่ "เติมช่องให้" ผู้ใช้อ่านข้อความประเมินแล้วตัดสินใจติ๊กเอง
+      const term=termFromGuess(guess);
+      // วงเล็บในฝั่งซ้ายเป็นบริบทที่โมเดลใส่มา ไม่ใช่คำที่ถอดเพี้ยน
+      // อัญประกาศหัวท้ายก็ของโมเดล ไม่ใช่ตัวคำ -- ปล่อยไว้แล้วมันจะลงไฟล์จริงเป็นคีย์ที่ไม่มี
+      // วันแมตช์อะไรเลย (เกิดแล้วที่ glossary.md:183 `"Playwright": "PlayLight"`)
+      let forms=String(w.heard||'').replace(/\s*\([^)]*\)/g,'')
+        .split('/').map(s=>trimEdge(s).trim()).filter(Boolean);
+      // คำผิดที่เท่ากับคำถูกเป๊ะ = โมเดลบอกว่า "คำนี้ถูกอยู่แล้ว" (เจอจริง: Redmine → Redmine,
+      // Screenshot → Screenshot) ปล่อยไปถึงชั้นเขียนจะโดนกฎข้อ 1 บล็อกอยู่ดี แต่ผู้ใช้จะได้
+      // รายงาน "ชน · ไม่เขียน" ที่อ่านแล้วไม่รู้ว่าต้องทำอะไรต่อ
+      if(term) forms=forms.filter(f=>f.toLowerCase()!==term.toLowerCase());
+      // ติ๊กอัตโนมัติ: กฎ "เข้ม" ของเดิมเป๊ะ ห้ามเปลี่ยนไปผูกกับ termFromGuess -- การ์ดสองตัว
+      // ข้างล่าง (<=3 คำ, ไม่มี "หรือ") เคย confounded กันจนเทสผ่านทั้งที่ลบตัวใดตัวหนึ่งทิ้ง
+      // ถ้ายุบเข้าด้วยกัน เทสคู่นั้นจะกลายเป็นของปลอมทันที
       const hasPrefix=GUESS_PREFIX.test(guess);
-      const term=hasPrefix?guess.replace(GUESS_PREFIX,'').trim():'';
-      // "หรือ" = โมเดลเสนอสองคำตอบ, เกิน 3 คำ = เป็นประโยคไม่ใช่คำ
-      const clean=hasPrefix && !!term && !term.includes('หรือ') && term.split(/\s+/).length<=3;
-      return {heard:w.heard, n:w.n, forms, term:clean?term:'', section:'exact',
-              tick:clean && forms.length>0};
+      const strict=hasPrefix?guess.replace(GUESS_PREFIX,'').trim():'';
+      const clean=hasPrefix && !!strict && !strict.includes('หรือ') && strict.split(/\s+/).length<=3;
+      // ต้องมี term ที่ใช้ได้จริงด้วย ไม่ใช่แค่ clean -- clean ไม่มีเกณฑ์อักษรไทย ติ๊กแถวที่
+      // term ว่างไปจะกลายเป็นแถวที่กดส่งแล้วโดนฟ้องว่ายังไม่ได้กรอกคำถูก
+      return {heard:w.heard, guess, n:w.n, forms, term, section:'exact',
+              tick:clean && !!term && forms.length>0};
     });
   }
   // bullet "- 08:00–16:20 (…): เนื้อหา" → {ts,tx}  (ป้ายเวลาเป็น optional)
@@ -271,7 +318,7 @@
   }
   function mtOpenMeeting(m){
     mtOpen=m; mtTab='s'; mtTq=''; mtSpk=null;
-    mtGloss={rows:{}, state:null, report:null};
+    resetGloss();
     document.getElementById('mtList').classList.add('hidden');
     document.getElementById('mtReader').classList.remove('hidden');
     renderMtReader();
@@ -366,6 +413,7 @@
             ? `<span class="gdone">✓ อยู่ใน glossary แล้ว</span>`
             : `<input type="checkbox" class="gk" ${r.tick?'checked':''} title="เลือกส่งเข้า glossary">`}
           <input class="gin wrong" value="${esc(r.forms.join(', '))}" placeholder="คำผิด1, คำผิด2"${done?' disabled':''}>
+          ${r.guess?`<span class="gai" title="${esc(r.guess)}">${esc(r.guess)}</span>`:''}
           <span class="ar">→</span>
           <input class="gin right" value="${esc(r.term)}" placeholder="พิมพ์คำถูก"${done?' disabled':''}>
           <select class="gsec"${done?' disabled':''}>
@@ -717,6 +765,6 @@
   // ที่ไม่ต้องใช้ DOM (renderMeta ใช้ esc จาก global.COWORK.util เลยไม่ export)
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { parseMeta, splitCounts, parseWords, parseSpots, mdRender, glossaryDraft, landedRows,
-      isDone, glossKnown, renderMeta };
+      isDone, glossKnown, renderMeta, termFromGuess, resetGloss };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

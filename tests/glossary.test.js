@@ -585,3 +585,127 @@ test('Minor 7: entry ไม่มีฟอร์มส่งมาเลย (for
   assert.notStrictEqual(r.skipped[0].reason, 'มีอยู่แล้วทั้งหมด', 'Ghost ไม่เคยอยู่ในไฟล์ การบอกว่า "มีอยู่แล้ว" เป็นเรื่องโกหก');
   assert.strictEqual(r.newText, null);
 });
+
+// ===== อัญประกาศคร่อมคำ =====
+// เกิดขึ้นจริงแล้ว: glossary.md:183 มี `"Playwright": "PlayLight"` ซึ่งเป็นคนละคีย์กับ
+// `Playwright:` ที่บรรทัด 84 และคำผิด `"PlayLight"` ก็ไม่ตรงกับ `PlayLight` ใน transcript
+// ทั้งบรรทัดจึงตายสนิท แต่ UI รายงานว่า "เพิ่มใหม่" สำเร็จ
+test('planWrite: คำถูกที่มีอัญประกาศคร่อม -> conflict ไม่เขียน', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: '"Playwright"', forms: ['PlayLight'] }], {});
+  assert.strictEqual(out.added.length, 0);
+  assert.strictEqual(out.conflicts.length, 1);
+  // เหมือน conflict ตัวอื่นทุกประการ (markup, กฎข้อ 1/2 ฯลฯ): เมื่อ entry เดียวถูกปฏิเสธทั้งหมด
+  // ไม่มี edits/inserts อะไรเลย newText จึงเป็น null (สัญญาณ "ห้ามเขียนไฟล์") ไม่ใช่ string เท่า src
+  assert.strictEqual(out.newText, null, 'ห้ามแตะไฟล์เลยเมื่อคำถูกใช้ไม่ได้');
+});
+
+test('planWrite: คำผิดที่มีอัญประกาศคร่อม -> conflict ไม่เขียน', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: 'Playwright', forms: ['"PlayLight"'] }], {});
+  assert.strictEqual(out.added.length, 0);
+  assert.strictEqual(out.conflicts.length, 1);
+  assert.strictEqual(out.newText, null);
+});
+
+test('planWrite: backtick คร่อมคำก็บล็อกเหมือนกัน', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: '`cheat sheet`', forms: ['cheatTangNiw'] }], {});
+  assert.strictEqual(out.conflicts.length, 1);
+  assert.strictEqual(out.newText, null);
+});
+
+test('planWrite: อัญประกาศกลางคำต้องผ่าน -- ชื่อจริงมี \' อยู่กลางคำได้', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: "O'Reilly", forms: ['OhRiley'] }], {});
+  assert.strictEqual(out.conflicts.length, 0, "' กลางคำไม่ใช่ปัญหา");
+  assert.strictEqual(out.added.length, 1);
+  assert.ok(out.newText.includes("O'Reilly: OhRiley"));
+});
+
+// ===== EDGE_QUOTE_RE: ต้องกันทั้งสองขอบแยกกัน ไม่ใช่แค่เคสสมมาตร =====
+// เดิมฟิกซ์เจอร์ทั้งหมด (Playwright/PlayLight/cheat sheet) มีอัญประกาศคร่อมทั้งสองข้าง --
+// แทนที่ /^[...]|[...]$/ ด้วย /^[...]/ อย่างเดียว หรือ /[...]$/ อย่างเดียว เทสข้างบนก็ยังเขียวหมด
+// เพราะ regex ทั้งคู่ยังจับได้ ต้องมีฟิกซ์เจอร์ที่มีอัญประกาศแค่ "ข้างเดียว" เพื่อพิสูจน์ anchor
+// แต่ละตัวแยกจากกันจริง ๆ
+test('planWrite: อัญประกาศ "หัว" อย่างเดียว (ไม่มีปิดท้าย) ก็ต้องถูกบล็อก -- พิสูจน์ anchor ^', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: '"HalfQuote', forms: ['HalfForm'] }], {});
+  assert.strictEqual(out.conflicts.length, 1, 'อัญประกาศนำหน้าอย่างเดียวต้องโดน anchor ^ จับ');
+  assert.strictEqual(out.newText, null);
+});
+
+test('planWrite: อัญประกาศ "ท้าย" อย่างเดียว (ไม่มีนำหน้า) ก็ต้องถูกบล็อก -- พิสูจน์ anchor $', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: 'TrailQuote"', forms: ['TrailForm'] }], {});
+  assert.strictEqual(out.conflicts.length, 1, 'อัญประกาศตามหลังอย่างเดียวต้องโดน anchor $ จับ');
+  assert.strictEqual(out.newText, null);
+});
+
+// ===== findUnsafeChar: '#' ที่ "ขึ้นต้น" ค่า (คนละเคสกับ " #" กลางคำ) =====
+// src/glossary.py ข้ามทุกบรรทัดที่ trim() แล้วขึ้นต้นด้วย '#' ทิ้งเป็น comment (ไม่ใช่แค่
+// inline comment กลางบรรทัดแบบที่ INLINE_COMMENT_RE / " #" เช็คอยู่แล้ว) -- ของเดิมเช็คแค่
+// " #" (ต้องมีช่องว่างนำหน้า) เพื่อกัน C#/F# เลยปล่อย '#' ที่ขึ้นต้นค่าตรง ๆ ให้ผ่านไปได้
+// เขียนแล้ว Python จะอ่านบรรทัดนั้นเป็น comment เงียบ ๆ แต่ UI รายงานว่า "เพิ่มใหม่" สำเร็จ
+test('planWrite: คำถูกขึ้นต้นด้วย # -> conflict ไม่เขียน (Python จะข้ามทั้งบรรทัดเป็น comment)', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: '#redmine-support', forms: ['RedMind'] }], {});
+  assert.strictEqual(out.added.length, 0);
+  assert.strictEqual(out.conflicts.length, 1);
+  assert.strictEqual(out.newText, null, 'ห้ามแตะไฟล์เลยเมื่อคำถูกขึ้นต้นด้วย #');
+});
+
+test('planWrite: คำผิดขึ้นต้นด้วย # -> conflict ไม่เขียน', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: 'Alpha', forms: ['#WZ'] }], {});
+  assert.strictEqual(out.added.length, 0);
+  assert.strictEqual(out.conflicts.length, 1);
+  assert.strictEqual(out.newText, null);
+});
+
+test('planWrite: C# เป็นคำถูกยังใช้ได้ปกติ -- ไม่ใช่ # ขึ้นต้น ต้องไม่โดนบล็อก', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: 'C#', forms: ['CSharpLang'] }], {});
+  assert.strictEqual(out.conflicts.length, 0, 'C# ต้องยังใช้งานได้ (# ไม่ได้อยู่ต้นคำ)');
+  assert.strictEqual(out.added.length, 1);
+  assert.ok(out.newText.includes('C#: CSharpLang'));
+});
+
+// ทุกอักขระที่ str.splitlines() ของ Python ตัดบรรทัด -- เทสตัวล่างคุมแค่ตัวเดียว ลบอีกเก้าตัว
+// ออกจาก NEWLINE_RE ทีละตัวแล้วชุดเทสยังเขียวหมด ซึ่งเป็นข้อบกพร่องคลาสเดียวกับที่การขยาย
+// คลาสนี้ตั้งใจปิด จึงต้องวนให้ครบทั้งชุด
+//
+// ประกอบอักขระด้วย String.fromCharCode ไม่ใช่ escape ในสตริง -- ตัวคั่นสองตัวท้ายเป็น
+// LineTerminator ของ ECMAScript เอง ตัวดิบที่หลุดลงไฟล์จะไปตัดคอมเมนต์ // กลางคันจนไฟล์
+// parse ไม่ผ่าน (เกิดขึ้นจริงสองครั้งตอนทำสาขานี้) เก็บเป็นเลขโค้ดพอยต์จึงปลอดภัยทั้งตอนอ่านและแก้
+const SPLITLINES_SEPARATORS = [
+  ['CR U+000D', 0x0d], ['LF U+000A', 0x0a], ['VT U+000B', 0x0b], ['FF U+000C', 0x0c],
+  ['FS U+001C', 0x1c], ['GS U+001D', 0x1d], ['RS U+001E', 0x1e],
+  ['NEL U+0085', 0x85], ['LS U+2028', 0x2028], ['PS U+2029', 0x2029],
+];
+test('planWrite: ทุกอักขระที่ splitlines() ของ Python ตัดบรรทัด -> conflict ไม่เขียน', () => {
+  const src = '## exact\nBill: Bin\n';
+  for (const [name, code] of SPLITLINES_SEPARATORS) {
+    // แทรกกลางฟอร์ม ไม่ใช่หัวท้าย -- planWrite เรียก .trim() ก่อนตรวจ ตัวที่เป็น whitespace
+    // ของ JS (VT, FF) จะถูกกินทิ้งถ้าไปอยู่ริม แล้วเทสจะผ่านด้วยเหตุผลอื่นโดยไม่มีใครรู้
+    const form = 'foo' + String.fromCharCode(code) + 'bar';
+    const out = planWrite(src, [{ section: 'exact', term: 'Beta', forms: [form] }], {});
+    assert.strictEqual(out.conflicts.length, 1, name + ' ต้องถูกบล็อก');
+    assert.strictEqual(out.added.length, 0, name + ' ต้องไม่ถูกเขียน');
+    assert.strictEqual(out.newText, null, name + ' ต้องไม่แตะไฟล์เลย');
+  }
+});
+
+// ===== findUnsafeChar: ขยายคลาสตัวแบ่งบรรทัดให้ตรงกับ Python str.splitlines() =====
+// splitlines() ของ Python ตัดบรรทัดที่ U+000B U+000C U+001C U+001D U+001E U+0085 U+2028 U+2029
+// ด้วย ไม่ใช่แค่ CR/LF -- ค่าที่มีอักขระเหล่านี้ปนมา (วางจากคลิปบอร์ด) ผ่านการเช็คเดิมไปได้
+// แต่ Python อ่านกลับมาเป็นค่าที่ถูกตัดครึ่งบวกบรรทัดแปลกปลอมอีกบรรทัด ทั้งที่ UI รายงานว่าสำเร็จ
+// ทดสอบด้วย unicode escape ของ U+2028 ตรง ๆ ในสตริงเทส ไม่แปะอักขระดิบลงคอมเมนต์ -- ตัวอักขระ
+// ดิบเป็น LineTerminator ของ ECMAScript เอง จะไปตัดคอมเมนต์ // กลางคันจนไฟล์ parse ไม่ผ่าน
+test('planWrite: คำผิดมี \\u2028 (line separator ที่ splitlines() ของ Python ตัด) -> conflict ไม่เขียน', () => {
+  const src = '## exact\nBill: Bin\n';
+  const out = planWrite(src, [{ section: 'exact', term: 'Beta', forms: ['foo\u2028bar'] }], {});
+  assert.strictEqual(out.added.length, 0);
+  assert.strictEqual(out.conflicts.length, 1);
+  assert.strictEqual(out.newText, null);
+});

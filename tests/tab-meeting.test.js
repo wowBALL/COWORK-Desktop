@@ -24,7 +24,7 @@ global.document = {
 };
 
 const { parseMeta, splitCounts, parseWords, parseSpots, glossaryDraft, landedRows,
-  isDone, glossKnown, renderMeta } = require('../tab-meeting.js');
+  isDone, glossKnown, renderMeta, termFromGuess, resetGloss } = require('../tab-meeting.js');
 
 // ฟิกซ์เจอร์ทั้งหมดยกมาจากไฟล์จริง (ไม่ใช่ข้อมูลที่แต่งขึ้นเอง):
 // D:\COWORK\meeting-notes\meetings\2026-07-31_09-59-Stanup2\summary.meta.md
@@ -219,16 +219,168 @@ test('glossaryDraft: ตรวจสอบแยกต่างหาก: term >
   assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
 });
 
-test('glossaryDraft: ตรวจสอบแยกต่างหาก: term มี หรือ แต่ <= 3 คำ → ไม่ติ๊ก', () => {
-  // ฟิกซ์เจอร์นี้ตรวจสอบเฉพาะ condition !term.includes('หรือ')
-  // โดยให้ term มี หรือ แต่นับคำแล้วได้ 3 คำ (ตัดการรวมกันกับ term.split(/\\s+/).length <= 3)
+// เดิมคอมเมนต์นี้อ้างว่าฟิกซ์เจอร์ตรวจ condition !strict.includes('หรือ') ใน clean โดยเฉพาะ --
+// ไม่จริงอีกต่อไปหลังใส่ `&& !!term` เข้า tick: guess มี "หรือ" ซึ่งเป็นอักษรไทย ทำให้
+// termFromGuess คืน '' ผ่าน THAI_CHAR เสมอ (ดักไว้ก่อนจะไปถึงเกณฑ์ "หรือ" ใด ๆ) -- term จึงว่าง
+// และ tick เป็น false ผ่าน !!term อยู่แล้ว ไม่ต้องพึ่งการ์ด !strict.includes('หรือ') เลย
+// ลบการ์ดนั้นออกจาก clean เทสนี้ก็ยังเขียว (ตรวจแล้ว) -- ฟิกซ์เจอร์ที่พิสูจน์การ์ดตัวนี้จริง ๆ
+// อยู่ที่ 'หรือ อยู่ในวงเล็บ...' ด้านล่าง (เส้นทางเดียวที่ strict มี "หรือ" แต่ term ไม่มี)
+test('glossaryDraft: term มี หรือ แต่ <= 3 คำ → ไม่ติ๊ก (เพราะ "หรือ" เป็นอักษรไทย ไม่ใช่เพราะการ์ดใน clean)', () => {
   const [r] = glossaryDraft([
     { heard: 'BillBin', guess: 'เดาว่าคือ Bill หรือ Bin', n: '' },
   ]);
   assert.strictEqual(r.forms.length, 1);
   assert.strictEqual(r.forms[0], 'BillBin');
-  assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะมี หรือ');
-  assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
+  assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะ term ว่าง');
+  assert.strictEqual(r.term, '', 'term ต้องว่างเพราะมีอักษรไทยปน (THAI_CHAR) ไม่ใช่เพราะการ์ด หรือ');
+});
+
+// นี่คือฟิกซ์เจอร์ที่พิสูจน์การ์ด !strict.includes('หรือ') ใน clean จริง ๆ -- ต้องใช้เส้นทางที่
+// "หรือ" อยู่ใน strict (ข้อความหลังตัดคำนำ "เดาว่าคือ") แต่ไม่อยู่ใน term ที่ termFromGuess คืนออกมา
+// เส้นทางเดียวที่เป็นแบบนั้นคือ "หรือ" อยู่ใน "วงเล็บ" -- termFromGuess ตัดวงเล็บทิ้งก่อนตรวจ
+// THAI_CHAR (ดูคอมเมนต์ที่ตัวมันเอง) แต่ strict ของ glossaryDraft ไม่ได้ตัดวงเล็บเลย
+test('glossaryDraft: หรือ อยู่ในวงเล็บที่ termFromGuess ตัดออก แต่ strict ยังเห็น -- การ์ดต้องกันติ๊กแม้ term ใช้ได้จริง', () => {
+  const [r] = glossaryDraft([{ heard: 'Foo', guess: 'เดาว่าคือ Bar (หรือ)', n: '' }]);
+  assert.strictEqual(r.term, 'Bar', 'termFromGuess ตัดวงเล็บออก ต้องได้ term ที่ใช้ได้จริง');
+  assert.strictEqual(r.tick, false,
+    'strict ("Bar (หรือ)") ยังมี "หรือ" อยู่เพราะไม่ได้ตัดวงเล็บ -- การ์ดต้องกันติ๊กแม้ term ผ่านแล้ว');
+});
+
+// ===== termFromGuess =====
+// ฟิกซ์เจอร์ทุกตัวยกมาจากฝั่งขวาของ "## คำที่น่าจะถอดเพี้ยน" ในไฟล์จริง ไม่ได้แต่งขึ้นเอง
+//
+// เกณฑ์แต่ละข้อมีเทสของตัวเองที่ "ตกด้วยเกณฑ์นั้นข้อเดียว" -- ห้ามใช้ฟิกซ์เจอร์ที่ตกหลายข้อ
+// พร้อมกัน ไม่งั้นลบเกณฑ์ตัวใดตัวหนึ่งทิ้งแล้วเทสยังเขียว (เคยเกิดกับ glossaryDraft มาแล้ว)
+test('termFromGuess: แม็ปตรง ๆ ไม่มีคำนำ -> ได้คำถูก', () => {
+  assert.strictEqual(termFromGuess('BMAD'), 'BMAD');
+  assert.strictEqual(termFromGuess('GitLab'), 'GitLab');
+});
+
+test('termFromGuess: ตัดคำนำ "เดาว่าคือ" ออก', () => {
+  assert.strictEqual(termFromGuess('เดาว่าคือ Odoo'), 'Odoo');
+  assert.strictEqual(termFromGuess('ฟังไม่ออก เดาว่าคือ Payment'), 'Payment');
+});
+
+test('termFromGuess: คำนำที่โมเดลสะกดเพี้ยน "เด่าว่าคือ" ก็ตัดออก', () => {
+  assert.strictEqual(termFromGuess('เด่าว่าคือ Solo'), 'Solo');
+});
+
+test('termFromGuess: ตัดวงเล็บก่อนตรวจเกณฑ์อื่น -- บริบทในวงเล็บมีอะไรก็ได้', () => {
+  // ถ้าตรวจเกณฑ์ก่อนตัดวงเล็บ แถวนี้จะตกเพราะในวงเล็บมีทั้งอักษรไทยและ "หรือ"
+  assert.strictEqual(
+    termFromGuess('Attendance (ในบริบทคือชื่อ Agent หรือ Bot ที่ช่วยทำงาน)'), 'Attendance');
+  assert.strictEqual(termFromGuess('dock (โฟลเดอร์)'), 'dock');
+});
+
+test('termFromGuess: มีอักษรไทย -> เป็นคำอธิบาย ไม่ใช่คำถูก', () => {
+  // คำถูกใน glossary.md ตัวจริง 106 ตัว (exact 86 + fuzzy 19 + aliases 1) มีอักษรไทย 0
+  // ฟิกซ์เจอร์นี้นับได้ 3 คำและไม่มี / , จึงตกด้วยเกณฑ์อักษรไทยข้อเดียวเท่านั้น
+  assert.strictEqual(termFromGuess('เดาว่าเป็นชื่อบริษัท Partner สะกดยังไม่แน่'), '');
+  assert.strictEqual(termFromGuess('สิงค์ เมนู (Zinga)'), '');
+});
+
+test('termFromGuess: มี / -> โมเดลเสนอหลายคำตอบ ไม่เดาแทน', () => {
+  // 3 คำ ไม่มีไทย ยาว 14 ตัว -- ตกด้วยเกณฑ์ / ข้อเดียว
+  assert.strictEqual(termFromGuess('Chat / ChatGPT'), '');
+});
+
+test('termFromGuess: มี , -> ไม่ให้คำถูก', () => {
+  // 2 คำ ไม่มีไทย ยาว 9 ตัว -- ตกด้วยเกณฑ์ , ข้อเดียว
+  assert.strictEqual(termFromGuess('Bill, Bin'), '');
+});
+
+test('termFromGuess: เกิน 3 คำ -> เป็นประโยค ไม่ใช่คำ', () => {
+  // 4 คำ ไม่มีไทย ไม่มี / , ยาว 24 ตัว -- ตกด้วยเกณฑ์จำนวนคำข้อเดียว
+  assert.strictEqual(termFromGuess('เดาว่าคือ Clean Room Design System'), '');
+});
+
+test('termFromGuess: ยาวเกิน 40 ตัวอักษร -> ไม่ให้คำถูก', () => {
+  // 3 คำ ไม่มีไทย ไม่มี / , ยาว 61 ตัว -- ตกด้วยเกณฑ์ความยาวข้อเดียว
+  assert.strictEqual(
+    termFromGuess('Supercalifragilistic Expialidocious Antidisestablishmentarian'), '');
+});
+
+test('termFromGuess: ตัดอัญประกาศ/backtick หัวท้าย แต่ไม่แตะตรงกลาง', () => {
+  assert.strictEqual(termFromGuess('เดาว่าคือ "Playwright"'), 'Playwright');
+  assert.strictEqual(termFromGuess('`cheat sheet` (คู่มือลัด)'), 'cheat sheet');
+  assert.strictEqual(termFromGuess("O'Reilly"), "O'Reilly", "' กลางคำต้องรอด");
+});
+
+test('termFromGuess: ฝั่งขวาเป็นวงเล็บล้วน -> ว่าง', () => {
+  assert.strictEqual(termFromGuess('(ไม่แน่ใจ / ชื่อโปรเจกต์เฉพาะ)'), '');
+  assert.strictEqual(termFromGuess(''), '');
+});
+
+test('termFromGuess: วัดกับ summary.meta.md จริง -> 35 แถว ได้คำถูก 20', () => {
+  const fs = require('node:fs');
+  const REAL = 'D:/COWORK/meeting-notes/meetings/' +
+    '2026-07-31_19-59-Transfer Knowledge Session/summary.meta.md';
+  assert.ok(fs.existsSync(REAL), `ไม่พบ fixture ที่ ${REAL}`);
+  const meta = parseMeta(fs.readFileSync(REAL, 'utf8'));
+  const sec = meta.sections.find(s => s.title.startsWith('คำที่น่าจะถอดเพี้ยน'));
+  assert.ok(sec, 'ไม่พบหัวข้อ "คำที่น่าจะถอดเพี้ยน" ในไฟล์จริง');
+  const words = parseWords(sec.body);
+  assert.strictEqual(words.length, 35);
+  assert.strictEqual(words.filter(w => termFromGuess(w.guess)).length, 20);
+});
+
+// ===== glossaryDraft: ของใหม่ในรอบนี้ =====
+test('glossaryDraft: เก็บข้อความประเมินดิบไว้ในแถว (guess)', () => {
+  const G = 'เดาว่าคือ "End-to-End Test" หรือ "UI Test"';
+  const [r] = glossaryDraft([{ heard: 'GORM Pro', guess: G, n: '' }]);
+  assert.strictEqual(r.guess, G, 'ต้องเก็บดิบ ๆ ไม่ตัดไม่แต่ง -- UI เป็นคนตัดด้วย CSS');
+  assert.strictEqual(r.term, '', 'ข้อความแบบนี้ยังไม่เติมช่องคำถูกให้');
+});
+
+test('glossaryDraft: แม็ปตรง ๆ ไม่มีคำนำ -> เติมคำถูกให้ แต่ยังไม่ติ๊ก', () => {
+  const [r] = glossaryDraft([{ heard: 'Bmat', guess: 'BMAD', n: '' }]);
+  assert.strictEqual(r.term, 'BMAD');
+  assert.strictEqual(r.tick, false, 'กฎติ๊กยังเป็นกฎเดิม -- ไม่มีคำนำก็ไม่ติ๊กให้');
+});
+
+test('glossaryDraft: ตัดอัญประกาศหัวท้ายออกจากคำผิด', () => {
+  // ถ้าไม่ตัด บรรทัดที่เขียนลง glossary.md จะเป็น `"Playwright": "PlayLight"` ซึ่งตายสนิท
+  // (เกิดขึ้นจริงแล้วที่ glossary.md:183) -- เป็นคนละคีย์กับ Playwright ที่มีอยู่
+  const [r] = glossaryDraft([{ heard: '"PlayLight"', guess: 'เดาว่าคือ "Playwright"', n: '' }]);
+  assert.deepStrictEqual(r.forms, ['PlayLight']);
+  assert.strictEqual(r.term, 'Playwright');
+});
+
+test('glossaryDraft: คำผิดที่เท่ากับคำถูก -> ตัดทิ้ง แถวนั้นส่งไม่ได้', () => {
+  // โมเดลกำลังบอกว่า "คำนี้ถูกอยู่แล้ว" ไม่ใช่ของที่ต้องเขียน
+  const [r] = glossaryDraft([{ heard: 'Redmine', guess: 'Redmine', n: '' }]);
+  assert.strictEqual(r.term, 'Redmine');
+  assert.deepStrictEqual(r.forms, []);
+  assert.strictEqual(r.tick, false);
+});
+
+test('glossaryDraft: เทียบคำผิด=คำถูกแบบไม่สนตัวพิมพ์ใหญ่เล็ก', () => {
+  const [r] = glossaryDraft([{ heard: 'redmine / RedMind', guess: 'Redmine', n: '' }]);
+  assert.deepStrictEqual(r.forms, ['RedMind']);
+});
+
+test('glossaryDraft: ติ๊กอัตโนมัติต้องมีคำถูกที่ใช้ได้จริงด้วย', () => {
+  // เส้นทาง clean ผ่านครบ (มีคำนำ, 1 คำ, ไม่มี "หรือ") แต่ termFromGuess ปัดตกเพราะเป็นไทย
+  // ถ้าติ๊กให้ทั้งที่ term ว่าง ผู้ใช้จะกดส่งแล้วโดนฟ้องว่า "แถวนี้ยังไม่มีคำถูก"
+  const [r] = glossaryDraft([{ heard: 'Sawasdee', guess: 'เดาว่าคือ สวัสดี', n: '' }]);
+  assert.strictEqual(r.term, '');
+  assert.strictEqual(r.tick, false);
+});
+
+test('glossaryDraft: วัดกับ summary.meta.md จริง -> 35 แถว, คำถูก 20, ติ๊ก 2', () => {
+  const fs = require('node:fs');
+  const REAL = 'D:/COWORK/meeting-notes/meetings/' +
+    '2026-07-31_19-59-Transfer Knowledge Session/summary.meta.md';
+  assert.ok(fs.existsSync(REAL), `ไม่พบ fixture ที่ ${REAL}`);
+  const meta = parseMeta(fs.readFileSync(REAL, 'utf8'));
+  const sec = meta.sections.find(s => s.title.startsWith('คำที่น่าจะถอดเพี้ยน'));
+  assert.ok(sec, 'ไม่พบหัวข้อ "คำที่น่าจะถอดเพี้ยน" ในไฟล์จริง');
+  const rows = glossaryDraft(parseWords(sec.body));
+  assert.strictEqual(rows.length, 35);
+  assert.strictEqual(rows.filter(r => r.term).length, 20);
+  assert.strictEqual(rows.filter(r => r.tick).length, 2, 'กฎติ๊กต้องไม่ขยับจากของเดิม');
+  assert.strictEqual(rows.filter(r => r.forms.some(f => /["']/.test(f))).length, 0,
+    'ไม่มีอัญประกาศเหลือในคำผิดสักแถว');
 });
 
 // ===== landedRows =====
@@ -304,11 +456,27 @@ test('Important 4: isDone -- section ที่ไม่มี known เลย (u
   assert.strictEqual(isDone({ term: 'X', forms: ['a'], section: 'exact' }, known), false);
 });
 
+// Fix 4: forms.length > 0 เดิมดูเหมือนของแถม (Array.prototype.every บน [] คืน true เสมอ) แต่
+// วัดกับประชุมจริงแล้วพบว่า 5 จาก 35 แถวมี forms: [] จริง ๆ (Redmine, session file, Zinga, GLM,
+// Screenshot -- คำผิดที่โมเดลถอดมาเท่ากับคำถูกเป๊ะ ถูกกรองทิ้งใน glossaryDraft ดูคอมเมนต์
+// "คำผิดที่เท่ากับคำถูกเป๊ะ" ที่นั่น) ถ้าไม่มีการ์ดนี้ แถวพวกนั้นจะโดนตีว่า "อยู่ใน glossary แล้ว"
+// (done: true) ทั้งที่ไม่มีฟอร์มไหนเลยที่ยืนยันได้จริงว่าอยู่ใน known -- ป้ายจะโกหกและแถวจะถูก
+// disable การกรอกทั้งที่ยังไม่เคยถูกส่งไปไหนเลย
+test('Fix 4: isDone -- แถวที่ forms ว่างเปล่า (มิสทรานสคริปต์เท่ากับคำถูกเป๊ะ) ต้องไม่ถือว่าเสร็จแล้ว แม้ section มีอยู่ใน known', () => {
+  const known = glossKnown({ sections: { exact: { Foo: ['bar'] } } });
+  assert.strictEqual(
+    isDone({ term: 'Redmine', forms: [], section: 'exact' }, known),
+    false,
+    'forms ว่างเปล่าต้องไม่ถือว่า "เสร็จแล้ว" -- [].every(...) เป็น true เสมอโดยไม่มีอะไรถูกตรวจจริง'
+  );
+});
+
 // Minor 8: mtGloss.rows เดิมเป็น array แบนก้อนเดียวใช้ร่วมกันทุกหัวข้อแบบคำในประชุมเดียว --
 // หัวข้อที่สองจะเห็นธง "ร่างแล้ว" จากหัวข้อแรกแล้วไม่ร่างของตัวเอง ทำให้ข้อมูลของหัวข้อแรก
 // ไปโผล่ซ้ำใต้หัวข้อที่สอง เทสนี้ประกอบ meta ที่มีสองหัวข้อแบบคำ แล้วตรวจว่าแต่ละ section
 // แสดงเฉพาะคำของตัวเอง ไม่เห็นคำของอีก section เลย
 test('Minor 8: renderMeta -- สองหัวข้อแบบคำในประชุมเดียวกัน ต้องไม่ทับ/ปนกัน', () => {
+  resetGloss();
   const meta = {
     model: 'test-model', modelNote: '', profile: 'dev', glossary: [], fuzzy: [], other: [],
     sections: [
@@ -326,4 +494,45 @@ test('Minor 8: renderMeta -- สองหัวข้อแบบคำในป
   assert.ok(!block0.includes('Baz'), 'section แรกต้องไม่เห็นคำของ section สอง (Baz)');
   assert.ok(block1.includes('Baz'), 'section สองต้องมีคำของตัวเอง (Baz)');
   assert.ok(!block1.includes('Odoo'), 'section สองต้องไม่เห็นคำของ section แรกซ้ำ (Odoo)');
+});
+
+// ตัวช่วยประกอบ meta ขั้นต่ำที่ renderMeta รับได้ -- ฟิลด์ครบตามที่ renderMeta อ่านจริง
+const metaWith = body => ({
+  model: 'test-model', modelNote: '', profile: 'dev', glossary: [], fuzzy: [], other: [],
+  sections: [{ title: 'คำที่น่าจะถอดเพี้ยน', body }],
+});
+
+test('renderMeta: วาดข้อความประเมินของ AI พร้อม tooltip ข้อความเต็ม', () => {
+  resetGloss();
+  const html = renderMeta(metaWith('- Bmat → BMAD (ได้ยิน 2 ครั้ง)'));
+  assert.ok(html.includes('class="gai"'), 'ต้องมีคอลัมน์ข้อความประเมิน');
+  assert.ok(html.includes('title="BMAD"'), 'ส่วนที่ล้นต้องอ่านได้จาก tooltip');
+});
+
+test('renderMeta: ไม่มีข้อความประเมิน -> ไม่วาดคอลัมน์เปล่า', () => {
+  resetGloss();
+  const html = renderMeta(metaWith('- Bmat →  (ได้ยิน 2 ครั้ง)'));
+  assert.ok(!html.includes('class="gai"'), 'แถวที่ฝั่งขวาว่างไม่ควรมีช่องว่างลอย ๆ');
+});
+
+test('renderMeta: อัญประกาศในข้อความประเมินต้องถูก escape ก่อนใส่ใน title', () => {
+  // util.js esc() escape " เป็น &quot; ต่อจาก textContent->innerHTML โดยเฉพาะเพื่อกรณีนี้
+  // ถ้าไม่ผ่าน esc() เครื่องหมาย " ตัวแรกจะปิด attribute แล้วที่เหลืองอกเป็น attribute ขยะ
+  resetGloss();
+  const html = renderMeta(metaWith('- X → เดาว่าคือ "Playwright" (ได้ยิน 1 ครั้ง)'));
+  assert.ok(html.includes('title="เดาว่าคือ &quot;Playwright&quot;"'),
+    'title ต้องเก็บข้อความเต็มในรูปที่ escape แล้ว');
+});
+
+test('renderMeta: เครื่องหมาย <> ในข้อความประเมินต้องถูก escape ก่อนใส่ในข้อความที่มองเห็นด้วย (ไม่ใช่แค่ title)', () => {
+  // renderMeta ถูก assign เข้า DOM ผ่าน body.innerHTML= (ดู mtOpenMeeting) ถ้าฝั่งข้อความที่
+  // มองเห็น (ระหว่าง > กับ </span>) ไม่ผ่าน esc() ค่า guess ที่มี < หรือ > จะกลายเป็น markup
+  // ดิบที่หลุดเข้า DOM ตรง ๆ -- ใช้ <> แทน " เพราะ " ทดสอบฝั่ง title ไปแล้วในเทสก่อนหน้า และ
+  // esc() escape < / > ผ่านเส้นทาง textContent->innerHTML คนละจุดกับที่ escape "
+  resetGloss();
+  const html = renderMeta(metaWith('- X → เดาว่าคือ <Playwright> (ได้ยิน 1 ครั้ง)'));
+  assert.ok(html.includes('>เดาว่าคือ &lt;Playwright&gt;</span>'),
+    'ข้อความที่มองเห็นต้องเก็บรูปที่ escape แล้ว');
+  assert.ok(!html.includes('<Playwright>'),
+    'ห้ามมี markup ดิบของ guess หลุดเข้าไปใน HTML ที่ส่งต่อให้ innerHTML=');
 });

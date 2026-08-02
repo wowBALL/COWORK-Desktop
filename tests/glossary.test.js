@@ -47,15 +47,6 @@ test('parseGlossary: คีย์ซ้ำ "ข้าม" section ไม่ใ�
   assert.deepStrictEqual(g.sections.fuzzy.GORM.forms, ['กรม']);
 });
 
-test('parseGlossary: ข้ามคำที่มี * [ ] -- อักขระเหล่านี้ประกอบหัว segment transcript', () => {
-  // `*` `[` `]` เป็นอักขระที่ประกอบหัว segment ของ transcript เช่น `**ผู้พูด 1** [00:00]:`
-  // ถ้า glossary มีคำเหล่านี้ คำนั้นจะทำให้ transcript parse ไม่ออก ต้องข้ามมัน
-  // นอก correct term เราต้องข้ามเรคคอร์ดด้วยถ้า form ใดก็ตามมีอักขระเหล่านี้
-  const g = parseGlossary(['## exact', 'Test: form[1]'].join('\n'));
-  assert.deepStrictEqual(g.sections.exact.Test, undefined);
-  assert.deepStrictEqual(g.duplicates, []);
-});
-
 test('parseGlossary: correct term มี * ทำให้ข้ามบรรทัดนั้น', () => {
   const g = parseGlossary(['## exact', 'Te*st: form1'].join('\n'));
   assert.strictEqual(g.sections.exact['Te*st'], undefined);
@@ -140,7 +131,7 @@ test('parseGlossary: ไฟล์จริงมีคีย์ซ้ำที�
   assert.ok(dup.includes('exact/Merge Request'));
 });
 
-const { planWrite } = require('../glossary.js');
+const { planWrite, MAPPING_SECTIONS } = require('../glossary.js');
 
 const META = { title: 'Stanup', date: '2026-07-31' };
 const BASE = [
@@ -459,4 +450,138 @@ test('Minor 5: layer สะสมสถานะข้ามกลุ่มใ�
   const gammaConflict = r.conflicts.find(c => c.term === 'Gamma');
   assert.ok(gammaConflict, 'Gamma ต้องเป็น conflict เพราะ Zorb ถูก Alpha จองไปแล้ว');
   assert.strictEqual(gammaConflict.clashesWith, 'Alpha');
+});
+
+// === Final review (final-review-fixes): Critical 1, Important 2/3/4, Minor 6/7 ===
+//
+// Critical 1: term/form เป็น free text แต่ไฟล์มีไวยากรณ์ของตัวเอง (`term: form1, form2  # comment`)
+// ทดสอบเป็น property: สำหรับอินพุตที่ถูกปฏิเสธ ต้องไม่เขียนอะไรเลย (newText === null) และสำหรับ
+// อินพุตที่ถูกรับ parseGlossary(planWrite(...).newText) ต้องคืน term/forms ตรงกับที่ส่งเข้าไปเป๊ะ ๆ
+const ALL_SECTIONS_BASE = [
+  '## exact', 'ExistingA: exform',
+  '## fuzzy', 'ExistingB: fzform',
+  '## project-names', 'ExistingC: pnform',
+  '## aliases', 'ExistingD: alform',
+].join('\n') + '\n';
+
+// วางตำแหน่งอักขระอันตรายไว้ "กลาง" สตริงเสมอ ไม่ใช่ขอบ -- planWrite trim() ทุกค่าก่อนตรวจ
+// (String(raw).trim()) ถ้าวางไว้ขอบ เช่น " # x" ตัว trim จะกินช่องว่างนำหน้าทิ้งจนไม่เหลือ
+// " #" ให้ /\s#/ จับ กลายเป็นเทสที่ไม่ได้ทดสอบอะไรจริง
+const HOSTILE = [':', ',', 'x:y', 'x,y', ',x', 'x,', 'x #y', 'x\ny', 'x\r\ny'];
+
+test('Critical 1 (round-trip, ปฏิเสธ): term ที่มีอักขระทำลายไวยากรณ์ไฟล์ -- ไม่เขียนอะไรเลย ทุก section', () => {
+  for (const section of MAPPING_SECTIONS) {
+    for (const bad of HOSTILE) {
+      const term = `Bad${bad}Term`;
+      const r = planWrite(ALL_SECTIONS_BASE, [{ term, forms: ['SafeForm1234'], section }], META);
+      assert.strictEqual(r.newText, null,
+        `term ${JSON.stringify(term)} section ${section} ต้องไม่เขียนอะไรเลย`);
+      assert.strictEqual(r.conflicts.length, 1,
+        `term ${JSON.stringify(term)} section ${section} ต้องเข้า conflicts พอดี 1 รายการ`);
+    }
+  }
+});
+
+test('Critical 1 (round-trip, ปฏิเสธ): form ที่มีอักขระทำลายไวยากรณ์ไฟล์ -- ไม่เขียนอะไรเลย ทุก section', () => {
+  for (const section of MAPPING_SECTIONS) {
+    for (const bad of HOSTILE) {
+      const form = `Bad${bad}Form`;
+      const term = `NewTerm${section}${HOSTILE.indexOf(bad)}`;
+      const r = planWrite(ALL_SECTIONS_BASE, [{ term, forms: [form], section }], META);
+      assert.strictEqual(r.newText, null,
+        `form ${JSON.stringify(form)} section ${section} ต้องไม่เขียนอะไรเลย`);
+      assert.ok(r.conflicts.length >= 1 || r.skipped.length >= 1,
+        `form ${JSON.stringify(form)} section ${section} ต้องถูกปฏิเสธ (conflict หรือ skipped)`);
+    }
+  }
+});
+
+test('Critical 1 (round-trip, ยอมรับ): term/form ปกติที่ผ่านการตรวจ ต้อง parse กลับมาตรงเป๊ะ', () => {
+  const r = planWrite(ALL_SECTIONS_BASE,
+    [{ term: 'BrandNewTerm', forms: ['SafeFormOne', 'SafeFormTwo'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 0);
+  assert.ok(r.newText, 'ต้องเขียนไฟล์จริง');
+  const reparsed = parseGlossary(r.newText);
+  assert.deepStrictEqual(reparsed.sections.exact.BrandNewTerm.forms, ['SafeFormOne', 'SafeFormTwo']);
+});
+
+test('Critical 1 (round-trip, ยอมรับ): merge เข้าบรรทัดเดิมก็ต้อง parse กลับมาตรงเป๊ะ', () => {
+  const r = planWrite(ALL_SECTIONS_BASE,
+    [{ term: 'ExistingA', forms: ['AddedFormHere'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 0);
+  const reparsed = parseGlossary(r.newText);
+  assert.deepStrictEqual(reparsed.sections.exact.ExistingA.forms, ['exform', 'AddedFormHere']);
+});
+
+test('Critical 1: ตัวอย่างจากรีวิว -- term "Ingress: nginx" ต้องถูกบล็อก ไม่ใช่ทำลาย Ingress เดิม', () => {
+  const src = ['## exact', 'Ingress: อิงเกรส, Engage-old'].join('\n') + '\n';
+  const r = planWrite(src, [{ term: 'Ingress: nginx', forms: ['อิงเกรซ'], section: 'exact' }], META);
+  assert.strictEqual(r.newText, null);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.match(r.conflicts[0].reason, /:/);
+});
+
+test('Critical 1: ตัวอย่างจากรีวิว -- form "C # sharp" ต้องถูกบล็อก ไม่ใช่กลายเป็น "C"', () => {
+  const r = planWrite(ALL_SECTIONS_BASE,
+    [{ term: 'CSharp', forms: ['C # sharp'], section: 'exact' }], META);
+  assert.strictEqual(r.newText, null);
+  assert.strictEqual(r.conflicts.length, 1);
+});
+
+// Important 2: header ซ้ำต้องรวมบัคเก็ตเดิม ไม่ใช่ทับ
+test('Important 2: header ซ้ำ (## exact สองครั้ง) ต้องรวมบัคเก็ตเดียวกัน ไม่ล้างของเก่าทิ้ง', () => {
+  const g = parseGlossary(['## exact', 'A: b', '## fuzzy', 'X: y', '## exact', 'C: d'].join('\n'));
+  assert.deepStrictEqual(Object.keys(g.sections.exact).sort(), ['A', 'C']);
+  assert.deepStrictEqual(g.sections.exact.A.forms, ['b']);
+  assert.deepStrictEqual(g.sections.exact.C.forms, ['d']);
+});
+
+test('Important 2: header ซ้ำ -- คำเดิมที่ปรากฏซ้ำในบล็อกที่สองต้องเข้า duplicates เหมือนอยู่ section เดียวกัน', () => {
+  const g = parseGlossary(['## exact', 'A: b', '## fuzzy', 'X: y', '## exact', 'A: c'].join('\n'));
+  assert.deepStrictEqual(g.sections.exact.A.forms, ['c']);
+  assert.deepStrictEqual(g.duplicates, [{ section: 'exact', term: 'A', line: 2, shadowedBy: 6 }]);
+});
+
+test('Important 2: planWrite ต้องเห็นคำถูกจาก header exact บล็อกแรก แม้มี header exact ซ้ำคั่นกลาง (กฎข้อ 1)', () => {
+  // ก่อนแก้ Important 2: sections.exact ถูกบล็อกที่สอง ('## exact' ที่สอง) ทับจนเหลือแค่ Second
+  // -- Approve (จากบล็อกแรก) จึงหายไปจาก correctTerms ของกฎข้อ 1 แล้ว Approv จะเขียนผ่านไปเงียบ ๆ
+  const src = ['## exact', 'Approve: X', '## fuzzy', 'Other: y', '## exact', 'Second: z'].join('\n') + '\n';
+  const r = planWrite(src, [{ term: 'New', forms: ['Approv'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].clashesWith, 'Approve');
+  assert.strictEqual(r.newText, null);
+});
+
+// Important 3: กฎข้อ 1 ทิศตรงข้าม -- คำถูกใหม่ถูกฟอร์มที่มีอยู่แล้วกิน
+test('Important 3 (กฎข้อ 1 ทิศตรงข้าม): คำถูกใหม่มีฟอร์มที่มีอยู่แล้วเป็น substring -> conflict', () => {
+  // เคสจริงจากไฟล์: "BMAD: BMAT" -- ส่งคำถูกใหม่ "BMATrix" เข้ามา "BMAT" (คำผิดของ BMAD) เป็น
+  // substring ของมัน ทุกครั้งที่มีคนพูด "BMATrix" ถูกอยู่แล้วบางส่วนจะถูกแก้เป็น BMAD
+  const src = ['## exact', 'BMAD: BMAT'].join('\n') + '\n';
+  const r = planWrite(src, [{ term: 'BMATrix', forms: ['x1234'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 1);
+  assert.strictEqual(r.conflicts[0].clashesWith, 'BMAD');
+  assert.strictEqual(r.added.length, 0);
+  assert.strictEqual(r.newText, null);
+});
+
+test('Important 3 (กฎข้อ 1 ทิศตรงข้าม): คำถูกที่มีอยู่แล้ว (merge) ไม่ถูกตรวจซ้ำ', () => {
+  const src = ['## exact', 'BMAD: BMAT', 'BMATrix: y1234'].join('\n') + '\n';
+  const r = planWrite(src, [{ term: 'BMATrix', forms: ['z12345'], section: 'exact' }], META);
+  assert.strictEqual(r.conflicts.length, 0);
+  assert.strictEqual(r.merged.length, 1);
+});
+
+test('Important 3 (กฎข้อ 1 ทิศตรงข้าม): section ที่ไม่ guarded (fuzzy) ไม่ถูกตรวจ', () => {
+  const src = ['## exact', 'BMAD: BMAT', '## fuzzy'].join('\n') + '\n';
+  const r = planWrite(src, [{ term: 'BMATrix', forms: ['x1234'], section: 'fuzzy' }], META);
+  assert.strictEqual(r.conflicts.length, 0);
+  assert.strictEqual(r.added.length, 1);
+});
+
+// Minor 7: reason ต้องไม่โกหกเมื่อไม่มีฟอร์มส่งมาเลยตั้งแต่ต้น (คนละเคสกับ "มีอยู่แล้ว")
+test('Minor 7: entry ไม่มีฟอร์มส่งมาเลย (forms: []) -> reason ต้องไม่ใช่ "มีอยู่แล้วทั้งหมด"', () => {
+  const r = planWrite(BASE, [{ term: 'Ghost', forms: [], section: 'exact' }], META);
+  assert.strictEqual(r.skipped.length, 1);
+  assert.notStrictEqual(r.skipped[0].reason, 'มีอยู่แล้วทั้งหมด', 'Ghost ไม่เคยอยู่ในไฟล์ การบอกว่า "มีอยู่แล้ว" เป็นเรื่องโกหก');
+  assert.strictEqual(r.newText, null);
 });

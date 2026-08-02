@@ -20,8 +20,38 @@ function hasMarkup(term) {
   return ['*', '[', ']'].some(char => term.includes(char));
 }
 
+// Critical 1: term/form เป็น free text จาก UI แต่ไฟล์มีไวยากรณ์ของตัวเอง
+// (`term: form1, form2  # comment`) -- ถ้าค่าที่ส่งมามีอักขระที่ไฟล์ใช้เป็นตัวแบ่งปนอยู่
+// มันจะไม่รอด round-trip กลับผ่าน parseGlossary เงียบ ๆ:
+//   `:` ตัวแรกในบรรทัดถูกตีเป็นตัวแบ่ง term/forms -- ส่วนที่เหลือของ term เดิมเลื่อนไปกลาย
+//       เป็นส่วนหนึ่งของ forms แทน (เคส "Ingress: nginx" ในรีวิว)
+//   `,` ถูกตีเป็นตัวแบ่งฟอร์ม -- ฟอร์มเดียวที่มี , ปนกลายเป็นหลายฟอร์ม หรือฟอร์มที่ขึ้นต้น/
+//       ลงท้ายด้วย , ทำให้เกิด token ว่างที่ split(',').map(trim).filter(Boolean) กลืนทิ้งเงียบ ๆ
+//   " #" (เว้นวรรคตามด้วย #) เปิด inline comment กลืนส่วนที่เหลือของบรรทัดทันที (เคส
+//       "C # sharp" ในรีวิว) -- ต้องมีช่องว่างนำหน้าเหมือน INLINE_COMMENT_RE ไม่งั้น C#/F# ใช้ไม่ได้
+//   \n หรือ \r แทรกบรรทัดใหม่เข้ากลางไฟล์ตรง ๆ -- ช่องกรอกคำถูก/คำผิดเป็น <input> ปกติพิมพ์
+//       ผ่านคีย์บอร์ดไม่ได้ แต่วางจากคลิปบอร์ดหลายบรรทัดได้
+// ตรวจคู่กับ hasMarkup เสมอ (ไม่ใช่กลไกคู่ขนานที่สอง) ด้วยเหตุผลเดียวกันทุกประการ: กัน entry
+// จาก UI ทำลาย entry อื่นที่มีอยู่แล้วในไฟล์แบบเงียบ ๆ แล้วรายงานว่าสำเร็จ
+// คืนอักขระที่เจอ (สำหรับใส่ในข้อความ error) หรือ null เมื่อปลอดภัย
+function findUnsafeChar(s) {
+  const str = String(s || '');
+  if (str.includes(':')) return ':';
+  if (str.includes(',')) return ',';
+  if (/[\r\n]/.test(str)) return '\\n';
+  if (/\s#/.test(str)) return ' #';
+  return null;
+}
+function hasUnsafeChars(s) {
+  return findUnsafeChar(s) !== null;
+}
+
 function parseGlossary(text) {
   const src = String(text || '');
+  // Minor 9 (ข้อจำกัดที่รู้อยู่แล้ว): ตรวจ EOL ครั้งเดียวสำหรับทั้งไฟล์ -- ไฟล์ที่ผสม LF/CRLF ปนกัน
+  // จะถูก normalise ทั้งไฟล์เป็น EOL เดียว ทำลายการรับประกัน "เฉพาะบรรทัดที่แก้เท่านั้นที่ต่าง"
+  // ไม่ทำอะไรเพิ่มโดยเจตนา: glossary.md จริงเป็น LF ล้วน และไฟล์ผสม EOL ก็พังกับ splitlines()
+  // ฝั่ง Python (_read_lines) อยู่แล้วตั้งแต่ต้น ไม่ใช่ข้อจำกัดใหม่ที่โมดูลนี้เพิ่มเข้ามา
   const eol = src.includes('\r\n') ? '\r\n' : '\n';
   const lines = src.split(/\r?\n/);
   const sections = {};
@@ -44,7 +74,13 @@ function parseGlossary(text) {
     if (head) {
       closeSection();
       section = head[1];
-      if (MAPPING_SECTIONS.includes(section)) sections[section] = {};
+      // Important 2: header ซ้ำ (สอง `## exact` ในไฟล์เดียวกัน) ต้องรวมเข้าบัคเก็ตเดิม ไม่ใช่
+      // ล้างทิ้ง -- ของเดิม `sections[section] = {}` รีเซ็ตทุกครั้งที่เจอ header ชื่อนี้ ทำให้
+      // เทอมของบล็อกแรกมองไม่เห็นจากตรงนี้ไปเลย: rule 1/2 ของ planWrite จะมองไม่เห็นคำถูกที่
+      // ตายไปแล้ว แล้ว planWrite จะ "เพิ่ม" บรรทัดใหม่ทับคำเดิมที่ยังใช้งานอยู่จริง (ตรงกับบั๊ก
+      // append-kills-a-live-entry ที่โมดูลนี้เกิดมาเพื่อป้องกัน) ต้องรวม ไม่ใช่ทับ ให้ตรงกับ
+      // _parse_glossary_file ฝั่ง Python ที่ buckets[section] ชี้ dict เดียวตลอดทั้งไฟล์อยู่แล้ว
+      if (MAPPING_SECTIONS.includes(section)) sections[section] = sections[section] || {};
       lastEntry = null;
       lastContent = ln;
       return;
@@ -185,12 +221,21 @@ function planWrite(text, entries, meta) {
     // บรรทัดเงียบ ๆ เมื่อเจออักขระเหล่านี้ ไม่ว่าจะอยู่ section ไหน (ไม่ได้แยกชั้นเหมือน
     // REPLACING_SECTIONS ด้านบน) เขียนแล้วฟอร์มอื่นที่ถูกต้องในบรรทัดเดียวกันจะตายไปด้วย
     // parseGlossary ฝั่ง read กันคำเหล่านี้ไว้แล้ว (hasMarkup) นี่คือฝั่ง write
-    if (hasMarkup(term)) {
+    //
+    // Critical 1: เช็คคู่กับ hasUnsafeChars ในบล็อกเดียวกัน -- คำถูกที่มี `:` `,` " #" หรือ
+    // \n ปนก็ทำลาย round-trip ผ่านไวยากรณ์ของไฟล์เองเหมือนกับ * [ ] ทุกประการ (ดูคอมเมนต์
+    // findUnsafeChar ด้านบน) ต้องบล็อกทุก section เหมือนกัน ไม่ใช่แค่ guarded
+    const termMarkup = hasMarkup(term);
+    const termBadChar = termMarkup ? null : findUnsafeChar(term);
+    if (termMarkup || termBadChar) {
+      const reason = termMarkup
+        ? `คำถูก "${term}" มีอักขระ * [ ] ซึ่งเป็นหัว segment ของ transcript -- ` +
+          'Python parser จะทิ้งทั้งบรรทัดนี้ตอนอ่าน ฟอร์มอื่นที่ถูกต้องในบรรทัดเดียวกันจะหายไปด้วย'
+        : `คำถูก "${term}" มีอักขระ "${termBadChar}" ซึ่งเป็นไวยากรณ์ของไฟล์เอง ` +
+          '(`term: form1, form2  # comment`) -- เขียนแล้วอ่านกลับมาจะไม่เท่าเดิม บรรทัดนี้จะพังเงียบ ๆ';
       const list = forms.length ? forms : [undefined];
       for (const form of list) {
-        out.conflicts.push({ term, form, section, clashesWith: null,
-          reason: `คำถูก "${term}" มีอักขระ * [ ] ซึ่งเป็นหัว segment ของ transcript -- ` +
-            'Python parser จะทิ้งทั้งบรรทัดนี้ตอนอ่าน ฟอร์มอื่นที่ถูกต้องในบรรทัดเดียวกันจะหายไปด้วย' });
+        out.conflicts.push({ term, form, section, clashesWith: null, reason });
       }
       continue;
     }
@@ -207,6 +252,27 @@ function planWrite(text, entries, meta) {
     const existing = bucket[term];
     const have = new Set(existing ? existing.forms : []);
     const guarded = REPLACING_SECTIONS.includes(section);
+
+    // Important 3 (กฎข้อ 1 ทิศตรงข้าม): กฎข้อ 1 เดิมตรวจแค่ "ฟอร์มใหม่กินคำถูกที่มีอยู่"
+    // แต่ไม่เคยตรวจทิศตรงข้าม "คำถูกใหม่ถูกฟอร์มที่มีอยู่แล้วกิน" -- check_glossary.py
+    // (find_collisions) วนคำผิด×คำถูกทุกคู่แบบไม่มีทิศทาง ไม่ใช่แค่ฟอร์มใหม่ vs คำถูกเดิม
+    // เคส BMAD: BMAT ของจริง -- ส่งคำถูกใหม่ "BMATrix" เข้ามา "BMAT" (คำผิดของ BMAD) เป็น
+    // substring ของมัน ทุกครั้งที่มีคนพูด "BMATrix" ถูกอยู่แล้ว exact.BMAD จะไปแก้ "BMAT" ที่
+    // ซ่อนอยู่ข้างในให้เพี้ยนเป็น "BMADrix" -- ตรวจเฉพาะตอนคำนี้ "ใหม่" ต่อ section (ไม่ใช่
+    // merge เข้าของเดิม) เพราะถ้ามันมีอยู่แล้วแปลว่ามันเคยผ่านจุดนี้ (หรือมีมาก่อนโมดูลนี้) แล้ว
+    // ใช้ layer.formOwner ตัวเดียวกับกฎข้อ 2 โดยเจตนา (ไม่ใช่ correctTerms) -- คงความไม่สมมาตร
+    // เดิมไว้: formOwner เป็น exact+aliases เท่านั้น ไม่ขยายตาม correctTerms ที่ครอบทุก section
+    if (guarded && !existing) {
+      const eatenBy = [...layer.formOwner].find(([f]) => f !== term && term.includes(f));
+      if (eatenBy) {
+        const [f, owner] = eatenBy;
+        out.conflicts.push({ term, form: undefined, section, clashesWith: owner,
+          reason: `คำถูก "${term}" มี "${f}" (คำผิดของ "${owner}") อยู่ข้างใน -- ทุกครั้งที่มีคน` +
+            `พูด "${term}" ถูกอยู่แล้ว บางส่วนของมันจะถูกแก้ให้เพี้ยนเป็นส่วนหนึ่งของ "${owner}"` });
+        continue;
+      }
+    }
+
     const fresh = [];
     // Important 4: ต้องแยกให้ออกว่า fresh ว่างเปล่าเพราะ "มีอยู่แล้วทั้งหมด" (ของจริง)
     // หรือเพราะ "ถูกปฏิเสธทั้งหมด" (ชนกฎ/มี markup) -- สองเหตุผลนี้ไม่เหมือนกัน ผู้ใช้ต้องรู้
@@ -218,10 +284,18 @@ function planWrite(text, entries, meta) {
       // ฟอร์มมี * [ ] -- เหตุผลเดียวกับคำถูกด้านบน แต่ตรวจแยกรายฟอร์ม เพราะฟอร์มอื่นในคำ
       // เดียวกันที่ไม่มีอักขระนี้ยังปลอดภัยและควรเขียนต่อได้ตามปกติ ใช้ทุก section เหมือนกัน
       // ไม่จำกัดแค่ guarded เพราะ Python parser ไม่แยกชั้นตอนเจอ markup
-      if (hasMarkup(form)) {
-        out.conflicts.push({ term, form, section, clashesWith: null,
-          reason: `"${form}" มีอักขระ * [ ] ซึ่งเป็นหัว segment ของ transcript -- ` +
-            'Python parser จะทิ้งทั้งบรรทัดนี้ตอนอ่าน' });
+      //
+      // Critical 1: เช็คคู่กับ hasUnsafeChars เหมือนฝั่งคำถูกด้านบน -- ฟอร์มที่มี `:` `,` " #"
+      // หรือ \n ปนก็ไม่รอด round-trip ผ่านไวยากรณ์ของไฟล์เอง (เคส "C # sharp" ในรีวิว)
+      const formMarkup = hasMarkup(form);
+      const formBadChar = formMarkup ? null : findUnsafeChar(form);
+      if (formMarkup || formBadChar) {
+        const reason = formMarkup
+          ? `"${form}" มีอักขระ * [ ] ซึ่งเป็นหัว segment ของ transcript -- ` +
+            'Python parser จะทิ้งทั้งบรรทัดนี้ตอนอ่าน'
+          : `"${form}" มีอักขระ "${formBadChar}" ซึ่งเป็นไวยากรณ์ของไฟล์เอง ` +
+            '(`term: form1, form2  # comment`) -- เขียนแล้วอ่านกลับมาจะไม่เท่าเดิม';
+        out.conflicts.push({ term, form, section, clashesWith: null, reason });
         anyRejected = true;
         continue;
       }
@@ -260,10 +334,15 @@ function planWrite(text, entries, meta) {
       fresh.push(form);
     }
     if (!fresh.length) {
-      // Important 4: 'มีอยู่แล้วทั้งหมด' เป็นความจริงเฉพาะตอนไม่มีฟอร์มไหนถูกปฏิเสธเลย
-      // ถ้ามีฟอร์มถูกปฏิเสธ (ชนกฎข้อ 1/2 หรือมี markup) ต้องบอกเหตุผลที่แท้จริง ไม่งั้น UI
-      // จะบอกผู้ใช้ว่า "ไม่ต้องทำอะไร มีอยู่แล้ว" ทั้งที่จริง ๆ มันถูกบล็อกไว้
-      const reason = anyRejected
+      // Important 4 / Minor 7: 'มีอยู่แล้วทั้งหมด' เป็นความจริงเฉพาะตอนมีฟอร์มส่งมาจริง และ
+      // ไม่มีฟอร์มไหนถูกปฏิเสธเลย -- ต้องแยกสามกรณีออกจากกัน ผู้ใช้ต้องรู้ว่าเกิดอะไรขึ้นจริง:
+      //   1. ไม่มีฟอร์มส่งมาเลยตั้งแต่ต้น (forms.length === 0) -- ไม่ใช่ "มีอยู่แล้ว" (Ghost
+      //      ไม่เคยอยู่ในไฟล์) และไม่ใช่ "ถูกปฏิเสธ" (ไม่มีอะไรให้ตรวจด้วยซ้ำ) เป็นคนละเรื่องกัน
+      //   2. มีฟอร์มส่งมาแต่ถูกปฏิเสธหมด (ชนกฎข้อ 1/2 หรือมีอักขระต้องห้าม)
+      //   3. มีฟอร์มส่งมาและไม่มีอะไรถูกปฏิเสธเลย แต่ทุกฟอร์มมีอยู่แล้วในไฟล์จริง ๆ
+      const reason = !forms.length
+        ? 'ไม่มีคำผิดที่จะเพิ่ม'
+        : anyRejected
         ? `ทุกฟอร์มของ "${term}" ถูกปฏิเสธ (ชนกับคำถูกอื่นหรือมีอักขระต้องห้าม) ไม่ใช่เพราะมีอยู่แล้ว`
         : 'มีอยู่แล้วทั้งหมด';
       out.skipped.push({ term, forms, section, reason });

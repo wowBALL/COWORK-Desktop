@@ -671,6 +671,31 @@ test('planWrite: C# เป็นคำถูกยังใช้ได้ปก
   assert.ok(out.newText.includes('C#: CSharpLang'));
 });
 
+// ทุกอักขระที่ str.splitlines() ของ Python ตัดบรรทัด -- เทสตัวล่างคุมแค่ตัวเดียว ลบอีกเก้าตัว
+// ออกจาก NEWLINE_RE ทีละตัวแล้วชุดเทสยังเขียวหมด ซึ่งเป็นข้อบกพร่องคลาสเดียวกับที่การขยาย
+// คลาสนี้ตั้งใจปิด จึงต้องวนให้ครบทั้งชุด
+//
+// ประกอบอักขระด้วย String.fromCharCode ไม่ใช่ escape ในสตริง -- ตัวคั่นสองตัวท้ายเป็น
+// LineTerminator ของ ECMAScript เอง ตัวดิบที่หลุดลงไฟล์จะไปตัดคอมเมนต์ // กลางคันจนไฟล์
+// parse ไม่ผ่าน (เกิดขึ้นจริงสองครั้งตอนทำสาขานี้) เก็บเป็นเลขโค้ดพอยต์จึงปลอดภัยทั้งตอนอ่านและแก้
+const SPLITLINES_SEPARATORS = [
+  ['CR U+000D', 0x0d], ['LF U+000A', 0x0a], ['VT U+000B', 0x0b], ['FF U+000C', 0x0c],
+  ['FS U+001C', 0x1c], ['GS U+001D', 0x1d], ['RS U+001E', 0x1e],
+  ['NEL U+0085', 0x85], ['LS U+2028', 0x2028], ['PS U+2029', 0x2029],
+];
+test('planWrite: ทุกอักขระที่ splitlines() ของ Python ตัดบรรทัด -> conflict ไม่เขียน', () => {
+  const src = '## exact\nBill: Bin\n';
+  for (const [name, code] of SPLITLINES_SEPARATORS) {
+    // แทรกกลางฟอร์ม ไม่ใช่หัวท้าย -- planWrite เรียก .trim() ก่อนตรวจ ตัวที่เป็น whitespace
+    // ของ JS (VT, FF) จะถูกกินทิ้งถ้าไปอยู่ริม แล้วเทสจะผ่านด้วยเหตุผลอื่นโดยไม่มีใครรู้
+    const form = 'foo' + String.fromCharCode(code) + 'bar';
+    const out = planWrite(src, [{ section: 'exact', term: 'Beta', forms: [form] }], {});
+    assert.strictEqual(out.conflicts.length, 1, name + ' ต้องถูกบล็อก');
+    assert.strictEqual(out.added.length, 0, name + ' ต้องไม่ถูกเขียน');
+    assert.strictEqual(out.newText, null, name + ' ต้องไม่แตะไฟล์เลย');
+  }
+});
+
 // ===== findUnsafeChar: ขยายคลาสตัวแบ่งบรรทัดให้ตรงกับ Python str.splitlines() =====
 // splitlines() ของ Python ตัดบรรทัดที่ U+000B U+000C U+001C U+001D U+001E U+0085 U+2028 U+2029
 // ด้วย ไม่ใช่แค่ CR/LF -- ค่าที่มีอักขระเหล่านี้ปนมา (วางจากคลิปบอร์ด) ผ่านการเช็คเดิมไปได้

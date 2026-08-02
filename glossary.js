@@ -104,12 +104,19 @@ function planWrite(text, entries, meta) {
   // เดินลอจิกแยกกัน สอง entries คำใหม่คำเดียวกันจะแทรกสองบรรทัด หรือสอง entries เติมคำเดิม
   // จะเติมฟอร์มเดียวกันซ้ำสองครั้ง กลายเป็นของตายแบบเดียวกับที่ฟีเจอร์นี้เกิดมาเพื่อป้องกัน
   // union forms แบบ first-seen ตัดตัวซ้ำในกลุ่มออกไปในตัว
+  //
+  // คีย์ต้องเป็นเช่นนั้นไม่ได้ -- ถ้าต่อ section และ term ด้วยอักขระพิเศษตัวเดียว
+  // (เช่น space) สองคู่ที่ต่างกันจะสามารถได้คีย์เดียวกันได้ เช่น
+  // ("exact", "Foo Bar") ก็ได้ key "exact Foo Bar"
+  // ("exact Foo", "Bar") ก็ได้ key "exact Foo Bar" ด้วย
+  // ต่อ JSON.stringify([section, term]) เพราะมันหลีกไม่ได้ -- ไม่มีทางสร้าง
+  // สองคู่ (s1, t1) และ (s2, t2) ที่ต่างกันแต่ให้ stringify เดียวกัน
   const groups = new Map();
   const order = [];
   for (const entry of entries || []) {
     const section = entry && entry.section;
     const term = String((entry && entry.term) || '').trim();
-    const key = section + ' ' + term;
+    const key = JSON.stringify([section, term]);
     let group = groups.get(key);
     if (!group) {
       group = { section, term, forms: [] };

@@ -259,3 +259,35 @@ test('planWrite: สอง entries เติมฟอร์มเดียวก
   assert.strictEqual(r.newText.split('\n')[1], 'Kubernetes: ครูป, ฟลูก, A');
   assert.strictEqual(parseGlossary(r.newText).duplicates.length, parseGlossary(BASE).duplicates.length);
 });
+
+test('planWrite: สอง entries ที่ (section, term) ต่างกัน แต่ key โดยเดือย concatenation จะชน -> แยกเป็นสองกลุ่ม', () => {
+  // คีย์ต้องใช้อักขระ separator ที่ไม่สามารถปนอยู่ใน section หรือ term ได้เลย
+  // เช่น space เดี่ยว ๆ ใช้ไม่ได้:
+  // ("exact", "Foo Bar") ก็ได้ key "exact Foo Bar"
+  // ("exact Foo", "Bar") ก็ได้ key "exact Foo Bar" ด้วย
+  // ต้องใช้ JSON.stringify([section, term]) แทน
+  //
+  // ทดสอบว่า entry ที่สองไม่ได้หายไปในกลุ่มแรก: forms ของ entry แรกต้องเป็นแค่ ['a']
+  // (ไม่ใช่ ['a', 'b'] ซึ่งจะเกิดขึ้นถ้าคีย์ชนแล้ว form 'b' ของ entry ที่สองเพิ่มเข้าไป)
+  // และ entry ที่สองต้องเข้า skipped เพราะ section "exact Foo" ไม่มีในไฟล์
+  const r = planWrite(BASE, [
+    { term: 'Foo Bar', forms: ['a'], section: 'exact' },
+    { term: 'Bar', forms: ['b'], section: 'exact Foo' },
+  ], META);
+
+  // entry แรก ต้องเข้า added ด้วย form 'a' เท่านั้น
+  assert.strictEqual(r.added.length, 1);
+  assert.deepStrictEqual(r.added[0].term, 'Foo Bar');
+  assert.deepStrictEqual(r.added[0].forms, ['a']);  // ห้ามมี 'b' ที่มาจาก entry ที่สอง
+  assert.deepStrictEqual(r.added[0].section, 'exact');
+
+  // entry ที่สอง ต้องเข้า skipped เพราะ section ไม่มี
+  assert.strictEqual(r.skipped.length, 1);
+  assert.deepStrictEqual(r.skipped[0].term, 'Bar');
+  assert.deepStrictEqual(r.skipped[0].forms, ['b']);  // form ต้องมี 'b' เท่านั้น ไม่ใช่อันอื่น
+  assert.deepStrictEqual(r.skipped[0].section, 'exact Foo');
+  assert.match(r.skipped[0].reason, /exact Foo/);
+
+  // ไม่มี merged
+  assert.strictEqual(r.merged.length, 0);
+});

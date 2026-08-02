@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('cowork', {
   getMeetingTranscript: (id) => ipcRenderer.invoke('get-meeting-transcript', id),
   getMeetingsDir: () => ipcRenderer.invoke('get-meetings-dir'),
   saveMeetingsDir: (dir) => ipcRenderer.invoke('save-meetings-dir', dir),
+  getGlossaryState: () => ipcRenderer.invoke('get-glossary-state'),
+  appendGlossary: (entries, meta) => ipcRenderer.invoke('append-glossary', entries, meta),
   saveNote: (issueId, text) => ipcRenderer.invoke('save-note', issueId, text),
   onQaTests: (cb) => ipcRenderer.on('qatest-update', (_e, payload) => cb(payload)),
   refreshQaTests: () => ipcRenderer.send('qatest-refresh'),

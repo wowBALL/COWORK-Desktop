@@ -8,3 +8,6 @@ docs/superpowers/plans/
 # ไฟล์ทดสอบชั่วคราวของแท็บ Grafana (สร้างใหม่ได้จาก scratchpad/build-harness.js)
 _harness-*.html
 _harness-*.css
+
+# Obsidian workspace state (personal editor config)
+.obsidian/

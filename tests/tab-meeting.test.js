@@ -5,7 +5,26 @@ const assert = require('node:assert');
 // (แบบเดียวกับ datefilter.test.js) ให้ตั้ง global.COWORK.util / .dateFilter ให้เอง
 require('../util.js');
 require('../datefilter.js');
-const { parseMeta, splitCounts, parseWords, parseSpots } = require('../tab-meeting.js');
+
+// util.js esc() สร้าง <div> จริงแล้วอ่าน textContent->innerHTML เพื่อ escape ให้ถูกต้อง (ดู
+// คอมเมนต์ในไฟล์นั้น: ห้ามเขียนใหม่เป็น regex ทั้งก้อน) renderMeta เรียก esc() ทุกจุด จึงต้องมี
+// document.createElement('div') ขั้นต่ำให้เรียกได้ -- ไม่ใช่ DOM เต็ม (แบบเดียวกับ El() ใน
+// tab-redmine.dom.test.js) แค่พอให้ esc() ไม่ throw 'document is not defined'
+global.document = {
+  createElement() {
+    return {
+      _text: '',
+      set textContent(v) { this._text = String(v); },
+      get textContent() { return this._text; },
+      get innerHTML() {
+        return this._text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      },
+    };
+  },
+};
+
+const { parseMeta, splitCounts, parseWords, parseSpots, glossaryDraft, landedRows,
+  isDone, glossKnown, renderMeta } = require('../tab-meeting.js');
 
 // ฟิกซ์เจอร์ทั้งหมดยกมาจากไฟล์จริง (ไม่ใช่ข้อมูลที่แต่งขึ้นเอง):
 // D:\COWORK\meeting-notes\meetings\2026-07-31_09-59-Stanup2\summary.meta.md
@@ -134,4 +153,177 @@ test('parseSpots: บรรทัด "ทั้งไฟล์:" ไม่มี
   const s = parseSpots(m.sections[1].body);
   assert.strictEqual(s[0].ts, 'ทั้งไฟล์');
   assert.match(s[0].tx, /^มีผู้พูด 3 คน/);
+});
+
+// ===== glossaryDraft =====
+test('glossaryDraft: แถวปกติ -> แยกคำผิดด้วย / และตัดคำนำ "เดาว่าคือ" ออก', () => {
+  const [r] = glossaryDraft([
+    { heard: 'Udo / UDU / ODO', guess: 'เดาว่าคือ Odoo', n: 'ได้ยิน 20 ครั้ง' },
+  ]);
+  assert.deepStrictEqual(r.forms, ['Udo', 'UDU', 'ODO']);
+  assert.strictEqual(r.term, 'Odoo');
+  assert.strictEqual(r.section, 'exact');
+  assert.strictEqual(r.tick, true);
+});
+
+test('glossaryDraft: ตัดวงเล็บบริบทออกจากฝั่งคำผิด -- วงเล็บไม่ใช่คำผิด', () => {
+  const [r] = glossaryDraft([
+    { heard: 'กรอม / กรม / Column (ที่บอกว่าเป็น ORM ของ Golang)', guess: 'เดาว่าคือ GORM', n: '' },
+  ]);
+  assert.deepStrictEqual(r.forms, ['กรอม', 'กรม', 'Column']);
+});
+
+test('glossaryDraft: คำนำ "ฟังไม่ออก เดาว่าคือ" ก็ตัดออก', () => {
+  const [r] = glossaryDraft([{ heard: 'Peythearn', guess: 'ฟังไม่ออก เดาว่าคือ Payment', n: '' }]);
+  assert.strictEqual(r.term, 'Payment');
+  assert.strictEqual(r.tick, true);
+});
+
+test('glossaryDraft: ฝั่งขวาเป็นประโยค -> term ว่าง ไม่ติ๊กให้', () => {
+  const [r] = glossaryDraft([
+    { heard: 'GOM', guess: 'เดาว่าคือชื่อผู้ให้บริการ KYC ตัวเดียวกับ Sumsub', n: '' },
+  ]);
+  assert.strictEqual(r.term, '');
+  assert.strictEqual(r.tick, false);
+  assert.deepStrictEqual(r.forms, ['GOM']);   // คำผิดยังต้องมี ให้คนกรอกคำถูกเอง
+});
+
+test('glossaryDraft: มีสองคำตอบ ("หรือ") -> ไม่ติ๊กให้', () => {
+  const [r] = glossaryDraft([
+    { heard: 'ClearCat', guess: 'เดาว่าคือ Clear Cache หรือ Clear-cut', n: '' },
+  ]);
+  assert.strictEqual(r.term, '');
+  assert.strictEqual(r.tick, false);
+});
+
+test('glossaryDraft: วัดกับ summary.meta.md จริง -> ติ๊กอัตโนมัติ 24 จาก 32 แถว', () => {
+  const fs = require('node:fs');
+  // ใช้ / ไม่ใช่ \ -- backslash ในสตริง JS เป็น escape ทำให้ path เพี้ยนเงียบ ๆ
+  const REAL = 'D:/COWORK/meeting-notes/meetings/2026-07-31_09-59-Stanup/summary.meta.md';
+  assert.ok(fs.existsSync(REAL), `ไม่พบ fixture ที่ ${REAL}`);
+  const meta = parseMeta(fs.readFileSync(REAL, 'utf8'));
+  const rows = glossaryDraft(parseWords(meta.sections[0].body));
+  assert.strictEqual(rows.length, 32);
+  assert.strictEqual(rows.filter(r => r.tick).length, 24);
+});
+
+test('glossaryDraft: ตรวจสอบแยกต่างหาก: term > 3 คำ (ไม่มี หรือ) → ไม่ติ๊ก', () => {
+  // ฟิกซ์เจอร์นี้ตรวจสอบเฉพาะ condition term.split(/\\s+/).length <= 3
+  // โดยให้ term ยาว 4 คำแต่ไม่มี หรือ (ตัดการรวมกันกับ !term.includes('หรือ'))
+  const [r] = glossaryDraft([
+    { heard: 'ClearRoomDS', guess: 'เดาว่าคือ Clean Room Design System', n: '' },
+  ]);
+  assert.strictEqual(r.forms.length, 1);
+  assert.strictEqual(r.forms[0], 'ClearRoomDS');
+  assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะ 4 คำเกิน');
+  assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
+});
+
+test('glossaryDraft: ตรวจสอบแยกต่างหาก: term มี หรือ แต่ <= 3 คำ → ไม่ติ๊ก', () => {
+  // ฟิกซ์เจอร์นี้ตรวจสอบเฉพาะ condition !term.includes('หรือ')
+  // โดยให้ term มี หรือ แต่นับคำแล้วได้ 3 คำ (ตัดการรวมกันกับ term.split(/\\s+/).length <= 3)
+  const [r] = glossaryDraft([
+    { heard: 'BillBin', guess: 'เดาว่าคือ Bill หรือ Bin', n: '' },
+  ]);
+  assert.strictEqual(r.forms.length, 1);
+  assert.strictEqual(r.forms[0], 'BillBin');
+  assert.strictEqual(r.tick, false, 'ต้องไม่ติ๊กเพราะมี หรือ');
+  assert.strictEqual(r.term, '', 'term ต้องว่างเพราะไม่ผ่าน clean check');
+});
+
+// ===== landedRows =====
+// ตัวนี้ตัดสินว่าแถวไหน "เขียนสำเร็จแล้ว" จึงเคลียร์ติ๊กได้ -- ถ้าตัดสินผิดฝั่งใดฝั่งหนึ่ง
+// ผู้ใช้จะเสียโอกาส retry (เคลียร์ติ๊กแถวที่ยังไม่ได้เขียน) หรือส่งซ้ำโดยไม่จำเป็น
+const KEY = (section, term) => section + '\u0000' + term;
+
+test('landedRows: เอาเฉพาะ added/merged ไม่เอา skipped/conflicts/warnings', () => {
+  const landed = landedRows({
+    added:     [{ section: 'exact', term: 'Odoo',  forms: ['Udo'] }],
+    merged:    [{ section: 'fuzzy', term: 'Role',  forms: ['Low'] }],
+    skipped:   [{ section: 'exact', term: 'JWT',   forms: ['cwt'] }],
+    conflicts: [{ section: 'exact', term: 'Bill',  form: 'Bi' }],
+    warnings:  [{ section: 'exact', term: 'GOM',   form: 'GOM' }],
+  });
+  assert.ok(landed.has(KEY('exact', 'Odoo')));
+  assert.ok(landed.has(KEY('fuzzy', 'Role')));
+  assert.ok(!landed.has(KEY('exact', 'JWT')), 'skipped ต้องไม่นับว่าเขียนแล้ว');
+  assert.ok(!landed.has(KEY('exact', 'Bill')), 'conflicts ต้องไม่นับว่าเขียนแล้ว');
+  assert.ok(!landed.has(KEY('exact', 'GOM')), 'warnings ไม่ได้แปลว่ามี entry ของตัวเอง');
+  assert.strictEqual(landed.size, 2);
+});
+
+// เคสที่เป็นเหตุผลทั้งหมดที่ต้องจับคู่ด้วย (section,term) แทนฟอร์ม
+test('landedRows: แถวที่ถูกปฏิเสธทั้งหมด ไม่ถูกนับ แม้จะแชร์ฟอร์มกับแถวที่เขียนสำเร็จ', () => {
+  const landed = landedRows({
+    added:     [{ section: 'exact', term: 'Written',  forms: ['a', 'b'] }],
+    skipped:   [{ section: 'exact', term: 'Rejected', forms: ['b', 'c'] }],
+    conflicts: [{ section: 'exact', term: 'Rejected', form: 'b' }],
+  });
+  assert.ok(landed.has(KEY('exact', 'Written')));
+  assert.ok(!landed.has(KEY('exact', 'Rejected')), "'b' โผล่ทั้งสองแถว แต่ Rejected ไม่ได้ถูกเขียน");
+});
+
+test('landedRows: term เดียวกันคนละ section เป็นคนละคีย์', () => {
+  const landed = landedRows({ added: [{ section: 'exact', term: 'GORM', forms: ['กรอม'] }] });
+  assert.ok(landed.has(KEY('exact', 'GORM')));
+  assert.ok(!landed.has(KEY('fuzzy', 'GORM')), 'GORM ใน fuzzy เป็นคนละแถว ห้าม match ข้ามชั้น');
+});
+
+test('landedRows: res ว่าง/null/ไม่มีคีย์ -> Set ว่าง ไม่ throw', () => {
+  assert.strictEqual(landedRows(null).size, 0);
+  assert.strictEqual(landedRows(undefined).size, 0);
+  assert.strictEqual(landedRows({}).size, 0);
+  assert.strictEqual(landedRows({ added: [], merged: [] }).size, 0);
+});
+
+// === Final review (final-review-fixes): Important 4, Minor 8 ===
+
+// Important 4: badge "อยู่ใน glossary แล้ว" เดิม section-blind (known เป็น Set แบนรวมทุก section)
+// -- ฟอร์มที่มีอยู่จริงใน section หนึ่งทำให้แถวของ section อื่นที่บังเอิญใช้ฟอร์มชื่อเดียวกัน
+// (แต่ตั้งใจชี้ไปคำถูกคนละตัว) ถูกตีว่า "เสร็จแล้ว" ทั้งที่ planWrite จะเขียนให้จริง
+test('Important 4: isDone ต้องดูเฉพาะ known ของ section เป้าหมายของแถวนั้น ไม่ union รวมทุก section', () => {
+  // 'proof' มีอยู่จริงใน fuzzy (→ Kubernetes) แต่ไม่มีใน exact เลย
+  const known = glossKnown({ sections: { fuzzy: { Kubernetes: ['proof'] }, exact: {} } });
+  const rowExact = { term: 'SomeNewTerm', forms: ['proof'], section: 'exact', tick: true };
+  assert.strictEqual(isDone(rowExact, known), false,
+    "แถว exact ที่ใช้ฟอร์ม 'proof' ต้องไม่ถูกตีว่าเสร็จแล้ว เพราะ 'proof' ไม่ได้อยู่ใน exact");
+  const rowFuzzy = { term: 'Kubernetes', forms: ['proof'], section: 'fuzzy', tick: true };
+  assert.strictEqual(isDone(rowFuzzy, known), true, "แถว fuzzy ที่ตรงกับของในไฟล์จริงต้องเสร็จแล้ว");
+});
+
+test('Important 4: glossKnown สร้าง Map แยกตาม section ไม่ union ฟอร์มรวมกันข้าม section', () => {
+  const known = glossKnown({ sections: { fuzzy: { Kubernetes: ['proof'] }, exact: { Foo: ['bar'] } } });
+  assert.ok(known.get('fuzzy').has('proof'));
+  assert.ok(!known.get('fuzzy').has('bar'), 'fuzzy ต้องไม่เห็นฟอร์มของ exact');
+  assert.ok(known.get('exact').has('bar'));
+  assert.ok(!known.get('exact').has('proof'), 'exact ต้องไม่เห็นฟอร์มของ fuzzy');
+});
+
+test('Important 4: isDone -- section ที่ไม่มี known เลย (undefined) ต้องได้ false ไม่ throw', () => {
+  const known = glossKnown({ sections: {} });
+  assert.strictEqual(isDone({ term: 'X', forms: ['a'], section: 'exact' }, known), false);
+});
+
+// Minor 8: mtGloss.rows เดิมเป็น array แบนก้อนเดียวใช้ร่วมกันทุกหัวข้อแบบคำในประชุมเดียว --
+// หัวข้อที่สองจะเห็นธง "ร่างแล้ว" จากหัวข้อแรกแล้วไม่ร่างของตัวเอง ทำให้ข้อมูลของหัวข้อแรก
+// ไปโผล่ซ้ำใต้หัวข้อที่สอง เทสนี้ประกอบ meta ที่มีสองหัวข้อแบบคำ แล้วตรวจว่าแต่ละ section
+// แสดงเฉพาะคำของตัวเอง ไม่เห็นคำของอีก section เลย
+test('Minor 8: renderMeta -- สองหัวข้อแบบคำในประชุมเดียวกัน ต้องไม่ทับ/ปนกัน', () => {
+  const meta = {
+    model: 'test-model', modelNote: '', profile: 'dev', glossary: [], fuzzy: [], other: [],
+    sections: [
+      { title: 'หัวข้อหนึ่ง', body: '- Udo / UDU → เดาว่าคือ Odoo (ได้ยิน 5 ครั้ง)' },
+      { title: 'หัวข้อสอง', body: '- Foo / Bar → เดาว่าคือ Baz (ได้ยิน 3 ครั้ง)' },
+    ],
+  };
+  const html = renderMeta(meta);
+  const i0 = html.indexOf('data-gsec="0"');
+  const i1 = html.indexOf('data-gsec="1"');
+  assert.ok(i0 !== -1 && i1 !== -1, 'ต้องวาดทั้งสอง section ออกมา');
+  const block0 = html.slice(i0, i1);
+  const block1 = html.slice(i1);
+  assert.ok(block0.includes('Odoo'), 'section แรกต้องมีคำของตัวเอง (Odoo)');
+  assert.ok(!block0.includes('Baz'), 'section แรกต้องไม่เห็นคำของ section สอง (Baz)');
+  assert.ok(block1.includes('Baz'), 'section สองต้องมีคำของตัวเอง (Baz)');
+  assert.ok(!block1.includes('Odoo'), 'section สองต้องไม่เห็นคำของ section แรกซ้ำ (Odoo)');
 });

@@ -6,6 +6,7 @@ const { readWorkspace } = require('./workspace');
 const { readMeetings, readTranscript } = require('./meetings');
 const { readQaResults } = require('./qatest');
 const { Grafana, APP_GROUPS } = require('./grafana');
+const { parseGlossary, planWrite } = require('./glossary');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -712,6 +713,55 @@ ipcMain.handle('save-meetings-dir', (_e, dir) => {
   writeConfigMerge({ meetingsDir: dir });
   pushMeetings();
   return { ok: true };
+});
+// glossary.md ของ meeting-notes อยู่ระดับเดียวกับโฟลเดอร์ meetings (src/config.py:453
+// กำหนด meetings_dir = base_dir / "meetings") จึงอนุมานจาก meetingsDir ได้ ไม่ต้องมี
+// setting แยก -- ถ้าใครวาง repo ผิดรูป จะเห็น path ที่หาในข้อความ error ตรง ๆ
+function glossaryPath() {
+  return meetingsDir ? path.join(path.dirname(meetingsDir), 'glossary.md') : '';
+}
+
+ipcMain.handle('get-glossary-state', () => {
+  const file = glossaryPath();
+  if (!file) return { path: '', exists: false, sections: {}, error: 'ยังไม่ได้ตั้งค่าโฟลเดอร์ประชุม' };
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); }
+  catch { return { path: file, exists: false, sections: {}, error: null }; }
+  const g = parseGlossary(text);
+  const sections = {};
+  for (const [name, bucket] of Object.entries(g.sections)) {
+    sections[name] = Object.fromEntries(Object.entries(bucket).map(([t, e]) => [t, e.forms]));
+  }
+  return { path: file, exists: true, sections, error: null };
+});
+
+ipcMain.handle('append-glossary', (_e, entries, meta) => {
+  const file = glossaryPath();
+  if (!file) return { ok: false, error: 'ยังไม่ได้ตั้งค่าโฟลเดอร์ประชุม' };
+  let text;
+  // อ่านใหม่ทุกครั้งก่อนเขียน ไม่ cache ข้ามการกด -- ไฟล์นี้คนเปิด editor แก้เองได้ตลอด
+  try { text = fs.readFileSync(file, 'utf8'); }
+  catch { return { ok: false, error: `ไม่พบไฟล์ glossary.md ที่ ${file}` }; }
+  const plan = planWrite(text, entries, meta);
+  if (plan.newText !== null) {
+    // Important 5: glossary.md เขียนมือ ไม่มี git คุ้มครอง (.gitignore) และไม่มีสำเนาสำรองที่ไหน
+    // เลย -- fs.writeFileSync ตรง ๆ เปิดไฟล์แบบ truncate-then-write ถ้าโปรเซสถูกฆ่ากลางคัน
+    // (แครช/ปิดเครื่อง/OOM) ระหว่างเขียน ไฟล์จะเหลือครึ่งเดียวถาวรโดยไม่มีทางกู้คืน
+    // เขียนลงไฟล์ temp ในโฟลเดอร์เดียวกันก่อน (ต้องอยู่โฟลเดอร์เดียวกันให้ fs.renameSync เป็น
+    // atomic rename ในระบบไฟล์เดียวกัน ข้าม filesystem แล้ว rename จะไม่ atomic อีกต่อไป) แล้ว
+    // ค่อย rename ทับ -- rename เป็น atomic operation ระดับ OS ผลลัพธ์จึงมีแค่สองสถานะ คือ
+    // ไฟล์เดิมทั้งก้อน หรือไฟล์ใหม่ทั้งก้อน ไม่มีสถานะครึ่ง ๆ กลาง ๆ ให้เห็นเลย
+    const tmp = path.join(path.dirname(file), `.glossary.md.tmp-${process.pid}-${Date.now()}`);
+    try {
+      fs.writeFileSync(tmp, plan.newText, 'utf8');
+      fs.renameSync(tmp, file);
+    } catch (e) {
+      try { fs.unlinkSync(tmp); } catch { /* ไฟล์ temp อาจไม่ถูกสร้างเลยด้วยซ้ำถ้า writeFileSync พังก่อน */ }
+      return { ok: false, error: `เขียนไฟล์ไม่สำเร็จ: ${e.message}` };
+    }
+  }
+  const { newText, ...report } = plan;
+  return { ok: true, error: null, ...report };
 });
 // renderer's QA test tab: read/save the list of { label, path } sources
 // ---- Grafana tab ----

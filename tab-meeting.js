@@ -19,6 +19,11 @@
   let mtTab='s';                   // s=สรุป t=ถอดเสียง f=ไฟล์
   let mtTq='', mtSpk=null;         // ค้นหา / กรองผู้พูด ในหน้าถอดเสียง
   const mtCache=new Map();         // id → { speakers, utterances }
+  // ร่างคำที่จะส่งเข้า glossary + สถานะไฟล์ปลายทาง + ผลการส่งครั้งล่าสุด
+  // รีเซ็ตทุกครั้งที่เปลี่ยนประชุม (mtOpenMeeting) เพราะร่างผูกกับประชุมเดียว
+  // rows คีย์ด้วยเลข section (si) -- Minor 8: กันหัวข้อแบบคำสองหัวข้อในประชุมเดียวแย่งกันใช้
+  // array แบนก้อนเดียว (ดูคอมเมนต์จุด mtGloss.rows[si]=glossaryDraft(words) ใน renderMeta)
+  let mtGloss={rows:{}, state:null, report:null};
 
   function mtDate(d){
     const dt=new Date(d+'T00:00:00');
@@ -149,6 +154,27 @@
       return {heard:t.slice(0,i).trim(),guess:rest.slice(i+1).trim(),n:n?n[1]:''};
     });
   }
+  // คำนำที่โมเดลใช้ขึ้นต้นฝั่ง "เดาว่าคือ" -- ตัดออกให้เหลือแต่ตัวคำ
+  const GUESS_PREFIX=/^(?:ฟังไม่ออก\s+)?(?:เดาว่าคือ|เดาว่าเป็น|น่าจะเป็น|น่าจะคือ)\s+/;
+  // ร่าง entry สำหรับส่งเข้า glossary.md จากแถว parseWords
+  //
+  // วัดกับประชุมจริง (Stanup 2026-07-31, 32 แถว): แปลงอัตโนมัติได้ 24 อีก 8 ฝั่งขวาเป็น
+  // *ประโยค* ไม่ใช่คำ ("เดาว่าเป็นชื่อผู้ผลิต POS รายหนึ่ง สะกดยังไม่แน่") แถวพวกนั้นจึง
+  // ไม่ติ๊กให้ แต่ยังโชว์คำผิดไว้ให้กรอกคำถูกเอง -- ทิ้งไปเลยจะเสียแถวที่มีค่าที่สุดบางแถว
+  function glossaryDraft(words){
+    return (words||[]).map(w=>{
+      // วงเล็บในฝั่งซ้ายเป็นบริบทที่โมเดลใส่มา ไม่ใช่คำที่ถอดเพี้ยน
+      const forms=String(w.heard||'').replace(/\s*\([^)]*\)/g,'')
+        .split('/').map(s=>s.trim()).filter(Boolean);
+      const guess=String(w.guess||'');
+      const hasPrefix=GUESS_PREFIX.test(guess);
+      const term=hasPrefix?guess.replace(GUESS_PREFIX,'').trim():'';
+      // "หรือ" = โมเดลเสนอสองคำตอบ, เกิน 3 คำ = เป็นประโยคไม่ใช่คำ
+      const clean=hasPrefix && !!term && !term.includes('หรือ') && term.split(/\s+/).length<=3;
+      return {heard:w.heard, n:w.n, forms, term:clean?term:'', section:'exact',
+              tick:clean && forms.length>0};
+    });
+  }
   // bullet "- 08:00–16:20 (…): เนื้อหา" → {ts,tx}  (ป้ายเวลาเป็น optional)
   function parseSpots(body){
     return body.split('\n').map(l=>/^\s*[-*]\s+(.*)$/.exec(l.trim())).filter(Boolean).map(m=>{
@@ -245,6 +271,7 @@
   }
   function mtOpenMeeting(m){
     mtOpen=m; mtTab='s'; mtTq=''; mtSpk=null;
+    mtGloss={rows:{}, state:null, report:null};
     document.getElementById('mtList').classList.add('hidden');
     document.getElementById('mtReader').classList.remove('hidden');
     renderMtReader();
@@ -255,23 +282,107 @@
     document.getElementById('mtReader').classList.add('hidden');
     document.getElementById('mtList').classList.remove('hidden');
   }
+  // "อยู่ใน glossary แล้ว" — ดูจากคำผิดทุกตัวของแถวนั้น ไม่ใช่คำถูก เพราะคำถูกเดียวกัน
+  // อยู่ได้หลายชั้น กฎนี้ต้องมีที่เดียว: ป้ายในแถวกับตัวเลขบนปุ่มต้องเลื่อนตามกันเสมอ
+  // ถ้าแยกเขียนสองที่ วันที่แก้กฎจะเหลือที่หนึ่งที่แก้ไม่ตาม แล้วปุ่มจะโกหกเงียบ ๆ
+  //
+  // Important 4: ต้องดู known เฉพาะ "section เป้าหมายของแถวนั้น" เท่านั้น ไม่ใช่ union รวมทุก
+  // section -- ของเดิม known เป็น Set แบนรวมทุกฟอร์มจากทุก section เข้าด้วยกัน ฟอร์ม "proof"
+  // ที่มีอยู่จริงใน fuzzy (→ Kubernetes) จึงทำให้แถว exact ที่บังเอิญใช้ฟอร์ม "proof" เหมือนกัน
+  // (แต่ตั้งใจชี้ไปคำถูกคนละตัว) ถูกตีว่า "อยู่ใน glossary แล้ว" ทั้งที่ planWrite จะเขียนให้
+  // จริง ๆ (fuzzy กับ exact เป็นคนละบรรทัด คนละบทบาทกันโดยสิ้นเชิง) known จึงต้องเป็น
+  // Map<section, Set<form>> ไม่ใช่ Set แบนเดียว
+  const isDone = (row, known) => {
+    const set = known.get(row.section);
+    return !!set && row.forms.length > 0 && row.forms.every(f => set.has(f));
+  };
+  // ส่งได้เมื่อ: ติ๊กแล้ว AND ยังไม่อยู่ใน glossary (Task 7 ใช้ตัวเดียวกันตอนประกอบ payload)
+  const isSendable = (row, known) => row.tick && !isDone(row, known);
+  // Map<section, Set<คำผิด>> ของ glossary.md -- ที่เดียวที่คำนวณ known ใช้ร่วมกันทั้ง renderMeta
+  // (วาดป้าย/ตัวเลขปุ่ม) และ sendGlossary (คัดแถวที่จะส่งจริง) กันสองที่เพี้ยนไม่ตรงกัน
+  // รับพารามิเตอร์ state ได้ตรง ๆ (ไม่บังคับอ่าน mtGloss.state เสมอ) เพื่อให้ทดสอบแยกได้โดย
+  // ไม่ต้องพึ่ง DOM/mtGloss -- เรียกเปล่า ๆ ใน renderMeta/sendGlossary ยังใช้ mtGloss.state ตามเดิม
+  function glossKnown(state){
+    const known=new Map();
+    const sections=(state||mtGloss.state)&&(state||mtGloss.state).sections;
+    if(sections)
+      for(const [section,bucket] of Object.entries(sections)){
+        const set=new Set();
+        for(const forms of Object.values(bucket)) forms.forEach(f=>set.add(f));
+        known.set(section,set);
+      }
+    return known;
+  }
+  // คีย์ (section, term) เดียวกับที่ planWrite ใช้จัดกลุ่ม entries -- ต่อด้วย \u0000 กัน
+  // ปัญหาเดียวกับที่คอมเมนต์ groups ใน glossary.js อธิบายไว้ (ต่อ string ตรง ๆ สอง section/term
+  // ต่างคู่กันอาจได้ผลลัพธ์เดียวกัน) \u0000 ไม่มีทางโผล่ในคำที่พิมพ์ผ่าน UI ปกติ
+  const rowKey=r=>r.section+'\u0000'+r.term;
+  // Important 3: แถวหนึ่ง "ถูกเขียนแล้ว" ก็ต่อเมื่อมี entry ใน added/merged ที่ (section,term)
+  // ตรงกับแถวนั้น -- ห้ามเทียบด้วยฟอร์ม (คำผิด) เพราะสอง entries ในคอลเดียวกันแชร์ฟอร์มซ้ำกันได้
+  // (เช่น row1 ['a','b'] เขียนสำเร็จ, row2 ['b','c'] ถูกปฏิเสธทั้งหมด -- 'b' ไปโผล่ใน forms
+  // ของทั้งสอง entry ถ้า match ด้วยฟอร์ม row2 จะถูกเคลียร์ติ๊กทั้งที่ไม่มีอะไรของมันถูกเขียนเลย)
+  // planWrite รวม entries ด้วย JSON.stringify([section,term]) มาก่อนแล้ว คู่นี้จึงไม่ซ้ำกันเองในคอลเดียว
+  //
+  // บริสุทธิ์ล้วน (ไม่แตะ DOM/mtGloss) เพื่อให้ทดสอบแยกได้โดยไม่ต้องพึ่ง harness ของ DOM
+  function landedRows(res){
+    const landed=new Set();
+    // ใช้ rowKey ตัวเดียวกับฝั่งแถว -- เขียนนิพจน์คีย์แยกสองที่ วันที่แก้รูปแบบคีย์
+    // จะเหลือที่หนึ่งที่แก้ไม่ตาม แล้วจะไม่มีแถวไหน match เลย ติ๊กค้างทุกแถวโดยไม่มีอะไรฟ้อง
+    if(res) [...(res.added||[]), ...(res.merged||[])].forEach(e=>landed.add(rowKey(e)));
+    return landed;
+  }
+
   // แบบ B (ตารางตรวจงาน) ที่เลือกจาก summarymeta-mock.html — แถบ key:value บนสุด แล้วต่อด้วย
   // ทุกหัวข้อ ## ที่ parseMeta เจอ แยกเลย์เอาต์ตามว่า bullet ส่วนใหญ่ในหัวข้อนั้นมี "→" หรือไม่
   function renderMeta(meta){
     const row=(k,v,cls)=>v?`<dt>${esc(k)}</dt><dd class="${cls||''}">${v}</dd>`:'';
     const counts=a=>a.map(i=>esc(i.term)+(i.n?` <span style="color:var(--dim)">${esc(i.n)}</span>`:'')).join(' · ');
-    const sec=s=>{
+    const SECTIONS=['exact','fuzzy','project-names','aliases'];
+    // คำที่อยู่ใน glossary แล้ว -- ดูจาก "คำผิด" ไม่ใช่คำถูก เพราะคำถูกเดียวกันอยู่ได้หลายชั้น
+    const known=glossKnown();
+    const sec=(s,si)=>{
       const words=parseWords(s.body), spots=parseSpots(s.body);
       const looksLikeWords=words.filter(w=>w.heard).length>words.length/2;
-      const rows=looksLikeWords
-        ? words.map(w=>`<div class="mtq-word">
-              <span class="heard">${esc(w.heard)}</span><span class="ar">→</span>
-              <span class="guess">${esc(w.guess)}</span>
-              ${w.n?`<span class="n">${esc(w.n)}</span>`:''}</div>`).join('')
-        : spots.map(p=>`<div class="mtq-spot">
+      if(!looksLikeWords){
+        const rows=spots.map(p=>`<div class="mtq-spot">
               <span class="ts">${esc(p.ts||'—')}</span><span class="tx">${esc(p.tx)}</span></div>`).join('');
-      const n=looksLikeWords?words.length:spots.length;
-      return `<div class="mtq-sec"><h4><span>${esc(s.title)}</span><span class="n">${n}</span></h4>${rows}</div>`;
+        return `<div class="mtq-sec"><h4><span>${esc(s.title)}</span><span class="n">${spots.length}</span></h4>${rows}</div>`;
+      }
+      // หัวข้อแบบ "คำ" เท่านั้นที่ส่งเข้า glossary ได้
+      //
+      // Minor 8: มี key ตาม si (เลข section) ไม่ใช่ array แบนก้อนเดียว -- ของเดิม mtGloss.rows
+      // เป็น array เดียวใช้ร่วมกับ "if(!mtGloss.rows)" (ธงตั้งครั้งเดียว) ถ้าประชุมหนึ่งมี
+      // หัวข้อแบบคำสองหัวข้อ หัวข้อที่สองจะเห็นธงตั้งแล้วจากหัวข้อแรก แล้วเอาแถวของหัวข้อแรก
+      // มาวาดซ้ำใต้หัวของตัวเอง (ข้อมูลผิดที่) วันนี้ไม่มีไฟล์จริงที่มีสองหัวข้อแบบนี้ แต่การ key
+      // แยกตาม si ไว้ตั้งแต่ตอนนี้ราคาถูกกว่าการตามแก้บั๊กทีหลัง
+      if(!mtGloss.rows[si]) mtGloss.rows[si]=glossaryDraft(words);
+      const secRows=mtGloss.rows[si];
+      // คำนวณครั้งเดียวต่อแถว แล้วใช้ร่วมกับ isSendable ที่เรียก isDone ตัวเดียวกัน
+      const rowDone=secRows.map(r=>isDone(r,known));
+      const rows=secRows.map((r,i)=>{
+        const done=rowDone[i];
+        return `<div class="mtq-word pick${done?' done':''}" data-gsi="${si}" data-gi="${i}">
+          ${done
+            ? `<span class="gdone">✓ อยู่ใน glossary แล้ว</span>`
+            : `<input type="checkbox" class="gk" ${r.tick?'checked':''} title="เลือกส่งเข้า glossary">`}
+          <input class="gin wrong" value="${esc(r.forms.join(', '))}" placeholder="คำผิด1, คำผิด2"${done?' disabled':''}>
+          <span class="ar">→</span>
+          <input class="gin right" value="${esc(r.term)}" placeholder="พิมพ์คำถูก"${done?' disabled':''}>
+          <select class="gsec"${done?' disabled':''}>
+            ${SECTIONS.map(x=>`<option value="${x}"${r.section===x?' selected':''}>${x}</option>`).join('')}
+          </select>
+          ${r.n?`<span class="n">${esc(r.n)}</span>`:''}</div>`;
+      }).join('');
+      const n=secRows.filter(r=>isSendable(r,known)).length;
+      // Important 2: mtGloss.sending ต้องเช็คตรงนี้ด้วย ไม่ใช่แค่ตอน onclick -- ปุ่มนี้ถูกสร้างใหม่
+      // ทุกครั้งที่ renderMtReader() รัน (เช่นตอนติ๊ก checkbox มือ) ถ้าไม่เช็ค DOM node ใหม่จะ
+      // enabled เสมอไม่ว่า request เดิมจะยังค้างอยู่หรือเปล่า ปุ่มเดิมที่ disabled ไว้ตอน onclick
+      // ใช้ไม่ได้อีกแล้วเพราะถูก innerHTML ทับไปแล้ว
+      const sending=!!mtGloss.sending;
+      return `<div class="mtq-sec" data-gsec="${si}">
+        <h4><span>${esc(s.title)}</span>
+          <button class="gsend"${(n&&!sending)?'':' disabled'}>${sending?'กำลังส่ง…':`ส่งเข้า glossary (${n})`}</button></h4>
+        ${renderGlossReport()}${rows}</div>`;
     };
     return `<div class="mtq">
       <dl class="mtq-strip">
@@ -284,6 +395,98 @@
       </dl>
       ${meta.sections.map(sec).join('')}
     </div>`;
+  }
+  // ผลการส่งครั้งล่าสุด -- สตริงว่างเมื่อยังไม่เคยกด (Task 7 เป็นคนตั้งค่า mtGloss.report)
+  function renderGlossReport(){
+    const rep=mtGloss.report;
+    if(!rep) return '';
+    if(rep.error) return `<div class="mtq-report"><div class="err">⚠ ${esc(rep.error)}</div></div>`;
+    const line=(tag,cls,txt,why)=>`<div class="row"><span class="tag ${cls}">${tag}</span>
+      <span class="why"><strong>${esc(txt)}</strong>${why?' — '+esc(why):''}</span></div>`;
+    const body=[
+      ...rep.added.map(e=>line('เพิ่มใหม่','add',`${e.section}  ${e.term} ← ${e.forms.join(', ')}`,'')),
+      ...rep.merged.map(e=>line('รวมบรรทัดเดิม','mrg',`${e.section}  ${e.term} ← ${e.forms.join(', ')}`,`บรรทัด ${e.line}`)),
+      ...rep.skipped.map(e=>line('ข้าม','skp',`${e.section}  ${e.term}`,e.reason)),
+      ...rep.warnings.map(e=>line('เตือน','wrn',`${e.section}  ${e.term} ← ${e.form}`,e.reason)),
+      ...rep.conflicts.map(e=>line('ชน · ไม่เขียน','cfl',`${e.section}  ${e.term} ← ${e.form}`,e.reason)),
+    ].join('');
+    const sum=`เพิ่มใหม่ ${rep.added.length} · รวมเข้าบรรทัดเดิม ${rep.merged.length} · `+
+      `ข้าม ${rep.skipped.length} · เตือน ${rep.warnings.length} · ชน ${rep.conflicts.length}`;
+    return `<div class="mtq-report"><div class="sum">${esc(sum)}</div>${body}</div>`;
+  }
+  // ส่งแถวที่ "ส่งได้" จริงเข้า glossary.md แล้ววาดผลกลับที่เดิม
+  //
+  // ใช้ isSendable+known ตัวเดียวกับปุ่ม ไม่ใช่แค่ r.tick -- แถวที่อยู่ใน glossary แล้วไม่มี
+  // checkbox ให้ติ๊กใหม่ แต่ยังอาจมี tick:true ค้างมาจาก glossaryDraft() ถ้าส่งแถวนั้นไปด้วย
+  // จะได้รายงาน "ข้าม" ที่ไม่มีความหมายอะไรกับผู้ใช้
+  //
+  // แถวที่ติ๊กแต่ยังไม่มีคำถูกถือเป็น error ฝั่ง UI ไม่ส่งไปให้ main ตัดสิน -- ผู้ใช้ต้อง
+  // เห็นว่าแถวไหนขาด ไม่ใช่ได้รายงาน "ข้าม" กลับมาทีหลังโดยไม่รู้ว่าต้องทำอะไร
+  function sendGlossary(m, btn){
+    const api=shell().api;
+    if(!api||!api.appendGlossary) return;
+    // gloss = ก้อน mtGloss ของประชุม m ตัวจริง capture ไว้ ณ ตอนกดปุ่ม -- ห้ามอ้าง mtGloss สด
+    // ใน callback ข้างล่าง เพราะ mtGloss เป็น module-level binding เดี่ยว ถ้าผู้ใช้เปลี่ยนไปเปิด
+    // ประชุมอื่นก่อนคำตอบ IPC จะมาถึง mtOpenMeeting จะสลับ mtGloss ไปชี้ก้อนใหม่ของประชุมอื่นแล้ว
+    // แม้แต่ mtGloss.sending=false ก็ต้องเขียนลง gloss (ก้อนเดิม) ไม่ใช่ mtGloss สด — ไม่งั้นถ้า
+    // ประชุมใหม่กำลังส่งอยู่พอดี คำตอบเก่าของประชุม A จะไปเคลียร์ธง sending ของประชุม B แทน
+    const gloss=mtGloss;
+    // Important 2: gloss.sending คือธงกันกดซ้ำตัวจริง -- ต้องอยู่บนก้อน mtGloss (รอด re-render)
+    // ไม่ใช่ local variable หรือ btn.disabled อย่างเดียว เพราะติ๊ก checkbox ระหว่างรอผลจะเรียก
+    // renderMtReader() ซึ่งสร้างปุ่ม .gsend ตัวใหม่ที่ enabled เสมอ (ปุ่มเดิมที่ disabled ไว้
+    // ถูก innerHTML ทับไปแล้ว) ธงนี้ต้องถูกเช็คทั้งตรงนี้ (กันคลิกซ้ำ) และในการวาดปุ่มที่ renderMeta
+    if(gloss.sending) return;
+    const known=glossKnown();
+    // Minor 8: gloss.rows คีย์ตาม section index (si) แล้ว -- แบนรวมทุก section เป็น array
+    // เดียวก่อนคัดแถวที่ส่งได้ ไม่งั้นแถวของหัวข้อที่สองเป็นต้นไปจะหายไปจากการส่งทั้งหมด
+    const allRows=Object.values(gloss.rows||{}).flat();
+    const picked=allRows.filter(r=>isSendable(r,known));
+    const blank=picked.filter(r=>!r.term||!r.forms.length);
+    if(blank.length){
+      gloss.report={error:`มี ${blank.length} แถวที่ติ๊กไว้แต่ยังกรอกไม่ครบ — ต้องมีทั้งคำผิดและคำถูก`,
+        added:[],merged:[],skipped:[],warnings:[],conflicts:[]};
+      renderMtReader(); return;
+    }
+    if(!picked.length) return;
+    gloss.sending=true;
+    btn.disabled=true; btn.textContent='กำลังส่ง…';
+    const entries=picked.map(r=>({term:r.term, forms:r.forms, section:r.section}));
+    // Critical 1: m คือประชุมที่ถืออยู่ตอนกด capture ไว้ในพารามิเตอร์ของฟังก์ชันนี้แล้ว (ไม่ใช่
+    // อ่าน mtOpen สดตอน .then รัน) — คำตอบ IPC นี้อาจมาถึงหลังผู้ใช้กลับไปหน้ารายการแล้วเปิด
+    // ประชุมอื่น ทุก branch ข้างล่างนี้ (สำเร็จ / {ok:false} / reject) ต้องเช็ค mtOpen===m &&
+    // mtTab==='q' ก่อนเขียน gloss.report/rows/state หรือวาดหน้าใหม่ทุกครั้ง ไม่งั้นผลของประชุม A
+    // จะไปเขียนทับ/โผล่บนจอของประชุม B ที่ผู้ใช้เพิ่งเปิด (เขียนลง gloss เสมอ ไม่ใช่ mtGloss สด
+    // เพราะ mtOpen===m แปลว่า mtGloss ยังชี้ก้อนเดียวกับ gloss อยู่ -- mtOpenMeeting สลับทั้งคู่
+    // พร้อมกันเสมอ ไม่มีทางที่ mtOpen จะยังเป็น m แต่ mtGloss สลับไปแล้ว)
+    api.appendGlossary(entries, {title:m.title, date:m.date}).then(res=>{
+      gloss.sending=false;
+      if(mtOpen!==m || mtTab!=='q') return;
+      if(!res||!res.ok){
+        gloss.report={error:(res&&res.error)||'ส่งไม่สำเร็จ',
+          added:[],merged:[],skipped:[],warnings:[],conflicts:[]};
+        renderMtReader(); return;
+      }
+      gloss.report=res;
+      // Important 3: เคลียร์ติ๊กเฉพาะแถวที่มี entry ใน added/merged ตรง (section,term) ของแถวนั้น
+      // จริง ๆ ไม่ใช่จับคู่ด้วยฟอร์ม -- สอง entries ในคอลเดียวกันแชร์ฟอร์มซ้ำกันได้ (row1 ['a','b']
+      // เขียนสำเร็จ, row2 ['b','c'] ถูกปฏิเสธทั้งหมด) จับด้วยฟอร์มจะไปเคลียร์ติ๊ก row2 ทั้งที่ไม่มี
+      // อะไรของมันถูกเขียนเลย ดูรายละเอียดที่คอมเมนต์ landedRows() ด้านบน
+      const landed=landedRows(res);
+      allRows.forEach(r=>{ if(r.tick && landed.has(rowKey(r))) r.tick=false; });
+      // อ่านสถานะไฟล์ใหม่ ป้าย "อยู่ใน glossary แล้ว" จะได้ตรงกับไฟล์จริงหลังเขียน
+      api.getGlossaryState().then(st=>{
+        if(mtOpen!==m || mtTab!=='q') return;   // Critical 1: เช็คซ้ำ -- คำตอบรอบนี้มาช้าได้เหมือนกัน
+        gloss.state=st||{sections:{}};
+        renderMtReader();
+      });
+    }, ()=>{
+      // Important 2: promise reject (เช่น IPC ล่ม) ก็ต้องเคลียร์ธงเหมือนกัน ไม่งั้นปุ่มค้าง
+      // "กำลังส่ง…" ถาวร ผู้ใช้ retry ไม่ได้อีกเลยจนกว่าจะรีสตาร์ตแอป
+      gloss.sending=false;
+      if(mtOpen!==m || mtTab!=='q') return;
+      gloss.report={error:'ส่งไม่สำเร็จ', added:[],merged:[],skipped:[],warnings:[],conflicts:[]};
+      renderMtReader();
+    });
   }
   function renderTranscript(tr){
     if(!tr) return '<div class="hint">กำลังโหลดบทถอดเสียง...</div>';
@@ -366,6 +569,35 @@
     } else if(mtTab==='q'){
       const meta=parseMeta(m.meta);
       body.innerHTML=meta?renderMeta(meta):'<div class="empty">ไม่มีไฟล์ summary.meta.md</div>';
+      // อินพุตทุกช่องเขียนกลับเข้า mtGloss.rows ทันที -- ไม่ re-render ระหว่างพิมพ์
+      // (จะเด้ง cursor) วาดใหม่เฉพาะตอนติ๊กหรือเปลี่ยน section เพราะตัวเลขบนปุ่ม/ป้าย "อยู่ใน
+      // glossary แล้ว" ต้องเปลี่ยนตาม -- Minor 8: อ่านจาก mtGloss.rows[si] (คีย์ตาม section)
+      body.querySelectorAll('[data-gi]').forEach(el=>{
+        const si=Number(el.dataset.gsi);
+        const r=(mtGloss.rows[si]||[])[Number(el.dataset.gi)];
+        if(!r) return;
+        const wrong=el.querySelector('.gin.wrong');
+        const right=el.querySelector('.gin.right');
+        const sel=el.querySelector('.gsec');
+        const box=el.querySelector('.gk');
+        if(wrong) wrong.oninput=()=>{ r.forms=wrong.value.split(',').map(s=>s.trim()).filter(Boolean); };
+        if(right) right.oninput=()=>{ r.term=right.value.trim(); };
+        // Important 4: section ที่เลือกกำหนดว่า known ของแถวนี้ต้องดูชุดไหน (isDone ตรวจแค่
+        // known.get(row.section)) เปลี่ยน section แล้วป้าย "อยู่ใน glossary แล้ว"/ตัวเลขบนปุ่ม
+        // อาจเปลี่ยนตาม จึงต้อง re-render ตรงนี้ (ต่างจาก wrong/right ที่พิมพ์แล้วห้ามเด้ง cursor)
+        if(sel) sel.onchange=()=>{ r.section=sel.value; renderMtReader(); };
+        if(box) box.onchange=()=>{ r.tick=box.checked; renderMtReader(); };
+      });
+      const send=body.querySelector('.gsend');
+      if(send) send.onclick=()=>sendGlossary(m, send);
+      const api=shell().api;
+      // โหลดครั้งเดียวต่อประชุม แล้ววาดใหม่ให้แถวที่อยู่ใน glossary แล้วขึ้นป้าย
+      if(meta && !mtGloss.state && api && api.getGlossaryState){
+        api.getGlossaryState().then(st=>{
+          mtGloss.state=st||{sections:{}};
+          if(mtOpen===m && mtTab==='q') renderMtReader();
+        });
+      }
     } else {
       body.innerHTML=`<div class="mt-files">${m.files.map(f=>`
         <div class="mt-file" data-p="${esc(f.path)}">
@@ -484,6 +716,7 @@
   // เปิดทาง node --test แบบเดียวกับ tab-grafana.js — เฉพาะ parser ของ summary.meta.md
   // ที่ไม่ต้องใช้ DOM (renderMeta ใช้ esc จาก global.COWORK.util เลยไม่ export)
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { parseMeta, splitCounts, parseWords, parseSpots, mdRender };
+    module.exports = { parseMeta, splitCounts, parseWords, parseSpots, mdRender, glossaryDraft, landedRows,
+      isDone, glossKnown, renderMeta };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

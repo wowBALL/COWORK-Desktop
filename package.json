@@ -44,6 +44,7 @@
       "tab-grafana.css",
       "workspace.js",
       "meetings.js",
+      "glossary.js",
       "qatest.js",
       "grafana.js",
       "uidump.js",

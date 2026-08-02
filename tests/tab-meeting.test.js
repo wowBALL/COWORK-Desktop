@@ -493,3 +493,16 @@ test('renderMeta: อัญประกาศในข้อความปร�
   assert.ok(html.includes('title="เดาว่าคือ &quot;Playwright&quot;"'),
     'title ต้องเก็บข้อความเต็มในรูปที่ escape แล้ว');
 });
+
+test('renderMeta: เครื่องหมาย <> ในข้อความประเมินต้องถูก escape ก่อนใส่ในข้อความที่มองเห็นด้วย (ไม่ใช่แค่ title)', () => {
+  // renderMeta ถูก assign เข้า DOM ผ่าน body.innerHTML= (ดู mtOpenMeeting) ถ้าฝั่งข้อความที่
+  // มองเห็น (ระหว่าง > กับ </span>) ไม่ผ่าน esc() ค่า guess ที่มี < หรือ > จะกลายเป็น markup
+  // ดิบที่หลุดเข้า DOM ตรง ๆ -- ใช้ <> แทน " เพราะ " ทดสอบฝั่ง title ไปแล้วในเทสก่อนหน้า และ
+  // esc() escape < / > ผ่านเส้นทาง textContent->innerHTML คนละจุดกับที่ escape "
+  resetGloss();
+  const html = renderMeta(metaWith('- X → เดาว่าคือ <Playwright> (ได้ยิน 1 ครั้ง)'));
+  assert.ok(html.includes('>เดาว่าคือ &lt;Playwright&gt;</span>'),
+    'ข้อความที่มองเห็นต้องเก็บรูปที่ escape แล้ว');
+  assert.ok(!html.includes('<Playwright>'),
+    'ห้ามมี markup ดิบของ guess หลุดเข้าไปใน HTML ที่ส่งต่อให้ innerHTML=');
+});

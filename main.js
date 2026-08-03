@@ -66,7 +66,7 @@ let qaSources = [];
 // change UI_PORT in its .env, and a hardcoded 8765 would silently drift apart.
 let runnerPort = 8765;
 // Last summary model picked, remembered so opening a room is a single click.
-let runnerModel = 'GLM-5.2';
+let runnerModel = 'Qwen/Qwen3.6-35B-A3B';
 // Last meeting type (profile) picked — travels the same road as runnerModel.
 // 'dev' matches meeting-notes' own default, so a machine that never touched this
 // setting keeps behaving exactly as it did before the picker existed.
@@ -139,7 +139,7 @@ function loadAppConfig() {
   meetingsDir = saved.meetingsDir || '';
   qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
   runnerPort = Number(saved.meetingRunnerPort) || 8765;
-  runnerModel = saved.meetingRunnerModel || 'GLM-5.2';
+  runnerModel = saved.meetingRunnerModel || 'Qwen/Qwen3.6-35B-A3B';
   runnerProfile = saved.meetingRunnerProfile || 'dev';
   runnerSeen = saved.meetingRunnerSeen === true;
   grafanaConfig = {

@@ -78,6 +78,7 @@
 
   // ---- ตัวโมดูล (ต้องมี DOM) ------------------------------------------------
   const MODELS = [
+    ['Qwen/Qwen3.6-35B-A3B', 'Qwen 3.6', 'ข้อมูลไม่ออกนอกบริษัท · เร็วที่สุด'],
     ['GLM-5.2', 'GLM 5.2', 'ข้อมูลไม่ออกนอกบริษัท · ช้ากว่า'],
     ['claude-opus-5', 'Opus 5', 'แม่นสุด · $5/$25 ต่อ MTok'],
     ['claude-sonnet-5', 'Sonnet 5', 'ประหยัด · $3/$15 ต่อ MTok'],
@@ -101,7 +102,7 @@
   let root = null;
   let api = null;           // window.cowork
   let state = null;         // state ล่าสุดจาก service (null = ไม่ตอบ)
-  let model = 'GLM-5.2';
+  let model = 'Qwen/Qwen3.6-35B-A3B';
   let profile = DEFAULT_PROFILE;
   let roomDraft = '';
   let modelsOpen = false;

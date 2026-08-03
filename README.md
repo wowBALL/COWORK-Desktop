@@ -7,6 +7,8 @@ Electron app เดียว รันได้ 2 โหมดด้วยโค
 
 Windows only (แพ็กเป็น NSIS installer) · MIT
 
+**[⬇ ดาวน์โหลดตัวติดตั้งล่าสุด](https://github.com/wowBALL/COWORK-Desktop/releases/latest)** — ติดตั้งแล้วแอปอัปเดตเวอร์ชันใหม่ให้เองอัตโนมัติ ไม่ต้องมาโหลดซ้ำ
+
 ---
 
 ## เริ่มใช้งาน

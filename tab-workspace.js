@@ -134,11 +134,13 @@
       projs.forEach((items,project)=>{
         const en=document.createElement('div'); en.className='entry';
         en.style.setProperty('--pc',hueOf(project));
+        // ย่อไว้ก่อนเสมอ (2 บรรทัด) แล้วคลิกเพื่อขยายอ่านเต็ม -- อยู่ในตัวฟีดเลย ไม่ต้อง
+        // เปิดไฟล์ .md ออกไปอ่านข้างนอก ซึ่งเป็นจุดที่ฟีดนี้มีไว้ตั้งแต่แรก
         const texts=items.map(it=>
-          `<div class="ptext" data-file="${esc(it.file)}" title="เปิดไฟล์บันทึกรายวัน (${esc(it.visibility)})">${esc(it.text)}</div>`).join('');
+          `<div class="ptext" data-file="${esc(it.file)}" title="คลิกเพื่อย่อ/ขยาย · ${esc(it.visibility)}">${esc(it.text)}</div>`).join('');
         en.innerHTML=`<div class="rail"><span class="pin"></span><span class="ln"></span></div>
           <div class="content"><div class="pname">${esc(project)}</div>${texts}</div>`;
-        en.querySelectorAll('.ptext').forEach(t=>t.onclick=()=>openFile(t.dataset.file));
+        en.querySelectorAll('.ptext').forEach(t=>t.onclick=()=>t.classList.toggle('expanded'));
         day.appendChild(en);
       });
       el.appendChild(day);

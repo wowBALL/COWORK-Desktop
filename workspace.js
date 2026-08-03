@@ -81,11 +81,24 @@ function parseProject(file, visibility) {
   };
 }
 
-// pull "ทำอะไรไปบ้าง" from a daily project section, stripped of the label
+// pull "ทำอะไรไปบ้าง" from a daily project section as a list of items -- the label
+// takes text inline on the same line (single-line entries like meeting-notes' logs)
+// *or* as indented "  - " sub-bullets on the following lines (multi-item days like
+// this project's own). The old version only ever read the inline case, so a day with
+// five sub-bullets silently showed just the first one -- everything else was only
+// visible by opening the .md file, defeating the point of the feed.
 function dailyDid(block) {
-  const m = block.match(/ทำอะไรไปบ้าง:\*\*\s*([^\n]*)/);
-  if (m && m[1].trim() && m[1].trim() !== '—') return m[1].trim();
-  return '';
+  const m = block.match(/ทำอะไรไปบ้าง:\*\*([\s\S]*?)(?=\n- \*\*|$)/);
+  if (!m) return [];
+  const lines = m[1].split('\n');
+  const items = [];
+  const inline = lines[0].trim();
+  if (inline && inline !== '—') items.push(inline);
+  for (let i = 1; i < lines.length; i++) {
+    const bm = lines[i].match(/^\s*-\s+(.+)$/);
+    if (bm && bm[1].trim()) items.push(bm[1].trim());
+  }
+  return items;
 }
 
 function parseDaily(file, visibility) {
@@ -97,9 +110,10 @@ function parseDaily(file, visibility) {
     const nl = part.indexOf('\n');
     const project = (nl === -1 ? part : part.slice(0, nl)).trim();
     if (!project || project.startsWith('[')) continue;    // skip template placeholders
-    const did = dailyDid(part);
-    if (!did) continue;                                   // no real content yet → skip
-    entries.push({ project, text: did });
+    // one entry per bullet -- the Workspace tab's feed already groups entries by
+    // project/day and renders each as its own line, so this is the only change needed
+    // to turn a multi-bullet day into a real list instead of one truncated line
+    for (const item of dailyDid(part)) entries.push({ project, text: item });
   }
   return { date, visibility, entries, file };
 }

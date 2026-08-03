@@ -313,3 +313,34 @@ test('profileTitle คืน id เมื่อเจอค่าที่ไม
   assert.strictEqual(core.profileTitle(''), '');
   assert.strictEqual(core.profileTitle(undefined), '');
 });
+
+// ── ตัวถอดเสียง (asr engine) ─────────────────────────────────────────────
+// คู่กับเทส PROFILES ข้างบน: catalog ที่ลอกมาจาก meeting-notes ต้องมีเทสคุมความตรงกัน
+test('ENGINES ตรงกับ UI.th.engines ใน meeting-notes web/app.js เป๊ะตัวอักษร', () => {
+  assert.deepStrictEqual(core.ENGINES, [
+    ['whisper', 'large-v3 (ค่าเริ่มต้น)', 'แม่นสุด · มี hotwords ช่วยจับศัพท์เฉพาะทาง'],
+    ['typhoon', 'Typhoon (ทดลอง)', 'เร็วกว่า 3-10 เท่า บน CPU · ไม่มี hotwords พลาดศัพท์เฉพาะทางง่ายกว่า'],
+  ]);
+});
+
+test('id ของ engine ต้องตรงกับ config.KNOWN_ASR_ENGINES และไม่ซ้ำกัน', () => {
+  const ids = core.ENGINES.map((e) => e[0]);
+  assert.deepStrictEqual(ids, ['whisper', 'typhoon']);
+  assert.strictEqual(new Set(ids).size, ids.length);
+});
+
+test('ค่าเริ่มต้นเป็น whisper และเป็น id ที่มีอยู่จริงในรายการ', () => {
+  assert.strictEqual(core.DEFAULT_ENGINE, 'whisper');
+  assert.ok(core.ENGINES.some((e) => e[0] === core.DEFAULT_ENGINE));
+});
+
+test('engineTitle คืนชื่อที่คนอ่านได้', () => {
+  assert.strictEqual(core.engineTitle('whisper'), 'large-v3 (ค่าเริ่มต้น)');
+  assert.strictEqual(core.engineTitle('typhoon'), 'Typhoon (ทดลอง)');
+});
+
+test('engineTitle คืน id เมื่อเจอค่าที่ไม่รู้จัก ไม่ใช่สตริงว่าง', () => {
+  assert.strictEqual(core.engineTitle('faster-whisper'), 'faster-whisper');
+  assert.strictEqual(core.engineTitle(''), '');
+  assert.strictEqual(core.engineTitle(undefined), '');
+});

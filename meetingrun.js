@@ -99,11 +99,22 @@
   // เกินจำเป็นจนสรุปอ่านแล้วอ้อมค้อม
   const DEFAULT_PROFILE = 'dev';
 
+  // ตัวถอดเสียง -- กฎเดียวกับ PROFILES: ต้องตรงกับ UI.th.engines ใน
+  // D:\COWORK\meeting-notes\web\app.js เป๊ะตัวอักษร และ id ต้องตรงกับ config.KNOWN_ASR_ENGINES
+  const ENGINES = [
+    ['whisper', 'large-v3 (ค่าเริ่มต้น)', 'แม่นสุด · มี hotwords ช่วยจับศัพท์เฉพาะทาง'],
+    ['typhoon', 'Typhoon (ทดลอง)', 'เร็วกว่า 3-10 เท่า บน CPU · ไม่มี hotwords พลาดศัพท์เฉพาะทางง่ายกว่า'],
+  ];
+  // ต้องตรงกับ config.DEFAULT_ASR_ENGINE -- widget กับหน้าเว็บต้องเริ่มที่ตัวถอดเสียงเดียวกัน
+  // ไม่งั้นคนที่กด "เปิดห้อง" ทันทีจะได้คนละตัวถอดเสียงกับที่ตั้งใจ
+  const DEFAULT_ENGINE = 'whisper';
+
   let root = null;
   let api = null;           // window.cowork
   let state = null;         // state ล่าสุดจาก service (null = ไม่ตอบ)
   let model = 'Qwen/Qwen3.6-35B-A3B';
   let profile = DEFAULT_PROFILE;
+  let engine = DEFAULT_ENGINE;
   let roomDraft = '';
   let modelsOpen = false;
   let stopping = false;     // กันกดปิดซ้ำระหว่างรอ service ตอบ
@@ -133,6 +144,11 @@
 
   function profileTitle(id) {
     const hit = PROFILES.find((p) => p[0] === id);
+    return hit ? hit[1] : (id || '');
+  }
+
+  function engineTitle(id) {
+    const hit = ENGINES.find((e) => e[0] === id);
     return hit ? hit[1] : (id || '');
   }
 
@@ -174,18 +190,22 @@
 
   function modelsHtml() {
     if (!modelsOpen) return '';
-    // ลำดับเดียวกับหน้าเว็บ: โมเดลก่อน ประเภททีหลัง
+    // ลำดับเดียวกับหน้าเว็บ: โมเดลก่อน ประเภททีหลัง แล้วตัวถอดเสียง
     const profiles = showsProfile(model)
       ? `<div class="mrunlabel">ประเภทประชุม</div>${optHtml(PROFILES, profile, 'data-profile')}`
       : '';
-    return `<div class="mrunx">${optHtml(MODELS, model, 'data-model')}${profiles}</div>`;
+    // ตัวถอดเสียงไม่ผูกกับ showsProfile -- ถอดเสียงอย่างเดียวก็ยังต้องเลือกตัวถอดเสียง
+    // (เหมือนหน้าเว็บ) เพราะขั้นนี้เกิดก่อนขั้นสรุปเสมอ
+    const engines = `<div class="mrunlabel">ตัวถอดเสียง</div>${optHtml(ENGINES, engine, 'data-engine')}`;
+    return `<div class="mrunx">${optHtml(MODELS, model, 'data-model')}${profiles}${engines}</div>`;
   }
 
   // ป้ายปุ่ม ⋯ ต้องบอกทุกอย่างที่แผงนั้นตั้งได้ -- ไม่งั้นตัวเลือกประเภทประชุมจะอยู่
   // หลังปุ่มที่สัญญาแค่เรื่องโมเดล และไม่มีใครรู้ว่าต้องกดที่นี่
   function moreTitle() {
-    if (!showsProfile(model)) return `เลือกโมเดลสรุป (${modelTitle(model)})`;
-    return `เลือกโมเดลสรุปและประเภทประชุม (${modelTitle(model)} · ${profileTitle(profile)})`;
+    if (!showsProfile(model)) return `เลือกโมเดลสรุปและตัวถอดเสียง (${modelTitle(model)} · ${engineTitle(engine)})`;
+    return `เลือกโมเดลสรุป ประเภทประชุม และตัวถอดเสียง `
+      + `(${modelTitle(model)} · ${profileTitle(profile)} · ${engineTitle(engine)})`;
   }
 
   function viewIdle() {
@@ -380,7 +400,7 @@
     // profile ต้องอยู่ในลายเซ็นคู่กับ model: ถ้าไม่มี การกดเลือกประเภทจะเปลี่ยนตัวแปรจริง
     // แต่เครื่องหมายถูกไม่ขยับ ผู้ใช้เห็นว่ากดไม่ติดแล้วกดซ้ำ หรือเริ่มอัดด้วยประเภทที่
     // ไม่ได้ตั้งใจ (บั๊กจริงที่ web/app.js บันทึกไว้)
-    const sig = [view, ready, seenService, state && state.room, state && state.model, model, profile, modelsOpen, stopping,
+    const sig = [view, ready, seenService, state && state.room, state && state.model, model, profile, engine, modelsOpen, stopping,
       detailOpen, followingJob, state && state.worker_ready,
       progress ? `${progress.stage}:${progress.failed}` : '',
       state ? (state.warnings || []).map((w) => w.code).join(',') : ''].join('|');
@@ -415,7 +435,7 @@
     if (!api || !api.startMeeting) return;
     // ส่ง profile ไปเสมอแม้ตอน transcript-only (เหมือนหน้าเว็บ) -- service เก็บค่าไว้เฉย ๆ
     // โดยไม่มีใครใช้ ดีกว่ามีกฎที่สองตรงนี้ที่ต้องคอยซิงก์กับฝั่งนั้น
-    const res = await api.startMeeting(model, roomDraft, profile);
+    const res = await api.startMeeting(model, roomDraft, profile, engine);
     // 409 = มีห้องเปิดอยู่แล้ว ปล่อยให้ poll รอบถัดไปบอกความจริง ไม่เดาแทน
     if (res && res.ok) { roomDraft = ''; modelsOpen = false; }
     if (api.getRunnerState) onData(await api.getRunnerState());
@@ -446,6 +466,13 @@
     if (prof) {
       profile = prof.dataset.profile;
       if (api && api.saveRunnerConfig) api.saveRunnerConfig({ profile });
+      draw();
+      return;
+    }
+    const eng = e.target.closest('[data-engine]');
+    if (eng) {
+      engine = eng.dataset.engine;
+      if (api && api.saveRunnerConfig) api.saveRunnerConfig({ engine });
       draw();
       return;
     }
@@ -521,6 +548,7 @@
         if (!cfg) return;
         if (cfg.model) model = cfg.model;
         if (cfg.profile) profile = cfg.profile;
+        if (cfg.engine) engine = cfg.engine;
         if (cfg.seen) seenService = true;
         draw();
       });
@@ -578,6 +606,9 @@
     DEFAULT_PROFILE,
     profileTitle,
     showsProfile,
+    ENGINES,
+    DEFAULT_ENGINE,
+    engineTitle,
     STAGE_OF,
     jobStemOf,
     fmtClock,

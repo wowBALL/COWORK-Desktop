@@ -19,12 +19,10 @@
   let qiMeta = null;          // ผลจาก getIssueFormMeta ล่าสุด: {trackerId, priorityOptions, customFields}
   let qiMembers = [];         // ผลจาก getProjectMembers ล่าสุด
   let qiUploads = [];         // [{token, filename, content_type}] ทีละไฟล์ที่ upload สำเร็จแล้ว
-  let qiCurrentUserId = null; // สำหรับปุ่ม "มอบหมายให้ตัวเอง"
   // รายชื่อโปรเจกต์จริงมาจาก payload ของแท็บ Redmine (tasks-update) ไม่ใช่ qaData ของแท็บนี้ —
   // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
   // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
   let qiKnownProjects = new Map();  // projectId -> projectName
-  let qiCurrentUserName = null;     // ชื่อผู้ใช้ปัจจุบัน (จาก tasks-update) ใช้จับคู่กับ qiMembers
 
   function qiOpenForm() {
     document.getElementById('qaStage').classList.add('hidden');
@@ -78,8 +76,6 @@
       qiMembers = (res && res.ok) ? res.members : [];
       document.getElementById('qiAssignee').innerHTML = '<option value="">(ไม่ระบุ)</option>' +
         qiMembers.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
-      const match = qiMembers.find(m => m.name === qiCurrentUserName);
-      qiCurrentUserId = match ? match.id : null;
     }).catch(e => {
       errEl.style.display = 'block';
       errEl.textContent = 'โหลดรายชื่อสมาชิกไม่สำเร็จ: ' + e.message;
@@ -505,7 +501,6 @@
     // ipcRenderer.on รับ listener ได้หลายตัว จึงไม่ชนกับ onTasks ของ tab-redmine.js
     shell().api.onTasks(payload => {
       if (!payload) return;
-      qiCurrentUserName = payload.currentUser || qiCurrentUserName;
       if (payload.error || !payload.groups) return;
       payload.groups.forEach(g => g.issues.forEach(i => {
         if (i.projectId) qiKnownProjects.set(i.projectId, i.project);
@@ -516,9 +511,6 @@
     document.getElementById('qiProject').onchange = qiLoadMetaForSelection;
     document.getElementById('qiTracker').onchange = qiLoadMetaForSelection;
     document.getElementById('qiDraftBtn').onclick = qiDraft;
-    document.getElementById('qiAssignMe').onclick = () => {
-      if (qiCurrentUserId) document.getElementById('qiAssignee').value = qiCurrentUserId;
-    };
     document.getElementById('qaRefresh').onclick=()=>api&&api.refreshQaTests&&api.refreshQaTests();
     document.getElementById('qiPreviewBtn').onclick = qiShowReview;
     document.getElementById('qaIssueReviewBack').onclick = qiBackToForm;

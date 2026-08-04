@@ -35,9 +35,19 @@ function schemaFieldsFor(language) {
   return `{"subject_th":"...","subject_en":"...","description_th":"...","description_en":"...",${risk}}`;
 }
 
+function languageRulesFor(language) {
+  if (language === 'th') return 'เขียนเนื้อหาทั้งหมดเป็นภาษาไทยล้วน';
+  if (language === 'en') return 'เขียนเนื้อหาทั้งหมดเป็นภาษาอังกฤษล้วน ห้ามปนภาษาไทยแม้แต่คำเดียว';
+  return 'ฟิลด์ที่ลงท้ายด้วย _th ต้องเขียนเนื้อหาเป็นภาษาไทยล้วน ฟิลด์ที่ลงท้ายด้วย _en ต้องเขียนเนื้อหาเป็นภาษาอังกฤษล้วน ' +
+    'ห้ามปนภาษากันเด็ดขาด และห้ามขาดฟิลด์ใดฟิลด์หนึ่งไปแม้จะทำให้คำตอบยาว — ต้องตอบให้ครบทั้ง subject_th, subject_en, description_th, description_en เสมอ';
+}
+
 function systemPromptFor(tracker, language) {
   return 'คุณคือผู้ช่วยเรียบเรียง issue tracker ให้ทีม dev อ่านแล้วแก้ได้ทันที ' +
     `เนื้อหาที่ผู้ใช้ให้มาเป็นโน้ตดิบ ให้เรียบเรียงเป็น subject กับ description ตามโครง: ${structureFor(tracker)}\n` +
+    'ในค่า description ให้เว้นบรรทัดว่าง (สองอักขระ \\n\\n) คั่นระหว่างหัวข้อย่อยแต่ละหัวข้อ และคั่นระหว่างป้ายหัวข้อ ' +
+    '(เช่น **อาการ:**) กับเนื้อหาของมันเสมอ ห้ามใช้ \\n เดี่ยว เพราะระบบปลายทางจะไม่ขึ้นบรรทัดใหม่ให้ ทำให้ข้อความติดกันอ่านไม่ออก\n' +
+    `${languageRulesFor(language)}\n` +
     `ตอบเป็น JSON ล้วนเท่านั้น ห้ามมี markdown fence ห้ามมีข้อความอื่นนอกเหนือ JSON รูปแบบนี้เป๊ะ: ${schemaFieldsFor(language)}`;
 }
 
@@ -49,6 +59,9 @@ async function draftIssue(rawNotes, opts = {}) {
   const provider = PROVIDERS[model];
   if (!provider) return { ok: false, error: `ไม่รู้จักโมเดล ${model}` };
   if (!apiKey || !baseUrl) return { ok: false, error: 'ยังไม่ได้ตั้งค่า LLM_API_KEY/LLM_BASE_URL' };
+  // both = สองภาษาในคำตอบเดียว เนื้อหายาวขึ้นเกือบสองเท่า — budget เดิมพอดีตัวจน
+  // โมเดลบางทีตัดฟิลด์ _en ทิ้งเงียบ ๆ เพื่อให้จบใน budget ให้พื้นที่เพิ่มกันเหตุนั้น
+  const maxTokens = language === 'both' ? Math.round(provider.maxTokens * 1.5) : provider.maxTokens;
 
   // .replace(/\/+$/,'') กัน double-slash 404 เหมือนที่ meeting-notes เจอมาแล้ว
   // (llm.py บรรทัด 225-231)
@@ -63,7 +76,7 @@ async function draftIssue(rawNotes, opts = {}) {
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({
         model,
-        max_tokens: provider.maxTokens,
+        max_tokens: maxTokens,
         messages: [
           { role: 'system', content: systemPromptFor(tracker, language) },
           { role: 'user', content: String(rawNotes || '') },

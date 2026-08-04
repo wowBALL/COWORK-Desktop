@@ -34,4 +34,28 @@ function composeDescription(language, th, en) {
   return [thBlock, enBlock].filter(Boolean).join('\n\n---\n\n');
 }
 
-module.exports = { fieldSchemaKey, buildFieldSchema, composeDescription };
+function buildIssuePayload(form, ids) {
+  const issue = {
+    project_id: form.projectId,
+    tracker_id: ids.trackerIdByName[form.trackerName],
+    subject: form.subject,
+    description: form.description,
+    priority_id: ids.priorityIdByName[form.priorityName],
+  };
+  if (form.assigneeId) issue.assigned_to_id = form.assigneeId;
+
+  const customFields = [];
+  if (ids.riskLevelFieldId && form.riskLevel) {
+    customFields.push({ id: ids.riskLevelFieldId, value: form.riskLevel });
+  }
+  for (const [fieldId, value] of Object.entries(form.customFieldValues || {})) {
+    if (value) customFields.push({ id: Number(fieldId), value });
+  }
+  if (customFields.length) issue.custom_fields = customFields;
+
+  if (form.uploads && form.uploads.length) issue.uploads = form.uploads;
+
+  return { issue };
+}
+
+module.exports = { fieldSchemaKey, buildFieldSchema, composeDescription, buildIssuePayload };

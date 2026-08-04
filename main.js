@@ -764,7 +764,7 @@ ipcMain.handle('create-issue', async (_e, form) => {
     const key = fieldSchemaKey(form.projectId, form.trackerName);
     const riskField = (issueFormFieldsCache[key] || []).find(f => f.name === 'Risk Level');
     if (form.riskLevel && !riskField) {
-      return { ok: false, error: 'ระบบยังไม่รู้จัก field Risk Level ของโปรเจกต์/tracker นี้ —ลองกดพรีวิวใหม่อีกครั้ง หรือกรอก issue นี้ผ่านหน้าเว็บ Redmine โดยตรง' };
+      return { ok: false, error: 'ระบบยังไม่รู้จัก field Risk Level ของโปรเจกต์/tracker นี้ (แคชยังไม่มีข้อมูล) — เปิดแท็บ Redmine ทิ้งไว้สักครู่ให้โหลดข้อมูลใหม่ แล้วกลับมาสร้าง issue อีกครั้ง หรือกรอก issue นี้ผ่านหน้าเว็บ Redmine โดยตรงแทน' };
     }
     const body = buildIssuePayload(form, {
       trackerIdByName: trackerIdCache,

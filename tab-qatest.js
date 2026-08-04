@@ -46,6 +46,13 @@
     document.getElementById('qiDraftStatus').className = 'set-status';
     document.getElementById('qiDraftStatus').textContent = '';
     document.getElementById('qiFormError').style.display = 'none';
+    document.getElementById('qiAssignee').innerHTML = '<option value="">(ไม่ระบุ)</option>';
+    document.getElementById('qiPriority').innerHTML = '';
+    document.getElementById('qiCustomFields').innerHTML = '';
+    document.getElementById('qiReviewError').style.display = 'none';
+    document.querySelectorAll('.qi-field-error').forEach(el => el.classList.remove('qi-field-error'));
+    qiMeta = null;
+    qiMembers = [];
   }
 
   function qiLoadMetaForSelection() {
@@ -54,7 +61,7 @@
     const trackerName = document.getElementById('qiTracker').value;
     if (!projectId) return;
     const errEl = document.getElementById('qiFormError');
-    api.getIssueFormMeta(Number(projectId), trackerName).then(res => {
+    api.getIssueFormMeta(projectId, trackerName).then(res => {
       if (!res || !res.ok) { qiMeta = null; return; }
       qiMeta = res;
       document.getElementById('qiPriority').innerHTML =
@@ -67,7 +74,7 @@
       errEl.style.display = 'block';
       errEl.textContent = 'โหลดข้อมูลฟอร์มไม่สำเร็จ: ' + e.message;
     });
-    api.getProjectMembers(Number(projectId)).then(res => {
+    api.getProjectMembers(projectId).then(res => {
       qiMembers = (res && res.ok) ? res.members : [];
       document.getElementById('qiAssignee').innerHTML = '<option value="">(ไม่ระบุ)</option>' +
         qiMembers.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
@@ -122,7 +129,7 @@
     });
     const projectSel = document.getElementById('qiProject');
     return {
-      projectId: Number(projectSel.value),
+      projectId: projectSel.value,
       projectName: projectSel.selectedOptions[0] ? projectSel.selectedOptions[0].textContent : '',
       trackerName: document.getElementById('qiTracker').value,
       subject: document.getElementById('qiSubject').value.trim(),
@@ -135,6 +142,7 @@
     };
   }
   function qiShowReview() {
+    document.querySelectorAll('.qi-field-error').forEach(el => el.classList.remove('qi-field-error'));
     const errEl = document.getElementById('qiFormError');
     const form = qiCollectForm();
     if (!form.projectId || !form.subject || !form.description) {
@@ -198,6 +206,10 @@
       el.innerHTML = `<div class="hint">สร้างสำเร็จ: <a href="#" id="qiCreatedLink">#${result.id}</a></div>` + el.innerHTML;
       document.getElementById('qiCreatedLink').onclick = (e) => { e.preventDefault(); shell().api.openLink(result.url); };
       bindQaRowClicks(el);
+      // แทรก banner ด้วย innerHTML ทำลาย .onclick เดิมของทุก node รวมถึงปุ่ม "ตั้งค่าเลย"
+      // ตอนยังไม่ได้ตั้งค่าโฟลเดอร์ QA — bindQaRowClicks จัดการแค่ .qa-row ต้องผูกปุ่มนี้แยก
+      const notConfiguredBtn = document.getElementById('qaNotConfiguredBtn');
+      if (notConfiguredBtn) notConfiguredBtn.onclick = () => shell().openSettings('cardQa');
     }).catch(e => {
       btn.disabled = false; btn.textContent = 'ยืนยันสร้าง';
       errEl.style.display = 'block';

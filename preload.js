@@ -31,6 +31,11 @@ contextBridge.exposeInMainWorld('cowork', {
   getQaFailureXml: (runDir) => ipcRenderer.invoke('get-qa-failure-xml', runDir),
   getQaSources: () => ipcRenderer.invoke('get-qa-sources'),
   saveQaSources: (sources) => ipcRenderer.invoke('save-qa-sources', sources),
+  getIssueFormMeta: (projectId, trackerName) => ipcRenderer.invoke('get-issue-form-meta', projectId, trackerName),
+  getProjectMembers: (projectId) => ipcRenderer.invoke('get-project-members', projectId),
+  draftIssueText: (rawNotes, opts) => ipcRenderer.invoke('draft-issue-text', rawNotes, opts),
+  uploadIssueAttachment: (fileBuffer, filename) => ipcRenderer.invoke('upload-issue-attachment', fileBuffer, filename),
+  createIssue: (form) => ipcRenderer.invoke('create-issue', form),
   // Grafana/Loki — pull-based, unlike the tabs above: the query depends on filters the
   // user is moving, so the renderer asks rather than main broadcasting. getGrafanaConfig
   // returns whether a token exists and its last four characters, never the token itself.

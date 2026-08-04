@@ -65,8 +65,8 @@
 .rk0{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}    /* Low */
 .rk1{background:color-mix(in srgb,var(--cyan) 16%,transparent);color:var(--cyan)}      /* Fairly Low */
 .rk2{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}    /* Moderate */
-.rk3{background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}  /* Medium */
-.rk4{background:color-mix(in srgb,var(--rose) 20%,transparent);color:var(--rose)}      /* High */
+.rk3{background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}  /* High */
+.rk4{background:color-mix(in srgb,var(--rose) 20%,transparent);color:var(--rose)}      /* Very High */
 .prio{font-size:8.5px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:6px;
   flex-shrink:0;width:66px;text-align:center;text-transform:uppercase}
 .prio.pr-none{background:transparent;color:var(--line);border:1px dashed var(--line)}

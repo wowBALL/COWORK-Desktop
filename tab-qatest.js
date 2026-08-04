@@ -15,6 +15,207 @@
   const qaDateSel={y:null,m:null,d:null};
   let qaTab='log';                 // log = ข้อความ log, ui = วิวเวอร์ failure.xml, xml = XML ดิบ
 
+  // ===== ฟอร์มสร้าง issue =====
+  let qiMeta = null;          // ผลจาก getIssueFormMeta ล่าสุด: {trackerId, priorityOptions, customFields}
+  let qiMembers = [];         // ผลจาก getProjectMembers ล่าสุด
+  let qiUploads = [];         // [{token, filename, content_type}] ทีละไฟล์ที่ upload สำเร็จแล้ว
+  let qiCurrentUserId = null; // สำหรับปุ่ม "มอบหมายให้ตัวเอง"
+  // รายชื่อโปรเจกต์จริงมาจาก payload ของแท็บ Redmine (tasks-update) ไม่ใช่ qaData ของแท็บนี้ —
+  // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
+  // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
+  let qiKnownProjects = new Map();  // projectId -> projectName
+  let qiCurrentUserName = null;     // ชื่อผู้ใช้ปัจจุบัน (จาก tasks-update) ใช้จับคู่กับ qiMembers
+
+  function qiOpenForm() {
+    document.getElementById('qaStage').classList.add('hidden');
+    document.getElementById('qaIssueForm').classList.remove('hidden');
+    document.getElementById('qiProject').innerHTML =
+      [...qiKnownProjects.entries()].map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('');
+    qiLoadMetaForSelection();
+  }
+  function qiCloseForm() {
+    document.getElementById('qaIssueForm').classList.add('hidden');
+    document.getElementById('qaStage').classList.remove('hidden');
+    qiUploads = [];
+    document.getElementById('qiFileList').innerHTML = '';
+    document.getElementById('qiFiles').value = '';
+    document.getElementById('qiRawNotes').value = '';
+    document.getElementById('qiSubject').value = '';
+    document.getElementById('qiDescription').value = '';
+    document.getElementById('qiRiskLevel').value = '';
+    document.getElementById('qiDraftStatus').className = 'set-status';
+    document.getElementById('qiDraftStatus').textContent = '';
+    document.getElementById('qiFormError').style.display = 'none';
+    document.getElementById('qiAssignee').innerHTML = '<option value="">(ไม่ระบุ)</option>';
+    document.getElementById('qiPriority').innerHTML = '';
+    document.getElementById('qiCustomFields').innerHTML = '';
+    document.getElementById('qiReviewError').style.display = 'none';
+    document.querySelectorAll('.qi-field-error').forEach(el => el.classList.remove('qi-field-error'));
+    qiMeta = null;
+    qiMembers = [];
+  }
+
+  function qiLoadMetaForSelection() {
+    const api = shell().api;
+    const projectId = document.getElementById('qiProject').value;
+    const trackerName = document.getElementById('qiTracker').value;
+    if (!projectId) return;
+    const errEl = document.getElementById('qiFormError');
+    api.getIssueFormMeta(projectId, trackerName).then(res => {
+      if (!res || !res.ok) { qiMeta = null; return; }
+      qiMeta = res;
+      document.getElementById('qiPriority').innerHTML =
+        res.priorityOptions.map(p => `<option${p === 'Normal' ? ' selected' : ''}>${esc(p)}</option>`).join('');
+      const extra = res.customFields.filter(f => f.name !== 'Risk Level');
+      document.getElementById('qiCustomFields').innerHTML = extra.map(f => `
+        <div class="row-label">${esc(f.name)}</div>
+        <textarea class="search qi-cf" data-field-id="${f.id}" rows="3"></textarea>`).join('');
+    }).catch(e => {
+      errEl.style.display = 'block';
+      errEl.textContent = 'โหลดข้อมูลฟอร์มไม่สำเร็จ: ' + e.message;
+    });
+    api.getProjectMembers(projectId).then(res => {
+      qiMembers = (res && res.ok) ? res.members : [];
+      document.getElementById('qiAssignee').innerHTML = '<option value="">(ไม่ระบุ)</option>' +
+        qiMembers.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+      const match = qiMembers.find(m => m.name === qiCurrentUserName);
+      qiCurrentUserId = match ? match.id : null;
+    }).catch(e => {
+      errEl.style.display = 'block';
+      errEl.textContent = 'โหลดรายชื่อสมาชิกไม่สำเร็จ: ' + e.message;
+    });
+  }
+
+  function qiDraft() {
+    const api = shell().api;
+    const status = document.getElementById('qiDraftStatus');
+    const rawNotes = document.getElementById('qiRawNotes').value.trim();
+    if (!rawNotes) { status.className = 'set-status err'; status.textContent = 'พิมพ์โน้ตดิบก่อน'; return; }
+    const btn = document.getElementById('qiDraftBtn');
+    btn.disabled = true;
+    status.className = 'set-status';
+    status.innerHTML = 'กำลังร่าง... <button type="button" id="qiSkipDraft">ข้ามไปกรอกเองเลย</button>';
+    let skipped = false;
+    document.getElementById('qiSkipDraft').onclick = () => { skipped = true; btn.disabled = false; status.textContent = ''; };
+    api.draftIssueText(rawNotes, {
+      model: document.getElementById('qiModel').value,
+      language: document.getElementById('qiLanguage').value,
+      tracker: document.getElementById('qiTracker').value,
+    }).then(result => {
+      btn.disabled = false;
+      if (skipped) return;
+      if (!result || !result.ok) {
+        status.className = 'set-status err';
+        status.textContent = (result && result.error) || 'ร่างไม่สำเร็จ — กรอกมือแทน';
+        return;
+      }
+      status.className = 'set-status ok'; status.textContent = 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง';
+      const d = result.draft;
+      document.getElementById('qiSubject').value = d.subject || '';
+      document.getElementById('qiDescription').value = d.description || '';
+      if (d.suggested_risk_level) document.getElementById('qiRiskLevel').value = d.suggested_risk_level;
+    }).catch(e => {
+      btn.disabled = false;
+      if (skipped) return;
+      status.className = 'set-status err';
+      status.textContent = 'เกิดข้อผิดพลาด: ' + e.message;
+    });
+  }
+
+  function qiCollectForm() {
+    const customFieldValues = {};
+    document.querySelectorAll('#qiCustomFields .qi-cf').forEach(el => {
+      customFieldValues[el.dataset.fieldId] = el.value.trim();
+    });
+    const projectSel = document.getElementById('qiProject');
+    return {
+      projectId: projectSel.value,
+      projectName: projectSel.selectedOptions[0] ? projectSel.selectedOptions[0].textContent : '',
+      trackerName: document.getElementById('qiTracker').value,
+      subject: document.getElementById('qiSubject').value.trim(),
+      description: document.getElementById('qiDescription').value.trim(),
+      priorityName: document.getElementById('qiPriority').value,
+      assigneeId: document.getElementById('qiAssignee').value ? Number(document.getElementById('qiAssignee').value) : null,
+      riskLevel: document.getElementById('qiRiskLevel').value,
+      customFieldValues,
+      uploads: qiUploads,
+    };
+  }
+  function qiShowReview() {
+    document.querySelectorAll('.qi-field-error').forEach(el => el.classList.remove('qi-field-error'));
+    const errEl = document.getElementById('qiFormError');
+    const form = qiCollectForm();
+    if (!form.projectId || !form.subject || !form.description) {
+      errEl.style.display = 'block'; errEl.textContent = 'กรอกโปรเจกต์ / หัวข้อ / รายละเอียดให้ครบก่อน';
+      return;
+    }
+    errEl.style.display = 'none';
+    document.getElementById('qaIssueForm').classList.add('hidden');
+    document.getElementById('qaIssueReview').classList.remove('hidden');
+    const lines = buildReviewLines(form, { ...(qiMeta || {}), members: qiMembers, customFields: (qiMeta && qiMeta.customFields) || [] });
+    document.getElementById('qiReviewBody').innerHTML =
+      '<dl>' + lines.map(l => `<dt>${esc(l.label)}</dt><dd>${esc(l.value)}</dd>`).join('') + '</dl>';
+    document.getElementById('qiConfirmBtn').onclick = () => qiSubmit(form);
+  }
+  function qiBackToForm() {
+    document.getElementById('qaIssueReview').classList.add('hidden');
+    document.getElementById('qaIssueForm').classList.remove('hidden');
+  }
+  // ล้าง highlight ค้างของรอบก่อน แล้วไฮไลต์เฉพาะ field ที่ Redmine ฟ้อง 422 มา —
+  // ครอบทั้ง field ตายตัว (Subject/Description/...) และ custom field แบบไดนามิก
+  function qiHighlightFieldErrors(fieldErrors) {
+    document.querySelectorAll('.qi-field-error').forEach(el => el.classList.remove('qi-field-error'));
+    const builtinIds = { Subject: 'qiSubject', Description: 'qiDescription', 'Risk Level': 'qiRiskLevel', Priority: 'qiPriority' };
+    (fieldErrors || []).forEach(fe => {
+      if (!fe.fieldName) return;
+      if (builtinIds[fe.fieldName]) {
+        document.getElementById(builtinIds[fe.fieldName]).classList.add('qi-field-error');
+        return;
+      }
+      const cf = (qiMeta && qiMeta.customFields || []).find(f => f.name === fe.fieldName);
+      if (cf) {
+        const el = document.querySelector(`#qiCustomFields .qi-cf[data-field-id="${cf.id}"]`);
+        if (el) el.classList.add('qi-field-error');
+      }
+    });
+  }
+  function qiSubmit(form) {
+    const api = shell().api, btn = document.getElementById('qiConfirmBtn'), errEl = document.getElementById('qiReviewError');
+    btn.disabled = true; btn.textContent = 'กำลังสร้าง...'; errEl.style.display = 'none';
+    api.createIssue(form).then(result => {
+      btn.disabled = false; btn.textContent = 'ยืนยันสร้าง';
+      if (!result || !result.ok) {
+        const msg = 'สร้างไม่สำเร็จ: ' + ((result && result.error) || 'ไม่ทราบสาเหตุ') +
+          ((result && result.fieldErrors && result.fieldErrors.length)
+            ? ' (' + result.fieldErrors.map(f => f.message).join(', ') + ')' : '');
+        if (result && result.fieldErrors && result.fieldErrors.length) {
+          qiHighlightFieldErrors(result.fieldErrors);
+          document.getElementById('qaIssueReview').classList.add('hidden');
+          document.getElementById('qaIssueForm').classList.remove('hidden');
+          const formErrEl = document.getElementById('qiFormError');
+          formErrEl.style.display = 'block'; formErrEl.textContent = msg;
+        } else {
+          errEl.style.display = 'block'; errEl.textContent = msg;
+        }
+        return;
+      }
+      document.getElementById('qaIssueReview').classList.add('hidden');
+      qiCloseForm();   // ครอบ qaStage.show + qiUploads=[] + reset ทุกช่องของฟอร์มให้แล้ว
+      const el = document.getElementById('qaRows');
+      el.innerHTML = `<div class="hint">สร้างสำเร็จ: <a href="#" id="qiCreatedLink">#${result.id}</a></div>` + el.innerHTML;
+      document.getElementById('qiCreatedLink').onclick = (e) => { e.preventDefault(); shell().api.openLink(result.url); };
+      bindQaRowClicks(el);
+      // แทรก banner ด้วย innerHTML ทำลาย .onclick เดิมของทุก node รวมถึงปุ่ม "ตั้งค่าเลย"
+      // ตอนยังไม่ได้ตั้งค่าโฟลเดอร์ QA — bindQaRowClicks จัดการแค่ .qa-row ต้องผูกปุ่มนี้แยก
+      const notConfiguredBtn = document.getElementById('qaNotConfiguredBtn');
+      if (notConfiguredBtn) notConfiguredBtn.onclick = () => shell().openSettings('cardQa');
+    }).catch(e => {
+      btn.disabled = false; btn.textContent = 'ยืนยันสร้าง';
+      errEl.style.display = 'block';
+      errEl.textContent = 'เกิดข้อผิดพลาด: ' + e.message;
+    });
+  }
+
   function qaBadge(status){
     const cls={PASS:'qa-b-pass',FAIL:'qa-b-fail',CRASH:'qa-b-crash'}[status]||'qa-b-crash';
     const label={PASS:'PASS',FAIL:'FAIL',CRASH:'ไม่จบ'}[status]||status;
@@ -27,6 +228,25 @@
   // ซึ่งได้แค่เปลี่ยนสี ไม่กระทบข้อมูล จึงยุบเข้าตัวกลาง
   function qaSrcTag(label){
     return `<span class="qa-src sp${hashN(label,8)}">${esc(label)}</span>`;
+  }
+  // แปลฟอร์ม issue กลับเป็นบรรทัด (label, value) สำหรับหน้า review — id -> ชื่อคนอ่านได้
+  // ฟังก์ชันบริสุทธิ์ ไม่แตะ DOM เพื่อให้เทสได้ตรงๆ
+  function buildReviewLines(form, meta) {
+    const member = (meta.members || []).find(m => m.id === form.assigneeId);
+    const lines = [
+      { label: 'โปรเจกต์', value: form.projectName },
+      { label: 'Tracker', value: form.trackerName },
+      { label: 'หัวข้อ', value: form.subject },
+      { label: 'Priority', value: form.priorityName },
+      { label: 'ผู้รับผิดชอบ', value: member ? member.name : '(ไม่ระบุ)' },
+      { label: 'Risk Level', value: form.riskLevel || '(ไม่ระบุ)' },
+    ];
+    for (const [fieldId, value] of Object.entries(form.customFieldValues || {})) {
+      const field = (meta.customFields || []).find(f => String(f.id) === String(fieldId));
+      if (field && value) lines.push({ label: field.name, value });
+    }
+    lines.push({ label: 'ไฟล์แนบ', value: (form.uploads || []).map(u => u.filename).join(', ') || '(ไม่มี)' });
+    return lines;
   }
   function qaDur(r){
     if(!r.startedAt||!r.endedAt) return '';
@@ -139,6 +359,11 @@
         <span class="qa-name">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span>
         <span class="qa-time">${esc(r.endedAt?r.endedAt.slice(11):r.id)}</span>
       </div>`).join('');
+    bindQaRowClicks(el);
+  }
+  // ผูก click handler ของแถว .qa-row — แยกเป็นฟังก์ชันกลางเพราะ qiSubmit ก็ต้องเรียกซ้ำหลัง
+  // แทรก banner "สร้างสำเร็จ" ด้วย innerHTML (ซึ่งทำลาย .onclick เดิมของ DOM node ทุกตัว)
+  function bindQaRowClicks(el){
     el.querySelectorAll('.qa-row').forEach(row=>row.onclick=()=>{
       const r=qaData.runs.find(x=>x.id===row.dataset.id);
       if(r) qaOpenRun(r);
@@ -262,7 +487,46 @@
   function mount(){
     const api=shell().api;
     api && api.onQaTests && api.onQaTests(onData);
+    // ดักฟัง broadcast เดียวกับที่แท็บ Redmine ใช้ (tasks-update) เพื่อรู้จักรายชื่อโปรเจกต์จริง —
+    // ipcRenderer.on รับ listener ได้หลายตัว จึงไม่ชนกับ onTasks ของ tab-redmine.js
+    shell().api.onTasks(payload => {
+      if (!payload) return;
+      qiCurrentUserName = payload.currentUser || qiCurrentUserName;
+      if (payload.error || !payload.groups) return;
+      payload.groups.forEach(g => g.issues.forEach(i => {
+        if (i.projectId) qiKnownProjects.set(i.projectId, i.project);
+      }));
+    });
+    document.getElementById('qaNewIssueBtn').onclick = qiOpenForm;
+    document.getElementById('qaIssueFormBack').onclick = qiCloseForm;
+    document.getElementById('qiProject').onchange = qiLoadMetaForSelection;
+    document.getElementById('qiTracker').onchange = qiLoadMetaForSelection;
+    document.getElementById('qiDraftBtn').onclick = qiDraft;
+    document.getElementById('qiAssignMe').onclick = () => {
+      if (qiCurrentUserId) document.getElementById('qiAssignee').value = qiCurrentUserId;
+    };
     document.getElementById('qaRefresh').onclick=()=>api&&api.refreshQaTests&&api.refreshQaTests();
+    document.getElementById('qiPreviewBtn').onclick = qiShowReview;
+    document.getElementById('qaIssueReviewBack').onclick = qiBackToForm;
+    document.getElementById('qiFiles').onchange = (e) => {
+      const api = shell().api;
+      const errEl = document.getElementById('qiFormError');
+      [...e.target.files].forEach(file => {
+        file.arrayBuffer().then(buf => api.uploadIssueAttachment(new Uint8Array(buf), file.name)).then(res => {
+          if (res && res.ok) {
+            qiUploads.push({ token: res.token, filename: res.filename, content_type: file.type });
+            document.getElementById('qiFileList').innerHTML =
+              qiUploads.map(u => `<span class="qi-file-chip">${esc(u.filename)}</span>`).join('');
+            return;
+          }
+          errEl.style.display = 'block';
+          errEl.textContent = `แนบไฟล์ "${file.name}" ไม่สำเร็จ: ${(res && res.error) || 'ไม่ทราบสาเหตุ'}`;
+        }).catch(e => {
+          errEl.style.display = 'block';
+          errEl.textContent = `แนบไฟล์ "${file.name}" ไม่สำเร็จ: ${e.message}`;
+        });
+      });
+    };
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====
@@ -316,4 +580,10 @@
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
   global.COWORK.tabs.qatest = { key:'qa', settingsCard:'cardQa', mount, mountSettings, loadSettings, onData, onTheme };
+
+  // เปิดทาง node --test แบบเดียวกับ tab-grafana.js / tab-meeting.js / tab-redmine.js
+  // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { buildReviewLines };
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -20,7 +20,7 @@
     'Backlog':'var(--dim)','Resolved':'var(--green)','Closed':'var(--dim)'};
   function projColor(key){ return 'pc'+hashN(key,6); }
   function whoColor(key){ return 'wc'+hashN(key,6); }
-  const RISK_ORDER=['Low','Fairly Low','Moderate','Medium','High'];
+  const RISK_ORDER=['Low','Fairly Low','Moderate','High','Very High'];
   const RISK_COLORS=['var(--green)','var(--cyan)','var(--amber)','var(--orange)','var(--rose)'];
   const PRIORITY_ORDER=['Low','Normal','High','Urgent','Immediate'];
   let lastPayload=null, activeStatus=null;

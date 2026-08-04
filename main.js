@@ -7,6 +7,8 @@ const { readMeetings, readTranscript } = require('./meetings');
 const { readQaResults } = require('./qatest');
 const { Grafana, APP_GROUPS } = require('./grafana');
 const { parseGlossary, planWrite } = require('./glossary');
+const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors } = require('./redmine-issue-form');
+const { draftIssue } = require('./llm');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -271,7 +273,11 @@ function setupAutoUpdate() {
 
 const STATUS_ORDER = ['Backlog', 'New', 'In Progress', 'Test', 'Resolved', 'Closed'];
 // low → high severity; index used to pick the worst when an issue has several
-const RISK_ORDER = ['Low', 'Fairly Low', 'Moderate', 'Medium', 'High'];
+const RISK_ORDER = ['Low', 'Fairly Low', 'Moderate', 'High', 'Very High'];
+
+let issueFormFieldsCache = {};
+let trackerIdCache = null;
+let priorityIdCache = null;
 
 function fmtDateTime(iso) {
   const d = new Date(iso), p = x => String(x).padStart(2, '0');
@@ -318,6 +324,23 @@ async function loadStatusMeta() {
 async function getStatusId(name) { await loadStatusMeta(); return statusIdCache[name]; }
 function isClosedStatusName(name) { return !!(statusClosedCache && statusClosedCache[name]); }
 
+async function loadTrackerMeta() {
+  if (trackerIdCache) return;
+  const res = await fetch(`${redmineConfig.url}/trackers.json`, { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
+  if (!res.ok) throw new Error(`โหลด tracker ไม่สำเร็จ (HTTP ${res.status})`);
+  const data = await res.json();
+  trackerIdCache = {};
+  for (const t of data.trackers || []) trackerIdCache[t.name] = t.id;
+}
+async function loadPriorityMeta() {
+  if (priorityIdCache) return;
+  const res = await fetch(`${redmineConfig.url}/enumerations/issue_priorities.json`, { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
+  if (!res.ok) throw new Error(`โหลด priority ไม่สำเร็จ (HTTP ${res.status})`);
+  const data = await res.json();
+  priorityIdCache = {};
+  for (const p of data.issue_priorities || []) priorityIdCache[p.name] = p.id;
+}
+
 // fetches every issue regardless of status, paginating through Redmine's offset/limit
 // until total_count is satisfied (first page determines total, rest fetch in parallel)
 async function fetchAllIssues() {
@@ -344,6 +367,7 @@ async function fetchRedmineTasks() {
   try {
     await loadStatusMeta();
     const allIssuesRaw = await fetchAllIssues();
+    issueFormFieldsCache = buildFieldSchema(allIssuesRaw);
     const today = new Date().toISOString().slice(0, 10);
     const stats = { open: 0, highRisk: 0, overdue: 0, closed: 0 };
     const closedByYear = new Map();
@@ -360,7 +384,7 @@ async function fetchRedmineTasks() {
         if (year) closedByYear.set(year, (closedByYear.get(year) || 0) + 1);
       } else {
         stats.open++;
-        if (risk === 'High') stats.highRisk++;
+        if (risk === 'High' || risk === 'Very High') stats.highRisk++;
         if (overdue) stats.overdue++;
       }
       if (!byStatus.has(status)) byStatus.set(status, []);
@@ -669,6 +693,102 @@ ipcMain.handle('close-issue', async (_e, issueId, customField) => {
     return { ok: false, error: e.message };
   }
 });
+// renderer ขอ field ที่ต้องกรอกสำหรับ (project, tracker) คู่นี้ — มาจาก issueFormFieldsCache
+// ที่สร้างจาก issue ที่ดึงมาแล้ว (แนวทาง A ของ spec) ไม่เรียก /custom_fields.json (admin-only)
+ipcMain.handle('get-issue-form-meta', async (_e, projectId, trackerName) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  try {
+    await Promise.all([loadTrackerMeta(), loadPriorityMeta()]);
+    const customFields = issueFormFieldsCache[fieldSchemaKey(projectId, trackerName)] || [];
+    return {
+      ok: true,
+      trackerId: trackerIdCache[trackerName],
+      priorityOptions: Object.keys(priorityIdCache),
+      customFields,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+// สมาชิกจริงของโปรเจกต์ — ต่างจาก assignee list ในแท็บ Redmine ที่มาจาก "คนที่เคยมี issue ถูก
+// assign" คนใหม่ในทีมที่ยังไม่เคยได้ assign อะไรเลยจะไม่โผล่ในลิสต์นั้น
+ipcMain.handle('get-project-members', async (_e, projectId) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  try {
+    const res = await fetch(`${redmineConfig.url}/projects/${projectId}/memberships.json?limit=100`,
+      { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
+    if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
+    const data = await res.json();
+    const members = (data.memberships || [])
+      .filter(m => m.user)
+      .map(m => ({ id: m.user.id, name: m.user.name }));
+    return { ok: true, members };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+// เรียก llm.js — apiKey/baseUrl มาจาก .env เท่านั้น renderer ส่งมาแค่ rawNotes/model/language/tracker
+ipcMain.handle('draft-issue-text', async (_e, rawNotes, opts) => {
+  const result = await draftIssue(rawNotes, {
+    ...opts,
+    apiKey: ENV.LLM_API_KEY,
+    baseUrl: ENV.LLM_BASE_URL,
+  });
+  if (!result.ok) return result;
+  const d = result.draft;
+  const description = composeDescription(opts.language || 'both', d.description_th || '', d.description_en || '');
+  const subject = d.subject_th || d.subject_en || '';
+  return { ok: true, draft: { ...d, subject, description } };
+});
+ipcMain.handle('upload-issue-attachment', async (_e, fileBuffer, filename) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  try {
+    const res = await fetch(`${redmineConfig.url}/uploads.json`, {
+      method: 'POST',
+      headers: { 'X-Redmine-API-Key': redmineConfig.apiKey, 'Content-Type': 'application/octet-stream' },
+      body: fileBuffer,
+    });
+    if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
+    const { upload } = await res.json();
+    return { ok: true, token: upload.token, filename };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+// ปุ่ม "ยืนยันสร้าง" ในหน้า review เท่านั้นที่เรียก handler นี้ — 422 คืน fieldErrors ให้ฟอร์ม
+// ไฮไลต์ field ที่ขาด แทนการ retry เงียบ ๆ (ตาข่ายรอง C ของ spec)
+ipcMain.handle('create-issue', async (_e, form) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  try {
+    await Promise.all([loadTrackerMeta(), loadPriorityMeta()]);
+    const key = fieldSchemaKey(form.projectId, form.trackerName);
+    const riskField = (issueFormFieldsCache[key] || []).find(f => f.name === 'Risk Level');
+    if (form.riskLevel && !riskField) {
+      return { ok: false, error: 'ระบบยังไม่รู้จัก field Risk Level ของโปรเจกต์/tracker นี้ (แคชยังไม่มีข้อมูล) — เปิดแท็บ Redmine ทิ้งไว้สักครู่ให้โหลดข้อมูลใหม่ แล้วกลับมาสร้าง issue อีกครั้ง หรือกรอก issue นี้ผ่านหน้าเว็บ Redmine โดยตรงแทน' };
+    }
+    const body = buildIssuePayload(form, {
+      trackerIdByName: trackerIdCache,
+      priorityIdByName: priorityIdCache,
+      riskLevelFieldId: riskField && riskField.id,
+    });
+    const res = await fetch(`${redmineConfig.url}/issues.json`, {
+      method: 'POST',
+      headers: { 'X-Redmine-API-Key': redmineConfig.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let errors = [];
+      try { const errBody = await res.json(); errors = errBody.errors || []; } catch {}
+      const fieldNames = (issueFormFieldsCache[key] || []).map(f => f.name);
+      return { ok: false, error: `Redmine HTTP ${res.status}`, fieldErrors: parseValidationErrors(errors, fieldNames) };
+    }
+    const { issue } = await res.json();
+    pushTasks();
+    return { ok: true, id: issue.id, url: `${redmineConfig.url}/issues/${issue.id}` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 // renderer's Settings panel: read current values, test before saving, then save
 ipcMain.handle('get-redmine-config', () => ({ url: redmineConfig.url, apiKey: redmineConfig.apiKey }));
 ipcMain.handle('test-redmine-connection', async (_e, { url, apiKey }) => {
@@ -684,7 +804,7 @@ ipcMain.handle('test-redmine-connection', async (_e, { url, apiKey }) => {
 ipcMain.handle('save-redmine-config', (_e, { url, apiKey }) => {
   redmineConfig = { url, apiKey };
   writeConfigMerge({ redmineUrl: url, redmineApiKey: apiKey });
-  currentUserCache = null; statusIdCache = null; // tied to the old credentials
+  currentUserCache = null; statusIdCache = null; trackerIdCache = null; priorityIdCache = null; // tied to the old credentials
   pushTasks();
   return { ok: true };
 });

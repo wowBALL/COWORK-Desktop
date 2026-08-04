@@ -45,6 +45,8 @@
       "workspace.js",
       "meetings.js",
       "glossary.js",
+      "llm.js",
+      "redmine-issue-form.js",
       "qatest.js",
       "grafana.js",
       "uidump.js",

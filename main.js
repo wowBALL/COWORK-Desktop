@@ -7,7 +7,7 @@ const { readMeetings, readTranscript } = require('./meetings');
 const { readQaResults } = require('./qatest');
 const { Grafana, APP_GROUPS } = require('./grafana');
 const { parseGlossary, planWrite } = require('./glossary');
-const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors } = require('./redmine-issue-form');
+const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors, canonicalRiskLevel } = require('./redmine-issue-form');
 const { draftIssue } = require('./llm');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
@@ -742,7 +742,8 @@ ipcMain.handle('draft-issue-text', async (_e, rawNotes, opts) => {
   const d = result.draft;
   const description = composeDescription(opts.language || 'both', d.description_th || '', d.description_en || '');
   const subject = d.subject_en || d.subject_th || '';
-  return { ok: true, draft: { ...d, subject, description } };
+  const suggested_risk_level = canonicalRiskLevel(d.suggested_risk_level);
+  return { ok: true, draft: { ...d, subject, description, suggested_risk_level } };
 });
 ipcMain.handle('upload-issue-attachment', async (_e, fileBuffer, filename) => {
   if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };

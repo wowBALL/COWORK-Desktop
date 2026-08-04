@@ -8,6 +8,17 @@ function fieldSchemaKey(projectId, trackerName) {
   return `${projectId}||${trackerName}`;
 }
 
+// low → high severity — ตรงกับ <option> ของ <select id="qiRiskLevel"> ใน widget.html เป๊ะ
+const RISK_LEVELS = ['Low', 'Fairly Low', 'Moderate', 'High', 'Very High'];
+
+// LLM บางทีตอบ suggested_risk_level มาไม่ตรง casing/ช่องว่างเป๊ะกับ <option> (เช่น "very high"
+// หรือ "High ") ทำให้ <select>.value เซ็ตไม่ติด แล้ว dropdown เด้งกลับไป "(ไม่ระบุ)" เงียบ ๆ —
+// จับคู่แบบ case/whitespace-insensitive แล้วคืน canonical string ให้ตรงกับ <option> เป๊ะ
+function canonicalRiskLevel(value) {
+  const norm = String(value || '').trim().toLowerCase();
+  return RISK_LEVELS.find(r => r.toLowerCase() === norm) || '';
+}
+
 // แนวทาง A ของ spec: สแกน issue ที่ fetchAllIssues() ดึงมาแล้ว (include=custom_fields อยู่แล้ว
 // เพื่อวาดแท็บ Redmine) แทนการเรียก /custom_fields.json ที่ต้องสิทธิ์ admin
 function buildFieldSchema(issues) {
@@ -75,4 +86,5 @@ function parseValidationErrors(errorMessages, knownFieldNames) {
 
 module.exports = {
   fieldSchemaKey, buildFieldSchema, composeDescription, buildIssuePayload, parseValidationErrors,
+  canonicalRiskLevel,
 };

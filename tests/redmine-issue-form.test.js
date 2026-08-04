@@ -193,3 +193,22 @@ test('parseValidationErrors: array ว่างคืน array ว่าง', ()
   assert.deepStrictEqual(parseValidationErrors([], ['Rollback Plan']), []);
   assert.deepStrictEqual(parseValidationErrors(undefined, ['Rollback Plan']), []);
 });
+
+const { canonicalRiskLevel } = require('../redmine-issue-form.js');
+
+test('canonicalRiskLevel: ค่าตรงเป๊ะคืนค่าเดิม', () => {
+  assert.strictEqual(canonicalRiskLevel('Very High'), 'Very High');
+  assert.strictEqual(canonicalRiskLevel('Low'), 'Low');
+});
+
+test('canonicalRiskLevel: จับคู่แบบไม่สนตัวพิมพ์เล็กใหญ่/ช่องว่างหัวท้าย', () => {
+  assert.strictEqual(canonicalRiskLevel('very high'), 'Very High');
+  assert.strictEqual(canonicalRiskLevel('  Fairly Low  '), 'Fairly Low');
+  assert.strictEqual(canonicalRiskLevel('MODERATE'), 'Moderate');
+});
+
+test('canonicalRiskLevel: ค่าที่ไม่รู้จัก/ว่าง คืน string ว่าง', () => {
+  assert.strictEqual(canonicalRiskLevel('extremely risky'), '');
+  assert.strictEqual(canonicalRiskLevel(''), '');
+  assert.strictEqual(canonicalRiskLevel(undefined), '');
+});

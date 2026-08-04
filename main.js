@@ -742,24 +742,16 @@ ipcMain.handle('draft-issue-text', async (_e, rawNotes, opts) => {
 });
 ipcMain.handle('upload-issue-attachment', async (_e, fileBuffer, filename) => {
   if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
-  console.log('[DEBUG upload-issue-attachment] filename', filename, 'type', fileBuffer && fileBuffer.constructor && fileBuffer.constructor.name, 'length', fileBuffer && fileBuffer.length);
   try {
     const res = await fetch(`${redmineConfig.url}/uploads.json`, {
       method: 'POST',
       headers: { 'X-Redmine-API-Key': redmineConfig.apiKey, 'Content-Type': 'application/octet-stream' },
       body: fileBuffer,
     });
-    console.log('[DEBUG upload-issue-attachment] status', res.status);
-    if (!res.ok) {
-      const rawBody = await res.text().catch(() => '');
-      console.log('[DEBUG upload-issue-attachment] error body', rawBody);
-      return { ok: false, error: `Redmine HTTP ${res.status}` };
-    }
+    if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
     const { upload } = await res.json();
-    console.log('[DEBUG upload-issue-attachment] success token', upload.token);
     return { ok: true, token: upload.token, filename };
   } catch (e) {
-    console.log('[DEBUG upload-issue-attachment] EXCEPTION', e.message, e.stack);
     return { ok: false, error: e.message };
   }
 });

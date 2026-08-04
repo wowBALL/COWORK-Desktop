@@ -252,14 +252,35 @@
       // แสดงผลสำเร็จอยู่ในแผง qaIssueReview เอง (ไม่พึ่ง qaRows ที่อาจถูกซ่อนอยู่ถ้าแท็บที่ active
       // ตอนนี้ไม่ใช่ QA test — ปุ่ม "+" ย้ายไปแท็บ Redmine แล้ว ฟอร์ม/review เป็นแผงลอยที่โชว์ได้
       // ไม่ว่าแท็บไหน active อยู่ก็ตาม) กด "ปิด" เมื่อไหร่ค่อยเรียก qiCloseForm() รีเซ็ตจริง
-      document.getElementById('qiReviewBody').innerHTML =
-        `<div class="hint">สร้างสำเร็จ: <a href="#" id="qiCreatedLink">#${result.id}</a></div>`;
-      document.getElementById('qiCreatedLink').onclick = (e) => { e.preventDefault(); shell().api.openLink(result.url); };
+      const meta = [['โปรเจกต์', form.projectName], ['Tracker', form.trackerName], ['Priority', form.priorityName]];
+      if (form.riskLevel) meta.push(['Risk', form.riskLevel]);
+      if ((form.uploads || []).length) meta.push(['ไฟล์แนบ', form.uploads.length + ' ไฟล์']);
+      document.getElementById('qaIssueReview').classList.add('qi-done');
+      document.getElementById('qiReviewBody').innerHTML = `
+        <div class="qi-done-head">
+          <span class="qi-done-check">✓</span>
+          <span class="qi-done-title">สร้าง issue สำเร็จ</span>
+          <a href="#" class="qi-done-id" id="qiCreatedLink" title="เปิดใน Redmine">#${result.id}</a>
+        </div>
+        <div class="qi-done-subject">${esc(form.subject)}</div>
+        <div class="qi-done-meta">${meta.map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join('')}</div>`;
+      const openIssue = (e) => { if (e) e.preventDefault(); shell().api.openLink(result.url); };
+      document.getElementById('qiCreatedLink').onclick = openIssue;
       document.getElementById('qaIssueReviewBack').classList.add('hidden');
+      // ปุ่มเปิดกลายเป็นปุ่มหลักแทน "ยืนยันสร้าง" ที่หมดหน้าที่แล้ว — ขั้นถัดไปที่คนมักทำคือไปดูใบที่เพิ่งสร้าง
+      const openBtn = document.getElementById('qiOpenIssueBtn');
+      openBtn.classList.remove('hidden');
+      openBtn.classList.add('set-save');
+      openBtn.onclick = openIssue;
+      btn.classList.remove('set-save');
       btn.textContent = 'ปิด';
       btn.onclick = () => {
         document.getElementById('qaIssueReview').classList.add('hidden');
+        document.getElementById('qaIssueReview').classList.remove('qi-done');
         document.getElementById('qaIssueReviewBack').classList.remove('hidden');
+        openBtn.classList.add('hidden');
+        openBtn.classList.remove('set-save');
+        btn.classList.add('set-save');
         btn.textContent = 'ยืนยันสร้าง';
         qiCloseForm();
       };

@@ -78,6 +78,33 @@
 #qiCustomFields .row-label { margin-top: 10px; }
 #qiCustomFields textarea { width: 100%; min-height: 60px; }
 #qiFileList { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+/* ===== หน้าจบหลังสร้าง issue สำเร็จ =====
+   แผง review ถูกตรึงสูงเต็มจอ (top:50px / bottom:20px) เพราะตอนรีวิวเนื้อหายาว ต้องเลื่อนอ่าน
+   แต่พอสร้างเสร็จเหลือข้อความไม่กี่บรรทัด กรอบเดิมเลยเหลือที่ว่างโล่งเกือบเต็มจอ
+   สถานะนี้จึงปลดความสูงออก ให้การ์ดหดพอดีเนื้อหาแล้วจัดกลางจอแทน (กว้างเท่าเดิม) */
+#qaIssueReview.qi-done { top: 50%; bottom: auto; height: auto;
+  transform: translate(-50%, -50%); max-height: calc(100% - 90px); padding: 18px 20px 16px; }
+#qaIssueReview.qi-done h3 { display: none; }   /* "ตรวจสอบก่อนสร้างจริง" ไม่จริงแล้วตอนนี้ */
+.qi-done-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.qi-done-check { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; font-size: 14px; font-weight: 800;
+  background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 45%, transparent); }
+.qi-done-title { font-size: 15px; font-weight: 700; }
+/* เลข issue เดิมเป็น <a> สีฟ้า default ของเบราว์เซอร์ อ่านแทบไม่ออกบนพื้นเข้ม
+   ทำเป็นชิปสี accent ของธีมแทน — เป็นทั้งตัวเลขที่อ่านง่ายและปุ่มเปิดในตัว */
+.qi-done-id { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 15px;
+  font-weight: 700; text-decoration: none; padding: 3px 12px; border-radius: 8px;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); transition: .12s; }
+.qi-done-id:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.qi-done-subject { font-size: 13.5px; line-height: 1.5; padding: 10px 12px; border-radius: 9px;
+  background: var(--panel); border: 1px solid var(--line); margin-bottom: 10px; }
+.qi-done-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.qi-done-meta span { font-size: 11px; padding: 3px 9px; border-radius: 6px; color: var(--muted);
+  background: var(--panel); border: 1px solid var(--line); }
+.qi-done-meta b { color: var(--ink); font-weight: 600; }
+
 /* คลิกได้ = แทรกแท็ก <img> ของไฟล์นั้นตรงเคอร์เซอร์ในช่องรายละเอียด (tab-qatest.js) */
 #qiFileList .qi-file-chip { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font-size: 12px; cursor: pointer; transition: .12s; }
 #qiFileList .qi-file-chip:hover { border-color: var(--accent); color: var(--accent); }

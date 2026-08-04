@@ -692,6 +692,40 @@ ipcMain.handle('close-issue', async (_e, issueId, customField) => {
     return { ok: false, error: e.message };
   }
 });
+// renderer ขอ field ที่ต้องกรอกสำหรับ (project, tracker) คู่นี้ — มาจาก issueFormFieldsCache
+// ที่สร้างจาก issue ที่ดึงมาแล้ว (แนวทาง A ของ spec) ไม่เรียก /custom_fields.json (admin-only)
+ipcMain.handle('get-issue-form-meta', async (_e, projectId, trackerName) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  try {
+    await Promise.all([loadTrackerMeta(), loadPriorityMeta()]);
+    const customFields = issueFormFieldsCache[fieldSchemaKey(projectId, trackerName)] || [];
+    return {
+      ok: true,
+      trackerId: trackerIdCache[trackerName],
+      priorityOptions: Object.keys(priorityIdCache),
+      customFields,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+// สมาชิกจริงของโปรเจกต์ — ต่างจาก assignee list ในแท็บ Redmine ที่มาจาก "คนที่เคยมี issue ถูก
+// assign" คนใหม่ในทีมที่ยังไม่เคยได้ assign อะไรเลยจะไม่โผล่ในลิสต์นั้น
+ipcMain.handle('get-project-members', async (_e, projectId) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  try {
+    const res = await fetch(`${redmineConfig.url}/projects/${projectId}/memberships.json?limit=100`,
+      { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
+    if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
+    const data = await res.json();
+    const members = (data.memberships || [])
+      .filter(m => m.user)
+      .map(m => ({ id: m.user.id, name: m.user.name }));
+    return { ok: true, members };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 // renderer's Settings panel: read current values, test before saving, then save
 ipcMain.handle('get-redmine-config', () => ({ url: redmineConfig.url, apiKey: redmineConfig.apiKey }));
 ipcMain.handle('test-redmine-connection', async (_e, { url, apiKey }) => {

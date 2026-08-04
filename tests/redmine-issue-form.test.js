@@ -275,6 +275,22 @@ test('embedImageAttachments: ไฟล์ที่ไม่ใช่รูปไ
   assert.strictEqual(out, 'x');
 });
 
+test('embedImageAttachments: รูปที่ผู้ใช้วางเองในเนื้อหาแล้ว ไม่ถูกแปะซ้ำที่หัวเรื่อง', () => {
+  const typed = 'ขั้นตอน:\n\n<img src="shot.png">\n\nแล้วกดบันทึก';
+  const out = embedImageAttachments(typed, [
+    { filename: 'shot.png', content_type: 'image/png' },
+  ]);
+  assert.strictEqual(out, typed);
+});
+
+test('embedImageAttachments: แปะเฉพาะรูปที่ยังไม่ถูกอ้างในเนื้อหา', () => {
+  const out = embedImageAttachments('ดู <img src="a.png"> ประกอบ', [
+    { filename: 'a.png', content_type: 'image/png' },
+    { filename: 'b.png', content_type: 'image/png' },
+  ]);
+  assert.strictEqual(out, '<img src="b.png">\n\nดู <img src="a.png"> ประกอบ');
+});
+
 test('embedImageAttachments: ไม่มีไฟล์แนบคืน description เดิมไม่แตะต้อง', () => {
   assert.strictEqual(embedImageAttachments('x', []), 'x');
   assert.strictEqual(embedImageAttachments('x', undefined), 'x');

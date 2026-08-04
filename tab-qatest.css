@@ -78,7 +78,9 @@
 #qiCustomFields .row-label { margin-top: 10px; }
 #qiCustomFields textarea { width: 100%; min-height: 60px; }
 #qiFileList { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-#qiFileList .qi-file-chip { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font-size: 12px; }
+/* คลิกได้ = แทรกแท็ก <img> ของไฟล์นั้นตรงเคอร์เซอร์ในช่องรายละเอียด (tab-qatest.js) */
+#qiFileList .qi-file-chip { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font-size: 12px; cursor: pointer; transition: .12s; }
+#qiFileList .qi-file-chip:hover { border-color: var(--accent); color: var(--accent); }
 #qiReviewBody dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; margin: 0; }
 #qiReviewBody dt { color: var(--muted); }
 #qiReviewBody dd { margin: 0; white-space: pre-wrap; }

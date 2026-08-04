@@ -24,6 +24,53 @@
   // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
   let qiKnownProjects = new Map();  // projectId -> projectName
 
+  // ตั้งชื่อไฟล์ให้รูปที่วางจากคลิปบอร์ด — คลิปบอร์ดไม่มีชื่อไฟล์ติดมา ถ้าใช้ชื่อตายตัวจะชนกัน
+  // เองตอนวางหลายรูป รูปแบบเดียวกับที่หน้าเว็บ Redmine ตั้งให้ (clipboard-YYYYMMDDHHMM-xxxxx)
+  function qiStamp() {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`
+      + '-' + Math.random().toString(36).slice(2, 7);
+  }
+
+  function qiInsertAtCursor(el, text) {
+    const start = el.selectionStart == null ? el.value.length : el.selectionStart;
+    const end = el.selectionEnd == null ? start : el.selectionEnd;
+    el.value = el.value.slice(0, start) + text + el.value.slice(end);
+    el.selectionStart = el.selectionEnd = start + text.length;
+    el.focus();
+  }
+
+  function qiRenderFileChips() {
+    document.getElementById('qiFileList').innerHTML = qiUploads
+      .map(u => `<span class="qi-file-chip" data-fn="${esc(u.filename)}" title="คลิกเพื่อแทรกรูปนี้ตรงเคอร์เซอร์ในช่องรายละเอียด">${esc(u.filename)}</span>`)
+      .join('');
+  }
+
+  // อัปโหลดไฟล์เดียวขึ้น Redmine — ใช้ร่วมกันทั้งปุ่มแนบไฟล์และการวางรูปจากคลิปบอร์ด
+  // placeholder (ถ้ามี) คือข้อความคั่นที่วางไว้ในช่องรายละเอียดแล้ว รอแทนที่ด้วยแท็ก <img> จริง
+  function qiUploadFile(file, filename, placeholder) {
+    const api = shell().api;
+    const errEl = document.getElementById('qiFormError');
+    const desc = document.getElementById('qiDescription');
+    const settle = (replacement) => {
+      if (placeholder) desc.value = desc.value.replace(placeholder, replacement);
+    };
+    const fail = (why) => {
+      settle('');
+      errEl.style.display = 'block';
+      errEl.textContent = `แนบไฟล์ "${filename}" ไม่สำเร็จ: ${why}`;
+    };
+    return file.arrayBuffer()
+      .then(buf => api.uploadIssueAttachment(new Uint8Array(buf), filename))
+      .then(res => {
+        if (!res || !res.ok) return fail((res && res.error) || 'ไม่ทราบสาเหตุ');
+        qiUploads.push({ token: res.token, filename: res.filename, content_type: file.type });
+        qiRenderFileChips();
+        settle(`<img src="${res.filename}">`);
+      })
+      .catch(e => fail(e.message));
+  }
+
   function qiOpenForm() {
     document.getElementById('qaStage').classList.add('hidden');
     document.getElementById('qaIssueForm').classList.remove('hidden');
@@ -531,24 +578,34 @@
     document.getElementById('qiPreviewBtn').onclick = qiShowReview;
     document.getElementById('qaIssueReviewBack').onclick = qiBackToForm;
     document.getElementById('qiFiles').onchange = (e) => {
-      const api = shell().api;
-      const errEl = document.getElementById('qiFormError');
-      [...e.target.files].forEach(file => {
-        file.arrayBuffer().then(buf => api.uploadIssueAttachment(new Uint8Array(buf), file.name)).then(res => {
-          if (res && res.ok) {
-            qiUploads.push({ token: res.token, filename: res.filename, content_type: file.type });
-            document.getElementById('qiFileList').innerHTML =
-              qiUploads.map(u => `<span class="qi-file-chip">${esc(u.filename)}</span>`).join('');
-            return;
-          }
-          errEl.style.display = 'block';
-          errEl.textContent = `แนบไฟล์ "${file.name}" ไม่สำเร็จ: ${(res && res.error) || 'ไม่ทราบสาเหตุ'}`;
-        }).catch(e => {
-          errEl.style.display = 'block';
-          errEl.textContent = `แนบไฟล์ "${file.name}" ไม่สำเร็จ: ${e.message}`;
-        });
-      });
+      [...e.target.files].forEach(file => qiUploadFile(file, file.name));
     };
+    // คลิกชิปชื่อไฟล์ = แทรกรูปนั้นตรงเคอร์เซอร์ สำหรับไฟล์ที่แนบมาทางปุ่มแล้วอยากย้ายที่เอง
+    document.getElementById('qiFileList').onclick = (e) => {
+      const chip = e.target.closest('.qi-file-chip');
+      if (!chip) return;
+      qiInsertAtCursor(document.getElementById('qiDescription'), `<img src="${chip.dataset.fn}">`);
+    };
+    // วางรูปจากคลิปบอร์ดลงช่องรายละเอียดได้ตรง ๆ (Ctrl+V) — เป็นวิธีที่ทีมใช้อยู่แล้วบนหน้าเว็บ
+    // Redmine (ไฟล์แนบใน issue เก่าชื่อ clipboard-*.png) และเป็นทางเดียวที่เลือกตำแหน่งรูปเองได้
+    document.getElementById('qiDescription').addEventListener('paste', (e) => {
+      const items = [...((e.clipboardData && e.clipboardData.items) || [])];
+      const images = items.filter(it => it.kind === 'file' && /^image\//i.test(it.type));
+      if (!images.length) return;   // วางข้อความธรรมดา ปล่อยให้เบราว์เซอร์จัดการเองตามเดิม
+      e.preventDefault();
+      const desc = document.getElementById('qiDescription');
+      images.forEach(item => {
+        const file = item.getAsFile();
+        if (!file) return;
+        const ext = (file.type.split('/')[1] || 'png').toLowerCase().replace('jpeg', 'jpg');
+        const filename = `clipboard-${qiStamp()}.${ext}`;
+        // แทรกข้อความคั่นไว้ก่อนแล้วค่อยแทนที่ด้วยแท็กจริงตอนอัปโหลดเสร็จ — เห็นผลทันทีที่วาง
+        // และไม่พังถ้าผู้ใช้เลื่อนเคอร์เซอร์ไปพิมพ์ที่อื่นระหว่างรออัปโหลด
+        const placeholder = `[กำลังอัปโหลด ${filename}]`;
+        qiInsertAtCursor(desc, placeholder);
+        qiUploadFile(file, filename, placeholder);
+      });
+    });
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====

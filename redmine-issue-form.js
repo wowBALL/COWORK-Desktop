@@ -86,8 +86,10 @@ function isImageUpload(u) {
 // ตามที่ทีมใช้จริง Redmine จับคู่ src กับ attachment ของ issue นั้นเองด้วยชื่อไฟล์เปล่า ๆ ไม่ต้องใส่ URL
 // วางไว้บนสุดเหมือนที่คนในทีมทำเวลาแปะสกรีนช็อตบั๊ก (ดู issue #722 ที่แก้มือ)
 function embedImageAttachments(description, uploads) {
-  const imgs = (uploads || []).filter(isImageUpload);
   const text = description || '';
+  // ข้ามรูปที่ถูกอ้างไว้ในเนื้อหาแล้ว — ผู้ใช้วางรูปเองตรงตำแหน่งที่ต้องการได้ (วางจากคลิปบอร์ด
+  // ลงช่องรายละเอียด หรือคลิกชิปชื่อไฟล์) ถ้าไม่กันไว้ รูปที่วางเองจะโดนแปะซ้ำที่หัวเรื่องอีกใบ
+  const imgs = (uploads || []).filter(isImageUpload).filter(u => !text.includes(u.filename));
   if (!imgs.length) return text;
   const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   const tags = imgs.map(u => `<img src="${attr(u.filename)}">`).join('\n');

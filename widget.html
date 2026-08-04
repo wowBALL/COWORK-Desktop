@@ -361,7 +361,10 @@
         <select id="qiAssignee" class="search"><option value="">(ไม่ระบุ)</option></select>
 
         <div class="row-label">ให้ LLM ช่วยร่าง (ไม่บังคับ)</div>
-        <textarea id="qiRawNotes" class="search" rows="3" placeholder="พิมพ์/วางโน้ตดิบ เช่น &quot;ปุ่ม checkout กดไม่ติด android 13 ลอง 3 รอบ&quot;"></textarea>
+        <textarea id="qiRawNotes" class="search" rows="3" placeholder="พิมพ์/วางโน้ตดิบ เช่น &quot;ปุ่ม checkout กดไม่ติด android 13 ลอง 3 รอบ&quot; — วางรูป (Ctrl+V) ตรงนี้ได้ด้วย"></textarea>
+        <!-- รูปที่วางในช่องโน้ตขึ้นตรงนี้ ไม่ใช่แทรกเป็นข้อความในโน้ตเหมือนช่องรายละเอียด
+             เพราะโน้ตทั้งก้อนถูกส่งเป็น prompt ไม่ใช่เนื้อหาที่ผู้ใช้จัดหน้าเอง -->
+        <div id="qiNotesImages" class="qi-notes-images"></div>
         <select id="qiModel">
           <option value="Qwen/Qwen3.6-35B-A3B">Qwen (เร็ว)</option>
           <option value="GLM-5.2">GLM (ช้ากว่า)</option>
@@ -373,6 +376,9 @@
         </select>
         <button type="button" id="qiDraftBtn" class="set-cancel">🪄 ให้ LLM ช่วยร่าง</button>
         <div id="qiDraftStatus" class="set-status"></div>
+        <!-- สิ่งที่ dev น่าจะถามกลับ — อยู่ในฟอร์มให้เติมก่อนส่งเท่านั้น ไม่เข้า description
+             และไม่ขึ้น Redmine (ตัดสินใจไว้ใน spec 2026-08-05) -->
+        <div id="qiDraftGaps" class="qi-draft-gaps"></div>
 
         <div class="row-label">หัวข้อ (Subject)</div>
         <input id="qiSubject" class="search" type="text">

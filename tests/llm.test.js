@@ -129,3 +129,143 @@ test('draftIssue: timeout ยกเลิกคำขอแล้วคืน ok
   assert.strictEqual(result.ok, false);
   assert.ok(result.error.includes('ไม่ตอบ'));
 });
+
+// ===== ส่งสกรีนช็อตให้โมเดลดู (spec 2026-08-05) =====
+// vision ของ Qwen วัดมาจากการยิงจริง ไม่ได้อนุมานจากชื่อรุ่น — เทสตรงนี้ล็อกไว้ว่าธงต้องไม่หายไป
+const OK_JSON = '{"subject_th":"a","description_th":"b","suggested_risk_level":"Low","missing_info":["route ไหน"]}';
+const okFetch = (capture) => async (url, opts) => {
+  if (capture) capture.body = JSON.parse(opts.body);
+  return { ok: true, json: async () => ({ choices: [{ message: { content: OK_JSON } }] }) };
+};
+const IMG = [{ filename: 'clipboard-1.png', dataUrl: 'data:image/png;base64,AAA' }];
+
+test('PROVIDERS: Qwen รับรูปได้ (วัดจริงแล้ว) ส่วน GLM ถือว่าไม่รับ', () => {
+  assert.strictEqual(PROVIDERS[DEFAULT_MODEL].vision, true);
+  assert.notStrictEqual(PROVIDERS['GLM-5.2'].vision, true);
+});
+
+test('draftIssue: ไม่มีรูป content ยังเป็น string เหมือนเดิมเป๊ะ', async () => {
+  const cap = {};
+  await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
+  assert.strictEqual(typeof cap.body.messages[1].content, 'string');
+  assert.strictEqual(cap.body.messages[1].content, 'โน้ต');
+});
+
+test('draftIssue: มีรูป content เป็น array ข้อความมาก่อน แล้วรูปเรียงตามลำดับ', async () => {
+  const cap = {};
+  const images = [
+    { filename: 'a.png', dataUrl: 'data:image/png;base64,AAA' },
+    { filename: 'b.png', dataUrl: 'data:image/png;base64,BBB' },
+  ];
+  await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', images, fetchImpl: okFetch(cap) });
+  const content = cap.body.messages[1].content;
+  assert.ok(Array.isArray(content));
+  assert.strictEqual(content[0].type, 'text');
+  assert.strictEqual(content[0].text, 'โน้ต');
+  assert.deepStrictEqual(content.slice(1).map(c => c.type), ['image_url', 'image_url']);
+  assert.strictEqual(content[1].image_url.url, 'data:image/png;base64,AAA');
+  assert.strictEqual(content[2].image_url.url, 'data:image/png;base64,BBB');
+});
+
+test('draftIssue: รูปที่ยังไม่มี dataUrl ถูกตัดออก ไม่ส่ง url ว่างไปให้ endpoint ปฏิเสธทั้งคำขอ', async () => {
+  const cap = {};
+  const images = [{ filename: 'a.png', dataUrl: '' }, { filename: 'b.png', dataUrl: 'data:image/png;base64,BBB' }];
+  await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', images, fetchImpl: okFetch(cap) });
+  const content = cap.body.messages[1].content;
+  assert.strictEqual(content.filter(c => c.type === 'image_url').length, 1);
+});
+
+test('draftIssue: images ว่าง/ไม่ใช่ array ก็ยังเป็น string ไม่พังเป็น array เปล่า', async () => {
+  for (const images of [[], null, undefined, 'ไม่ใช่ array']) {
+    const cap = {};
+    await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', images, fetchImpl: okFetch(cap) });
+    assert.strictEqual(typeof cap.body.messages[1].content, 'string', `images=${JSON.stringify(images)}`);
+  }
+});
+
+test('draftIssue: โมเดลที่ไม่รับรูป + มีรูป = ok:false และไม่ยิงเน็ต (ห้ามทิ้งรูปเงียบ ๆ)', async () => {
+  let called = false;
+  const fetchImpl = async () => { called = true; return { ok: true, json: async () => ({}) }; };
+  const result = await draftIssue('โน้ต', {
+    model: 'GLM-5.2', apiKey: 'k', baseUrl: 'https://x', images: IMG, fetchImpl,
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(called, false, 'ต้องไม่ยิงเน็ตเลยเมื่อรู้อยู่แล้วว่าโมเดลไม่รับรูป');
+  assert.ok(result.error.includes('Qwen'), 'error ต้องบอกทางออก ไม่ใช่แค่บอกว่าไม่ได้');
+});
+
+test('draftIssue: โมเดลที่ไม่รับรูป แต่ไม่มีรูป = ร่างได้ตามปกติ', async () => {
+  const result = await draftIssue('โน้ต', {
+    model: 'GLM-5.2', apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(),
+  });
+  assert.strictEqual(result.ok, true);
+});
+
+test('systemPromptFor: ไม่มีรูป = ไม่มีกฎเรื่องภาพเลย', () => {
+  const p = systemPromptFor('Bug', 'th');
+  assert.ok(!p.includes('สกรีนช็อต'));
+  assert.ok(!p.includes('ภาพที่ 1'));
+});
+
+test('systemPromptFor: มีรูป = บอกลำดับ+ชื่อไฟล์ และมีกฎครบทั้งสามข้อที่วัดมา', () => {
+  const p = systemPromptFor('Bug', 'th', [{ filename: 'a.png' }, { filename: 'b.png' }]);
+  assert.ok(p.includes('ภาพที่ 1 = a.png'), 'ต้องผูกลำดับกับชื่อไฟล์');
+  assert.ok(p.includes('ภาพที่ 2 = b.png'));
+  assert.ok(p.includes('ยึดโน้ต'), 'โน้ตผู้ใช้ต้องเป็นข้อมูลหลัก');
+  assert.ok(p.includes('ห้ามเดาสาเหตุทาง code'), 'กันโมเดลเดาสาเหตุจากภาพ');
+  assert.ok(p.includes('ไม่แน่ใจ'), 'อ่านไม่ชัดต้องให้บอก ไม่ใช่เดาคำ');
+});
+
+// ตาข่ายเดียวที่กันรูปหายจากเนื้อ issue หลังตัด stripUnknownImageTags ออก — ถ้า LLM เขียนชื่อไฟล์
+// ลง description แล้ว embedImageAttachments() จะข้ามรูปใบนั้นเพราะ text.includes(filename) เป็นจริง
+test('systemPromptFor: มีรูป = ห้ามเขียนชื่อไฟล์/แท็ก <img> ลง description', () => {
+  const p = systemPromptFor('Bug', 'th', [{ filename: 'a.png' }]);
+  assert.ok(p.includes('ห้ามเขียนชื่อไฟล์'));
+  assert.ok(p.includes('<img>'));
+});
+
+test('systemPromptFor: schema ขอ missing_info ทุกภาษา', () => {
+  for (const lang of ['th', 'en', 'both']) {
+    assert.ok(systemPromptFor('Bug', lang).includes('missing_info'), `language ${lang}`);
+  }
+});
+
+test('draftIssue: missing_info ทะลุถึง draft', async () => {
+  const result = await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch() });
+  assert.deepStrictEqual(result.draft.missing_info, ['route ไหน']);
+});
+
+test('draftIssue: missing_info ที่ไม่ใช่ array หรือไม่มีเลย = [] ไม่ใช่ undefined', async () => {
+  for (const raw of ['"เป็น string"', 'null', 'undefined-ไม่มีคีย์']) {
+    const content = raw === 'undefined-ไม่มีคีย์'
+      ? '{"subject_th":"a","description_th":"b"}'
+      : `{"subject_th":"a","description_th":"b","missing_info":${raw}}`;
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content } }] }) });
+    const result = await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+    assert.deepStrictEqual(result.draft.missing_info, [], `raw=${raw}`);
+  }
+});
+
+test('draftIssue: missing_info ตัดช่องว่างและรายการว่างทิ้ง', async () => {
+  const content = '{"subject_th":"a","description_th":"b","missing_info":["  route ไหน  ","","   ",null]}';
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content } }] }) });
+  const result = await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+  assert.deepStrictEqual(result.draft.missing_info, ['route ไหน']);
+});
+
+// mutation check จับได้ว่าเดิมไม่มีเทสไหนพังเลยถ้า draftIssue ลืมส่ง imgs เข้า systemPromptFor —
+// โมเดลจะได้รูปมาโดยไม่มีกฎกำกับสักข้อ รวมทั้งกฎห้ามเขียนชื่อไฟล์ที่กันรูปหายจากเนื้อ issue
+test('draftIssue: มีรูป = system prompt ที่ส่งไปจริงมีกฎเรื่องภาพครบ ไม่ใช่แนบรูปเปล่า ๆ', async () => {
+  const cap = {};
+  await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', images: IMG, fetchImpl: okFetch(cap) });
+  const sys = cap.body.messages[0].content;
+  assert.ok(sys.includes('ภาพที่ 1 = clipboard-1.png'), 'ต้องบอกลำดับ+ชื่อไฟล์ของรูปที่แนบไปจริง');
+  assert.ok(sys.includes('ห้ามเขียนชื่อไฟล์'));
+  assert.ok(sys.includes('ห้ามเดาสาเหตุทาง code'));
+});
+
+test('draftIssue: ไม่มีรูป = system prompt ที่ส่งไปจริงไม่มีกฎเรื่องภาพ', async () => {
+  const cap = {};
+  await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
+  assert.ok(!cap.body.messages[0].content.includes('สกรีนช็อต'));
+});

@@ -19,6 +19,10 @@
   let qiMeta = null;          // ผลจาก getIssueFormMeta ล่าสุด: {trackerId, priorityOptions, customFields}
   let qiMembers = [];         // ผลจาก getProjectMembers ล่าสุด
   let qiUploads = [];         // [{token, filename, content_type}] ทีละไฟล์ที่ upload สำเร็จแล้ว
+  // รูปที่วางในช่องโน้ตเพื่อให้ LLM ดู — เก็บ dataUrl ไว้ในหน่วยความจำ renderer เท่านั้น
+  // ไม่ใช่ชุดเดียวกับ qiUploads: qiUploads คือไฟล์แนบของ issue (ทุกใบ ไม่ว่ามาจากทางไหน)
+  // ส่วนตรงนี้คือ "ใบที่จะส่งให้โมเดลดู" ซึ่งผู้ใช้เอาออกทีละใบได้โดยไฟล์แนบยังอยู่
+  let qiDraftImages = [];     // [{filename, dataUrl, pending}]
   // รายชื่อโปรเจกต์จริงมาจาก payload ของแท็บ Redmine (tasks-update) ไม่ใช่ qaData ของแท็บนี้ —
   // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
   // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
@@ -59,7 +63,10 @@
       settle('');
       errEl.style.display = 'block';
       errEl.textContent = `แนบไฟล์ "${filename}" ไม่สำเร็จ: ${why}`;
+      return false;
     };
+    // คืน true/false ให้ผู้เรียกรู้ผล — ทางช่องโน้ตต้องถอนรูปออกจากชุดที่จะส่งให้ LLM ถ้าอัปไม่ขึ้น
+    // ไม่งั้นร่างจะอ้าง "ภาพที่ 1" ทั้งที่ issue ไม่มีรูปนั้นแนบอยู่จริง
     return file.arrayBuffer()
       .then(buf => api.uploadIssueAttachment(new Uint8Array(buf), filename))
       .then(res => {
@@ -67,8 +74,77 @@
         qiUploads.push({ token: res.token, filename: res.filename, content_type: file.type });
         qiRenderFileChips();
         settle(`<img src="${res.filename}">`);
+        return true;
       })
       .catch(e => fail(e.message));
+  }
+
+  // ===== รูปสำหรับให้ LLM ดู =====
+  // ป้ายปุ่มบอกจำนวนรูปที่จะส่ง เพราะรูปอยู่คนละที่กับปุ่ม — ไม่งั้นกดร่างแล้วไม่รู้ว่าโมเดลเห็นกี่ใบ
+  function qiDraftBtnLabel(count) {
+    return count ? `🪄 ให้ LLM ช่วยร่าง (${count} รูป)` : '🪄 ให้ LLM ช่วยร่าง';
+  }
+
+  function qiThumbsHtml(images) {
+    return (images || []).map((im, i) => `
+      <div class="qi-thumb${im.pending ? ' qi-thumb-busy' : ''}" title="${esc(im.filename)}">
+        ${im.dataUrl ? `<img src="${esc(im.dataUrl)}" alt="">` : ''}
+        <button type="button" class="qi-thumb-drop" data-i="${i}"
+          title="ไม่ส่งภาพนี้ให้ LLM (ไฟล์แนบใน issue ยังอยู่เหมือนเดิม)">×</button>
+      </div>`).join('');
+  }
+
+  function qiSyncDraftBtnLabel() {
+    document.getElementById('qiDraftBtn').textContent = qiDraftBtnLabel(qiDraftImages.length);
+  }
+
+  function qiRenderDraftImages() {
+    document.getElementById('qiNotesImages').innerHTML = qiThumbsHtml(qiDraftImages);
+    qiSyncDraftBtnLabel();
+  }
+
+  // วางรูปในช่องโน้ต = อัปขึ้น Redmine เป็นไฟล์แนบ + เก็บไบต์ไว้ส่งให้โมเดลดู ทำสองอย่างพร้อมกัน
+  // เพื่อไม่ให้ผู้ใช้ต้องวางรูปสองรอบ (รอบให้ dev เห็น กับรอบให้ LLM เห็น) ซึ่งเป็นเคสปกติ
+  function qiAttachImageToNotes(file, filename) {
+    const entry = { filename, dataUrl: '', pending: true };
+    qiDraftImages.push(entry);
+    qiRenderDraftImages();
+    const reader = new FileReader();
+    reader.onload = () => { entry.dataUrl = String(reader.result || ''); qiRenderDraftImages(); };
+    reader.readAsDataURL(file);
+    return qiUploadFile(file, filename).then(ok => {
+      if (ok) entry.pending = false;
+      else {
+        const i = qiDraftImages.indexOf(entry);
+        if (i >= 0) qiDraftImages.splice(i, 1);
+      }
+      qiRenderDraftImages();
+    });
+  }
+
+  function qiPastedImages(e) {
+    return [...((e.clipboardData && e.clipboardData.items) || [])]
+      .filter(it => it.kind === 'file' && /^image\//i.test(it.type))
+      .map(it => it.getAsFile())
+      .filter(Boolean);
+  }
+  function qiPastedName(file) {
+    const ext = (file.type.split('/')[1] || 'png').toLowerCase().replace('jpeg', 'jpg');
+    return `clipboard-${qiStamp()}.${ext}`;
+  }
+
+  function qiDraftGapsHtml(list) {
+    if (!list || !list.length) return '';
+    return '<b>ข้อมูลที่ยังขาด — เติมก่อนส่งจะลดรอบที่ dev ถามกลับ</b><ul>'
+      + list.map(s => `<li>${esc(s)}</li>`).join('') + '</ul>';
+  }
+
+  function qiRenderDraftGaps(list) {
+    const el = document.getElementById('qiDraftGaps');
+    const html = qiDraftGapsHtml(list);
+    // className คุมทั้งการซ่อน (.show) — ล้าง html อย่างเดียวไม่พอ กรอบเปล่าจะค้างอยู่บนฟอร์ม
+    el.className = html ? 'qi-draft-gaps show' : 'qi-draft-gaps';
+    el.innerHTML = html;
   }
 
   function qiOpenForm() {
@@ -82,7 +158,11 @@
     document.getElementById('qaIssueForm').classList.add('hidden');
     document.getElementById('qaStage').classList.remove('hidden');
     qiUploads = [];
+    qiDraftImages = [];
     document.getElementById('qiFileList').innerHTML = '';
+    document.getElementById('qiNotesImages').innerHTML = '';
+    qiSyncDraftBtnLabel();
+    qiRenderDraftGaps([]);
     document.getElementById('qiFiles').value = '';
     document.getElementById('qiRawNotes').value = '';
     document.getElementById('qiSubject').value = '';
@@ -140,7 +220,19 @@
     const api = shell().api;
     const status = document.getElementById('qiDraftStatus');
     const rawNotes = document.getElementById('qiRawNotes').value.trim();
-    if (!rawNotes) { status.className = 'set-status err'; status.textContent = 'พิมพ์โน้ตดิบก่อน'; return; }
+    if (!rawNotes) {
+      status.className = 'set-status err';
+      // รูปอย่างเดียวไม่พอโดยตั้งใจ ไม่ใช่ข้อจำกัดทางเทคนิค — โมเดลดูสกรีนช็อตแล้วบอกได้แค่ว่า
+      // "จอนี้หน้าตาแบบนี้" ไม่รู้ว่าอะไรผิด จนกว่าจะมีคนบอก (วัดมาแล้ว ดู spec 2026-08-05)
+      status.textContent = qiDraftImages.length
+        ? 'พิมพ์โน้ตดิบก่อน — รูปอย่างเดียวไม่พอ โมเดลไม่รู้ว่าอะไรในภาพคือสิ่งที่ผิด'
+        : 'พิมพ์โน้ตดิบก่อน';
+      return;
+    }
+    // ใบที่ FileReader ยังอ่านไม่เสร็จจะไม่มี dataUrl — ตัดออกดีกว่าส่ง url ว่างให้ endpoint ปฏิเสธทั้งคำขอ
+    const images = qiDraftImages
+      .filter(im => im.dataUrl)
+      .map(im => ({ filename: im.filename, dataUrl: im.dataUrl }));
     const btn = document.getElementById('qiDraftBtn');
     btn.disabled = true;
     status.className = 'set-status';
@@ -151,6 +243,7 @@
       model: document.getElementById('qiModel').value,
       language: document.getElementById('qiLanguage').value,
       tracker: document.getElementById('qiTracker').value,
+      images,
     }).then(result => {
       btn.disabled = false;
       if (skipped) return;
@@ -159,11 +252,15 @@
         status.textContent = (result && result.error) || 'ร่างไม่สำเร็จ — กรอกมือแทน';
         return;
       }
-      status.className = 'set-status ok'; status.textContent = 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง';
+      status.className = 'set-status ok';
+      status.textContent = images.length
+        ? `ร่างสำเร็จ (ดู ${images.length} รูปประกอบ) — ตรวจแล้วแก้ต่อได้ก่อนส่ง`
+        : 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง';
       const d = result.draft;
       document.getElementById('qiSubject').value = d.subject || '';
       document.getElementById('qiDescription').value = d.description || '';
       if (d.suggested_risk_level) document.getElementById('qiRiskLevel').value = d.suggested_risk_level;
+      qiRenderDraftGaps(d.missing_info);
     }).catch(e => {
       btn.disabled = false;
       if (skipped) return;
@@ -610,16 +707,12 @@
     // วางรูปจากคลิปบอร์ดลงช่องรายละเอียดได้ตรง ๆ (Ctrl+V) — เป็นวิธีที่ทีมใช้อยู่แล้วบนหน้าเว็บ
     // Redmine (ไฟล์แนบใน issue เก่าชื่อ clipboard-*.png) และเป็นทางเดียวที่เลือกตำแหน่งรูปเองได้
     document.getElementById('qiDescription').addEventListener('paste', (e) => {
-      const items = [...((e.clipboardData && e.clipboardData.items) || [])];
-      const images = items.filter(it => it.kind === 'file' && /^image\//i.test(it.type));
-      if (!images.length) return;   // วางข้อความธรรมดา ปล่อยให้เบราว์เซอร์จัดการเองตามเดิม
+      const files = qiPastedImages(e);
+      if (!files.length) return;   // วางข้อความธรรมดา ปล่อยให้เบราว์เซอร์จัดการเองตามเดิม
       e.preventDefault();
       const desc = document.getElementById('qiDescription');
-      images.forEach(item => {
-        const file = item.getAsFile();
-        if (!file) return;
-        const ext = (file.type.split('/')[1] || 'png').toLowerCase().replace('jpeg', 'jpg');
-        const filename = `clipboard-${qiStamp()}.${ext}`;
+      files.forEach(file => {
+        const filename = qiPastedName(file);
         // แทรกข้อความคั่นไว้ก่อนแล้วค่อยแทนที่ด้วยแท็กจริงตอนอัปโหลดเสร็จ — เห็นผลทันทีที่วาง
         // และไม่พังถ้าผู้ใช้เลื่อนเคอร์เซอร์ไปพิมพ์ที่อื่นระหว่างรออัปโหลด
         const placeholder = `[กำลังอัปโหลด ${filename}]`;
@@ -627,6 +720,20 @@
         qiUploadFile(file, filename, placeholder);
       });
     });
+    // วางรูปลงช่องโน้ต = ให้โมเดลดูรูปนั้นตอนร่าง ต่างจากช่องรายละเอียดตรงที่ไม่แทรกข้อความใด ๆ
+    // ลงในโน้ต เพราะโน้ตทั้งก้อนถูกส่งเป็น prompt แท็ก <img> ในนั้นมีแต่ทำให้โมเดลสับสน
+    document.getElementById('qiRawNotes').addEventListener('paste', (e) => {
+      const files = qiPastedImages(e);
+      if (!files.length) return;
+      e.preventDefault();
+      files.forEach(file => qiAttachImageToNotes(file, qiPastedName(file)));
+    });
+    document.getElementById('qiNotesImages').onclick = (e) => {
+      const btn = e.target.closest('.qi-thumb-drop');
+      if (!btn) return;
+      qiDraftImages.splice(Number(btn.dataset.i), 1);
+      qiRenderDraftImages();
+    };
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====
@@ -684,6 +791,6 @@
   // เปิดทาง node --test แบบเดียวกับ tab-grafana.js / tab-meeting.js / tab-redmine.js
   // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { buildReviewLines };
+    module.exports = { buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

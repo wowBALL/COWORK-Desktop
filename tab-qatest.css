@@ -113,3 +113,27 @@
 #qiReviewBody dd { margin: 0; white-space: pre-wrap; }
 /* field ที่ Redmine ฟ้อง 422 กลับมา — ไฮไลต์ตอนเด้งกลับหน้าฟอร์ม (โครงสีเดียวกับ .set-status.err) */
 .qi-field-error { border-color: var(--rose) !important; }
+
+/* ===== รูปที่วางไว้ให้ LLM ดู =====
+   รูปย่อ ไม่ใช่ชิปชื่อไฟล์แบบ #qiFileList เพราะจุดประสงค์ต่างกัน — ชิปมีไว้คลิกแทรกลงเนื้อหา
+   ส่วนตรงนี้มีไว้ยืนยันด้วยตาว่า "ที่จะส่งให้โมเดลดูคือรูปพวกนี้จริง ๆ" ก่อนกดร่าง */
+.qi-notes-images { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.qi-notes-images .qi-thumb { position: relative; width: 92px; height: 62px; border-radius: 6px;
+  border: 1px solid var(--line); overflow: hidden; background: var(--panel); }
+.qi-notes-images .qi-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qi-notes-images .qi-thumb.qi-thumb-busy { opacity: .45; }
+/* ปุ่มนี้เอารูปออกจากที่จะส่งให้ LLM เท่านั้น ไฟล์แนบใน Redmine ถอนไม่ได้แล้ว — ป้าย title
+   ใน tab-qatest.js เขียนไว้ชัดเพื่อไม่ให้เข้าใจว่าเป็นการลบไฟล์แนบ */
+.qi-notes-images .qi-thumb-drop { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px;
+  border: 0; border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 18px; padding: 0;
+  color: var(--ink); background: var(--bg); opacity: .8; }
+.qi-notes-images .qi-thumb-drop:hover { color: var(--rose); opacity: 1; }
+
+/* สิ่งที่ dev น่าจะถามกลับ — เตือนให้เติม ไม่ใช่ error จึงใช้โทน muted ไม่ใช่ --rose */
+.qi-draft-gaps { display: none; margin: 8px 0 4px; padding: 8px 10px; font-size: 12px;
+  border: 1px solid var(--line); border-left: 3px solid var(--amber);
+  border-radius: 6px; background: var(--panel); color: var(--muted); }
+.qi-draft-gaps.show { display: block; }
+.qi-draft-gaps b { color: var(--ink); font-weight: 600; }
+.qi-draft-gaps ul { margin: 6px 0 0; padding-left: 18px; }
+.qi-draft-gaps li { margin: 2px 0; }

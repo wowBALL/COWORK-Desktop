@@ -59,22 +59,42 @@
   max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .who{font-size:10.5px;font-weight:600;flex-shrink:0;max-width:88px;padding:2px 8px;border-radius:6px;
   border:1px solid currentColor;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Risk กับ Priority เคยใช้จานสีชุดเดียวกัน (เขียว/เหลือง/ส้ม/แดง) พื้นจาง 16% เท่ากันหมด
+   ที่ตัวอักษร 8.5px กว้าง 66px สองป้ายนี้เลยกลืนกันจนอ่านผิดว่าอันไหนคืออะไร
+   แก้ด้วยการแยก "ตระกูล" ไม่ใช่แค่เปลี่ยนเฉด:
+     Risk     = พื้นทึบ ไล่น้ำหนักขึ้นตามระดับ จบที่ Very High เป็นสีเต็ม
+     Priority = โปร่ง มีแต่เส้นขอบ (ดูกลุ่ม .prio ข้างล่าง)
+   เฉดไล่ เขียว → ฟ้า → เหลือง → ส้ม → แดง โดยสามตัวท้ายใช้ --sev-* ที่ตั้งไว้เฉพาะสเกลนี้
+   (ถ้าใช้ --amber/--orange เดิมจะได้สีแทนอมเหลืองสองตัวที่แยกไม่ออกตอนย่อเล็ก)
+   สองระดับบนสุดเป็นพื้นเต็มสี ไม่ใช่พื้นจาง — งาน High/Very High มีอยู่ ~14 จาก 530 ใบ
+   การให้มันเด่นออกมาจากพื้นจาง ๆ ของระดับล่างคือสิ่งที่ต้องการ ไม่ใช่เสียงรบกวน
+   พื้นจางคุมไว้ที่ 20-24% เพราะตัวอักษรใช้เฉดเดียวกับพื้น ถ้าเข้มกว่านี้ตัวหนังสือจะจมหาย
+   ใส่ border ให้ทุกระดับ กันขนาดกล่องกระตุกตอนสลับระดับ (เดิมมีแต่ rk-none ที่มีขอบ) */
 .risk{font-size:8.5px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:6px;
-  flex-shrink:0;width:66px;text-align:center;text-transform:uppercase}
-.risk.rk-none{background:transparent;color:var(--line);border:1px dashed var(--line)}
-.rk0{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}    /* Low */
-.rk1{background:color-mix(in srgb,var(--cyan) 16%,transparent);color:var(--cyan)}      /* Fairly Low */
-.rk2{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}    /* Moderate */
-.rk3{background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}  /* High */
-.rk4{background:color-mix(in srgb,var(--rose) 20%,transparent);color:var(--rose)}      /* Very High */
+  flex-shrink:0;width:66px;text-align:center;text-transform:uppercase;border:1px solid transparent}
+.risk.rk-none{background:transparent;color:var(--dim);border:1px dashed var(--line)}
+.rk0{background:color-mix(in srgb,var(--green) var(--sev-tint),transparent);color:var(--green);
+  border-color:color-mix(in srgb,var(--green) 45%,transparent)}                           /* Low */
+.rk1{background:color-mix(in srgb,var(--cyan) var(--sev-tint),transparent);color:var(--cyan);
+  border-color:color-mix(in srgb,var(--cyan) 50%,transparent)}                            /* Fairly Low */
+.rk2{background:color-mix(in srgb,var(--sev-mid) var(--sev-tint),transparent);color:var(--sev-mid);
+  border-color:color-mix(in srgb,var(--sev-mid) 55%,transparent)}                         /* Moderate */
+.rk3{background:var(--sev-high);color:var(--on-accent);border-color:var(--sev-high)}      /* High */
+.rk4{background:var(--sev-max);color:var(--on-accent);border-color:var(--sev-max);
+  font-weight:800}                                                                        /* Very High */
+/* Priority = โปร่งทั้งชุด เหลือแต่ขอบ อ่านออกทันทีว่าคนละเรื่องกับ Risk ที่พื้นทึบ
+   ใช้เฉดชุดเดียวกับ Risk เพื่อให้ "ยิ่งแดงยิ่งด่วน" อ่านตรงกันทั้งสองป้าย
+   แต่รูปทรงต่างกัน (โปร่ง/ทึบ) จึงไม่สับสนว่าอันไหนคืออันไหน */
 .prio{font-size:8.5px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:6px;
-  flex-shrink:0;width:66px;text-align:center;text-transform:uppercase}
-.prio.pr-none{background:transparent;color:var(--line);border:1px dashed var(--line)}
-.pr0{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}    /* Low */
-.pr1{background:transparent;color:var(--muted);border:1px solid var(--line)}           /* Normal */
-.pr2{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}    /* High */
-.pr3{background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}  /* Urgent */
-.pr4{background:color-mix(in srgb,var(--rose) 20%,transparent);color:var(--rose)}      /* Immediate */
+  flex-shrink:0;width:66px;text-align:center;text-transform:uppercase;background:transparent;
+  border:1px solid var(--line)}
+.prio.pr-none{color:var(--dim);border-style:dashed}
+.pr0{color:var(--green);border-color:color-mix(in srgb,var(--green) 55%,transparent)}     /* Low */
+.pr1{color:var(--muted)}                                                                  /* Normal */
+.pr2{color:var(--sev-mid);border-color:color-mix(in srgb,var(--sev-mid) 70%,transparent)} /* High */
+.pr3{color:var(--sev-high);border-color:var(--sev-high)}                                  /* Urgent */
+.pr4{color:var(--sev-max);border-color:var(--sev-max);font-weight:800;
+  box-shadow:inset 0 0 0 1px var(--sev-max)}                                              /* Immediate */
 /* close-issue button (Resolved -> Closed) */
 .closeBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
   background:var(--panel);color:var(--muted);cursor:pointer;font-size:12px;flex-shrink:0;

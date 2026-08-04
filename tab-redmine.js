@@ -155,10 +155,10 @@
           <div class="t">${esc(issue.subject)}</div>
           <div class="tip">สร้าง <b>${timeAgo(issue.createdOn)}</b> · แก้ไข <b>${timeAgo(issue.updatedOn)}</b></div>
         </div>
+        <span class="prio ${prioCls}" title="Priority: ${esc(issue.priority||'ไม่ระบุ')}">${esc(prioTxt)}</span>
         <span class="proj ${projColor(issue.project)}" title="${esc(issue.project)}">${esc(issue.project)}</span>
         <span class="who ${whoColor(issue.assignee)}" title="${esc(issue.assignee)}">${esc(issue.assignee)}</span>
-        <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>
-        <span class="prio ${prioCls}" title="Priority: ${esc(issue.priority||'ไม่ระบุ')}">${esc(prioTxt)}</span>`;
+        <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>`;
       row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
       const slot=document.createElement('div');
       if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id, slot));

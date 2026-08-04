@@ -726,6 +726,14 @@ ipcMain.handle('get-project-members', async (_e, projectId) => {
     return { ok: false, error: e.message };
   }
 });
+// เรียก llm.js — apiKey/baseUrl มาจาก .env เท่านั้น renderer ส่งมาแค่ rawNotes/model/language/tracker
+ipcMain.handle('draft-issue-text', async (_e, rawNotes, opts) => {
+  return draftIssue(rawNotes, {
+    ...opts,
+    apiKey: ENV.LLM_API_KEY,
+    baseUrl: ENV.LLM_BASE_URL,
+  });
+});
 // renderer's Settings panel: read current values, test before saving, then save
 ipcMain.handle('get-redmine-config', () => ({ url: redmineConfig.url, apiKey: redmineConfig.apiKey }));
 ipcMain.handle('test-redmine-connection', async (_e, { url, apiKey }) => {

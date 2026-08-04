@@ -75,12 +75,31 @@ function composeDescription(language, th, en) {
   return [enBlock, thBlock].filter(Boolean).join('\n\n---\n\n');
 }
 
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+
+function isImageUpload(u) {
+  return /^image\//i.test((u && u.content_type) || '') || IMAGE_EXT.test((u && u.filename) || '');
+}
+
+// Redmine ของทีมตั้ง text format เป็นแบบที่ปล่อย HTML ดิบผ่าน — สำรวจ issue 100 ใบล่าสุด: ฝังรูป
+// ด้วย <img src="ชื่อไฟล์"> 34 ใบ, markdown ![](ไฟล์) ใบเดียว, textile !ไฟล์! ไม่มีเลย จึงยึด <img>
+// ตามที่ทีมใช้จริง Redmine จับคู่ src กับ attachment ของ issue นั้นเองด้วยชื่อไฟล์เปล่า ๆ ไม่ต้องใส่ URL
+// วางไว้บนสุดเหมือนที่คนในทีมทำเวลาแปะสกรีนช็อตบั๊ก (ดู issue #722 ที่แก้มือ)
+function embedImageAttachments(description, uploads) {
+  const imgs = (uploads || []).filter(isImageUpload);
+  const text = description || '';
+  if (!imgs.length) return text;
+  const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const tags = imgs.map(u => `<img src="${attr(u.filename)}">`).join('\n');
+  return text ? `${tags}\n\n${text}` : tags;
+}
+
 function buildIssuePayload(form, ids) {
   const issue = {
     project_id: form.projectId,
     tracker_id: ids.trackerIdByName[form.trackerName],
     subject: form.subject,
-    description: form.description,
+    description: embedImageAttachments(form.description, form.uploads),
     priority_id: ids.priorityIdByName[form.priorityName],
   };
   if (form.assigneeId) issue.assigned_to_id = form.assigneeId;
@@ -109,5 +128,5 @@ function parseValidationErrors(errorMessages, knownFieldNames) {
 
 module.exports = {
   fieldSchemaKey, buildFieldSchema, composeDescription, buildIssuePayload, parseValidationErrors,
-  canonicalRiskLevel, findFieldIdByName, fieldAvailability,
+  canonicalRiskLevel, findFieldIdByName, fieldAvailability, embedImageAttachments,
 };

@@ -262,7 +262,16 @@
       const field = (meta.customFields || []).find(f => String(f.id) === String(fieldId));
       if (field && value) lines.push({ label: field.name, value });
     }
-    lines.push({ label: 'ไฟล์แนบ', value: (form.uploads || []).map(u => u.filename).join(', ') || '(ไม่มี)' });
+    // บอกด้วยว่ารูปจะถูกฝังในเนื้อหา ไม่ใช่แค่แนบท้าย — buildIssuePayload เติมแท็ก <img> ให้ตอนส่ง
+    // (ไม่โชว์แท็กดิบในหน้า review เพราะเป็น noise ผู้ใช้ไม่ได้พิมพ์เอง)
+    const files = form.uploads || [];
+    const imgCount = files.filter(u => /^image\//i.test(u.content_type || '')).length;
+    lines.push({
+      label: 'ไฟล์แนบ',
+      value: files.length
+        ? files.map(u => u.filename).join(', ') + (imgCount ? ` · ฝังรูปในเนื้อหาให้ ${imgCount} รูป` : '')
+        : '(ไม่มี)',
+    });
     return lines;
   }
   function qaDur(r){

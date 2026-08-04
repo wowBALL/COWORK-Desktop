@@ -249,3 +249,53 @@ test('fieldAvailability: null เมื่อยังไม่เคยเห�
   assert.strictEqual(fieldAvailability(SCHEMA, 'Risk Level', '99||Epic'), null);
   assert.strictEqual(fieldAvailability({}, 'Risk Level', '12||Bug'), null);
 });
+
+const { embedImageAttachments } = require('../redmine-issue-form.js');
+
+test('embedImageAttachments: แปะ <img> ไว้บนสุด คั่นเนื้อหาด้วยบรรทัดว่าง', () => {
+  const out = embedImageAttachments('อาการ: กดแล้วไม่บันทึก', [
+    { token: 't1', filename: 'shot.png', content_type: 'image/png' },
+  ]);
+  assert.strictEqual(out, '<img src="shot.png">\n\nอาการ: กดแล้วไม่บันทึก');
+});
+
+test('embedImageAttachments: หลายรูปเรียงตามลำดับที่แนบ', () => {
+  const out = embedImageAttachments('x', [
+    { filename: 'a.png', content_type: 'image/png' },
+    { filename: 'b.jpg', content_type: 'image/jpeg' },
+  ]);
+  assert.strictEqual(out, '<img src="a.png">\n<img src="b.jpg">\n\nx');
+});
+
+test('embedImageAttachments: ไฟล์ที่ไม่ใช่รูปไม่ถูกฝัง (แนบท้ายตามปกติ)', () => {
+  const out = embedImageAttachments('x', [
+    { filename: 'log.txt', content_type: 'text/plain' },
+    { filename: 'report.pdf', content_type: 'application/pdf' },
+  ]);
+  assert.strictEqual(out, 'x');
+});
+
+test('embedImageAttachments: ไม่มีไฟล์แนบคืน description เดิมไม่แตะต้อง', () => {
+  assert.strictEqual(embedImageAttachments('x', []), 'x');
+  assert.strictEqual(embedImageAttachments('x', undefined), 'x');
+});
+
+test('embedImageAttachments: ดูนามสกุลได้เมื่อไม่มี content_type', () => {
+  const out = embedImageAttachments('x', [{ filename: 'shot.PNG' }]);
+  assert.strictEqual(out, '<img src="shot.PNG">\n\nx');
+});
+
+test('embedImageAttachments: escape ชื่อไฟล์กัน HTML attribute แตก', () => {
+  const out = embedImageAttachments('', [{ filename: 'a"b&c.png', content_type: 'image/png' }]);
+  assert.strictEqual(out, '<img src="a&quot;b&amp;c.png">');
+});
+
+test('buildIssuePayload: description ที่ส่งจริงมีแท็ก <img> ของรูปที่แนบ', () => {
+  const { issue } = buildIssuePayload({
+    projectId: 12, trackerName: 'Bug', subject: 's', description: 'd', priorityName: 'Normal',
+    uploads: [{ token: 't1', filename: 'shot.png', content_type: 'image/png' }],
+  }, IDS);
+  assert.strictEqual(issue.description, '<img src="shot.png">\n\nd');
+  // ยังต้องแนบไฟล์ตามปกติด้วย ไม่ใช่ฝังอย่างเดียว
+  assert.strictEqual(issue.uploads.length, 1);
+});

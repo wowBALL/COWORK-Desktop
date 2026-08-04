@@ -10,10 +10,6 @@
   const {esc, hashN} = global.COWORK.util;
   const {dateMatch, dateFilterHtml, wireDateFilter} = global.COWORK.dateFilter;
   const shell = () => global.COWORK.shell;   // เปลือกสร้างทีหลังไฟล์นี้ ต้องหยิบตอนเรียกใช้
-  // composeDescription มาจาก redmine-issue-form.js (ตรรกะล้วน ไม่มี Electron import) —
-  // ห่อด้วย typeof require !== 'undefined' แบบเดียวกับที่ meetingrun.js ทำกับ util.js
-  // เพื่อไม่พังตอนโหลดเป็น <script> ธรรมดาในเบราว์เซอร์ที่ไม่มี CommonJS
-  const {composeDescription} = (typeof require !== 'undefined' ? require('./redmine-issue-form.js') : {});
 
   let qaData=null, qaFilter='all', qaSrcFilter=null, qaOpen=null, qaXmlCache=new Map();
   const qaDateSel={y:null,m:null,d:null};
@@ -28,6 +24,7 @@
   // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
   // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
   let qiKnownProjects = new Map();  // projectId -> projectName
+  let qiCurrentUserName = null;     // ชื่อผู้ใช้ปัจจุบัน (จาก tasks-update) ใช้จับคู่กับ qiMembers
 
   function qiOpenForm() {
     document.getElementById('qaStage').classList.add('hidden');
@@ -60,6 +57,8 @@
       qiMembers = (res && res.ok) ? res.members : [];
       document.getElementById('qiAssignee').innerHTML = '<option value="">(ไม่ระบุ)</option>' +
         qiMembers.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+      const match = qiMembers.find(m => m.name === qiCurrentUserName);
+      qiCurrentUserId = match ? match.id : null;
     });
   }
 
@@ -88,10 +87,8 @@
       }
       status.className = 'set-status ok'; status.textContent = 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง';
       const d = result.draft;
-      document.getElementById('qiSubject').value = d.subject_th || d.subject_en || '';
-      const lang = document.getElementById('qiLanguage').value;
-      document.getElementById('qiDescription').value =
-        composeDescription(lang, d.description_th || '', d.description_en || '');
+      document.getElementById('qiSubject').value = d.subject || '';
+      document.getElementById('qiDescription').value = d.description || '';
       if (d.suggested_risk_level) document.getElementById('qiRiskLevel').value = d.suggested_risk_level;
     });
   }
@@ -346,7 +343,9 @@
     // ดักฟัง broadcast เดียวกับที่แท็บ Redmine ใช้ (tasks-update) เพื่อรู้จักรายชื่อโปรเจกต์จริง —
     // ipcRenderer.on รับ listener ได้หลายตัว จึงไม่ชนกับ onTasks ของ tab-redmine.js
     shell().api.onTasks(payload => {
-      if (!payload || payload.error || !payload.groups) return;
+      if (!payload) return;
+      qiCurrentUserName = payload.currentUser || qiCurrentUserName;
+      if (payload.error || !payload.groups) return;
       payload.groups.forEach(g => g.issues.forEach(i => {
         if (i.projectId) qiKnownProjects.set(i.projectId, i.project);
       }));

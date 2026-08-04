@@ -728,11 +728,16 @@ ipcMain.handle('get-project-members', async (_e, projectId) => {
 });
 // เรียก llm.js — apiKey/baseUrl มาจาก .env เท่านั้น renderer ส่งมาแค่ rawNotes/model/language/tracker
 ipcMain.handle('draft-issue-text', async (_e, rawNotes, opts) => {
-  return draftIssue(rawNotes, {
+  const result = await draftIssue(rawNotes, {
     ...opts,
     apiKey: ENV.LLM_API_KEY,
     baseUrl: ENV.LLM_BASE_URL,
   });
+  if (!result.ok) return result;
+  const d = result.draft;
+  const description = composeDescription(opts.language || 'both', d.description_th || '', d.description_en || '');
+  const subject = d.subject_th || d.subject_en || '';
+  return { ok: true, draft: { ...d, subject, description } };
 });
 ipcMain.handle('upload-issue-attachment', async (_e, fileBuffer, filename) => {
   if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };

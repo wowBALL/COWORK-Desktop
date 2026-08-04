@@ -199,9 +199,8 @@
         }
         return;
       }
-      qiUploads = [];
       document.getElementById('qaIssueReview').classList.add('hidden');
-      document.getElementById('qaStage').classList.remove('hidden');
+      qiCloseForm();   // ครอบ qaStage.show + qiUploads=[] + reset ทุกช่องของฟอร์มให้แล้ว
       const el = document.getElementById('qaRows');
       el.innerHTML = `<div class="hint">สร้างสำเร็จ: <a href="#" id="qiCreatedLink">#${result.id}</a></div>` + el.innerHTML;
       document.getElementById('qiCreatedLink').onclick = (e) => { e.preventDefault(); shell().api.openLink(result.url); };

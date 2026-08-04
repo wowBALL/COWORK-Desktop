@@ -734,6 +734,52 @@ ipcMain.handle('draft-issue-text', async (_e, rawNotes, opts) => {
     baseUrl: ENV.LLM_BASE_URL,
   });
 });
+ipcMain.handle('upload-issue-attachment', async (_e, fileBuffer, filename) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  try {
+    const res = await fetch(`${redmineConfig.url}/uploads.json`, {
+      method: 'POST',
+      headers: { 'X-Redmine-API-Key': redmineConfig.apiKey, 'Content-Type': 'application/octet-stream' },
+      body: fileBuffer,
+    });
+    if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
+    const { upload } = await res.json();
+    return { ok: true, token: upload.token, filename };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+// ปุ่ม "ยืนยันสร้าง" ในหน้า review เท่านั้นที่เรียก handler นี้ — 422 คืน fieldErrors ให้ฟอร์ม
+// ไฮไลต์ field ที่ขาด แทนการ retry เงียบ ๆ (ตาข่ายรอง C ของ spec)
+ipcMain.handle('create-issue', async (_e, form) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  try {
+    await Promise.all([loadTrackerMeta(), loadPriorityMeta()]);
+    const key = fieldSchemaKey(form.projectId, form.trackerName);
+    const riskField = (issueFormFieldsCache[key] || []).find(f => f.name === 'Risk Level');
+    const body = buildIssuePayload(form, {
+      trackerIdByName: trackerIdCache,
+      priorityIdByName: priorityIdCache,
+      riskLevelFieldId: riskField && riskField.id,
+    });
+    const res = await fetch(`${redmineConfig.url}/issues.json`, {
+      method: 'POST',
+      headers: { 'X-Redmine-API-Key': redmineConfig.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let errors = [];
+      try { const errBody = await res.json(); errors = errBody.errors || []; } catch {}
+      const fieldNames = (issueFormFieldsCache[key] || []).map(f => f.name);
+      return { ok: false, error: `Redmine HTTP ${res.status}`, fieldErrors: parseValidationErrors(errors, fieldNames) };
+    }
+    const { issue } = await res.json();
+    pushTasks();
+    return { ok: true, id: issue.id, url: `${redmineConfig.url}/issues/${issue.id}` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 // renderer's Settings panel: read current values, test before saving, then save
 ipcMain.handle('get-redmine-config', () => ({ url: redmineConfig.url, apiKey: redmineConfig.apiKey }));
 ipcMain.handle('test-redmine-connection', async (_e, { url, apiKey }) => {

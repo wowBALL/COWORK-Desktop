@@ -271,7 +271,7 @@ function setupAutoUpdate() {
 
 const STATUS_ORDER = ['Backlog', 'New', 'In Progress', 'Test', 'Resolved', 'Closed'];
 // low → high severity; index used to pick the worst when an issue has several
-const RISK_ORDER = ['Low', 'Fairly Low', 'Moderate', 'Medium', 'High'];
+const RISK_ORDER = ['Low', 'Fairly Low', 'Moderate', 'High', 'Very High'];
 
 function fmtDateTime(iso) {
   const d = new Date(iso), p = x => String(x).padStart(2, '0');

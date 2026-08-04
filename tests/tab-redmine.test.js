@@ -336,3 +336,18 @@ test('viewModel: รับ selectedProjects/selectedAssignees เป็น Set �
   // → sorted by updatedOn newest→oldest: 2026-07-20, 2026-07-15, 2026-05-02, 2026-04-10
   assert.deepStrictEqual(withSets.list.map(e => e.issue.id), [654, 646, 188, 94]);
 });
+
+// ===== RISK_ORDER (Very High ต้องมีแถวของตัวเองใน riskRows ไม่ใช่หายไปเงียบ ๆ) =====
+test('viewModel: issue risk "Very High" มีแถวของตัวเองใน riskRows ไม่ตกไปอยู่กับ "none"', () => {
+  const payload = {
+    groups: [{ status: 'New', issues: [
+      { id: 1, subject: 'a', project: 'Wallet', assignee: 'kom', risk: 'Very High', closed: false, status: 'New', updatedOn: '2026-08-01T00:00:00Z' },
+    ] }],
+  };
+  const vm = viewModel(payload, {}, { query: '', selectedProjects: new Set(), selectedAssignees: new Set(), selectedRisk: null, activeStatus: 'ALL' });
+  const veryHighRow = vm.riskRows.find(r => r.key === 'Very High');
+  const noneRow = vm.riskRows.find(r => r.key === 'none');
+  assert.ok(veryHighRow, 'ต้องมีแถว Very High ใน riskRows');
+  assert.strictEqual(veryHighRow.open, 1);
+  assert.strictEqual(noneRow.open, 0, 'issue ที่ระบุ risk แล้วต้องไม่ถูกนับเป็น none');
+});

@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('cowork', {
   getIssueFormMeta: (projectId, trackerName) => ipcRenderer.invoke('get-issue-form-meta', projectId, trackerName),
   getProjectMembers: (projectId) => ipcRenderer.invoke('get-project-members', projectId),
   draftIssueText: (rawNotes, opts) => ipcRenderer.invoke('draft-issue-text', rawNotes, opts),
+  getLlmConfig: () => ipcRenderer.invoke('get-llm-config'),
+  saveLlmConfig: (cfg) => ipcRenderer.invoke('save-llm-config', cfg),
   uploadIssueAttachment: (fileBuffer, filename) => ipcRenderer.invoke('upload-issue-attachment', fileBuffer, filename),
   createIssue: (form) => ipcRenderer.invoke('create-issue', form),
   // Grafana/Loki — pull-based, unlike the tabs above: the query depends on filters the

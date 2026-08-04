@@ -560,6 +560,7 @@
       };
     });
   }
+  let setLlmUrl,setLlmKey,setLlmStatus,setLlmSave;
   function mountSettings(){
     setQaRowsEl=document.getElementById('setQaRows'); setQaAdd=document.getElementById('setQaAdd');
     setQaStatus=document.getElementById('setQaStatus'); setQaSave=document.getElementById('setQaSave');
@@ -573,6 +574,18 @@
         setQaStatus.textContent='บันทึกแล้ว';
       });
     };
+    setLlmUrl=document.getElementById('setLlmUrl'); setLlmKey=document.getElementById('setLlmKey');
+    setLlmStatus=document.getElementById('setLlmStatus'); setLlmSave=document.getElementById('setLlmSave');
+    setLlmSave.onclick=()=>{
+      const baseUrl=setLlmUrl.value.trim(), apiKey=setLlmKey.value.trim();
+      if(!baseUrl || !apiKey){ setLlmStatus.className='set-status err'; setLlmStatus.textContent='กรอก Base URL และ API key ให้ครบ'; return; }
+      setLlmSave.disabled=true; setLlmStatus.className='set-status'; setLlmStatus.textContent='กำลังบันทึก...';
+      shell().api.saveLlmConfig({baseUrl,apiKey}).then(()=>{
+        setLlmSave.disabled=false;
+        setLlmStatus.className='set-status ok';
+        setLlmStatus.textContent='บันทึกแล้ว';
+      });
+    };
   }
   function loadSettings(){
     setQaStatus.textContent=''; setQaStatus.className='set-status';
@@ -580,6 +593,10 @@
     api && api.getQaSources && api.getQaSources().then(sources=>{
       qaRows=(sources&&sources.length?sources:[{label:'',path:''}]).map(s=>({label:s.label||'',path:s.path||''}));
       renderSetQaRows();
+    });
+    setLlmStatus.textContent=''; setLlmStatus.className='set-status';
+    api && api.getLlmConfig && api.getLlmConfig().then(cfg=>{
+      setLlmUrl.value=(cfg&&cfg.baseUrl)||''; setLlmKey.value=(cfg&&cfg.apiKey)||'';
     });
   }
 

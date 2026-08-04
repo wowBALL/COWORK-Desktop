@@ -61,7 +61,7 @@ async function draftIssue(rawNotes, opts = {}) {
   } = opts;
   const provider = PROVIDERS[model];
   if (!provider) return { ok: false, error: `ไม่รู้จักโมเดล ${model}` };
-  if (!apiKey || !baseUrl) return { ok: false, error: 'ยังไม่ได้ตั้งค่า LLM_API_KEY/LLM_BASE_URL' };
+  if (!apiKey || !baseUrl) return { ok: false, error: 'ยังไม่ได้ตั้งค่า LLM (ตั้งค่า → LLM)' };
   // both = สองภาษาในคำตอบเดียว เนื้อหายาวขึ้นเกือบสองเท่า — budget เดิมพอดีตัวจน
   // โมเดลบางทีตัดฟิลด์ _en ทิ้งเงียบ ๆ เพื่อให้จบใน budget ให้พื้นที่เพิ่มกันเหตุนั้น
   const maxTokens = language === 'both' ? Math.round(provider.maxTokens * 1.5) : provider.maxTokens;

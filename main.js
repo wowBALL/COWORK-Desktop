@@ -58,6 +58,7 @@ function writeConfigMerge(patch) {
   fs.writeFileSync(configPath(), JSON.stringify(saved, null, 2));
 }
 let redmineConfig = { url: '', apiKey: '' };
+let llmConfig = { baseUrl: '', apiKey: '' };
 let workspaceDir = '';
 let meetingsDir = '';
 // QA test results — { label, path }[], array from day one: more sources
@@ -141,6 +142,7 @@ function loadAppConfig() {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch {}
   redmineConfig = { url: saved.redmineUrl || '', apiKey: saved.redmineApiKey || '' };
+  llmConfig = { baseUrl: saved.llmBaseUrl || '', apiKey: saved.llmApiKey || '' };
   workspaceDir = saved.workspaceDir || '';
   meetingsDir = saved.meetingsDir || '';
   qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
@@ -157,6 +159,8 @@ function loadAppConfig() {
   if (!app.isPackaged) {
     if (!redmineConfig.url) redmineConfig.url = ENV.REDMINE_URL || '';
     if (!redmineConfig.apiKey) redmineConfig.apiKey = ENV.REDMINE_API_KEY || '';
+    if (!llmConfig.baseUrl) llmConfig.baseUrl = ENV.LLM_BASE_URL || '';
+    if (!llmConfig.apiKey) llmConfig.apiKey = ENV.LLM_API_KEY || '';
     if (!workspaceDir) workspaceDir = ENV.WORKSPACE_DIR || path.join(__dirname, '..', 'A_Workspace');
     if (!meetingsDir) meetingsDir = ENV.MEETINGS_DIR || path.join(__dirname, '..', 'meeting-notes', 'meetings');
     if (!qaSources.length) {
@@ -727,12 +731,12 @@ ipcMain.handle('get-project-members', async (_e, projectId) => {
     return { ok: false, error: e.message };
   }
 });
-// เรียก llm.js — apiKey/baseUrl มาจาก .env เท่านั้น renderer ส่งมาแค่ rawNotes/model/language/tracker
+// เรียก llm.js — apiKey/baseUrl มาจากการ์ดตั้งค่า LLM (config.json) renderer ส่งมาแค่ rawNotes/model/language/tracker
 ipcMain.handle('draft-issue-text', async (_e, rawNotes, opts) => {
   const result = await draftIssue(rawNotes, {
     ...opts,
-    apiKey: ENV.LLM_API_KEY,
-    baseUrl: ENV.LLM_BASE_URL,
+    apiKey: llmConfig.apiKey,
+    baseUrl: llmConfig.baseUrl,
   });
   if (!result.ok) return result;
   const d = result.draft;
@@ -806,6 +810,15 @@ ipcMain.handle('save-redmine-config', (_e, { url, apiKey }) => {
   writeConfigMerge({ redmineUrl: url, redmineApiKey: apiKey });
   currentUserCache = null; statusIdCache = null; trackerIdCache = null; priorityIdCache = null; // tied to the old credentials
   pushTasks();
+  return { ok: true };
+});
+// การ์ดตั้งค่า LLM (แท็บ QA test): base URL + key ของ endpoint แบบ OpenAI-compatible
+// ที่ใช้ร่าง issue — เก็บใน config.json เหมือน Redmine/Grafana ไม่ใช่ .env เพราะ .env
+// ของแอปที่ติดตั้งแล้วไม่รอดการอัปเดต (ไม่ได้อยู่ใน build.files/extraResources)
+ipcMain.handle('get-llm-config', () => ({ baseUrl: llmConfig.baseUrl, apiKey: llmConfig.apiKey }));
+ipcMain.handle('save-llm-config', (_e, { baseUrl, apiKey }) => {
+  llmConfig = { baseUrl: String(baseUrl || '').trim(), apiKey: String(apiKey || '').trim() };
+  writeConfigMerge({ llmBaseUrl: llmConfig.baseUrl, llmApiKey: llmConfig.apiKey });
   return { ok: true };
 });
 // private note for one issue — local-only, never touches the Redmine API.

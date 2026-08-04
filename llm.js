@@ -102,6 +102,9 @@ async function draftIssue(rawNotes, opts = {}) {
   try { parsed = JSON.parse(stripJsonFence(content)); }
   catch (e) { return { ok: false, error: 'parse JSON จากคำตอบไม่สำเร็จ: ' + e.message }; }
 
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, error: 'คำตอบจาก LLM ไม่ใช่รูปแบบที่คาดไว้ — กรอกมือแทน' };
+  }
   return { ok: true, draft: parsed };
 }
 

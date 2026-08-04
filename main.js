@@ -384,7 +384,7 @@ async function fetchRedmineTasks() {
         if (year) closedByYear.set(year, (closedByYear.get(year) || 0) + 1);
       } else {
         stats.open++;
-        if (risk === 'High') stats.highRisk++;
+        if (risk === 'High' || risk === 'Very High') stats.highRisk++;
         if (overdue) stats.overdue++;
       }
       if (!byStatus.has(status)) byStatus.set(status, []);
@@ -762,6 +762,9 @@ ipcMain.handle('create-issue', async (_e, form) => {
     await Promise.all([loadTrackerMeta(), loadPriorityMeta()]);
     const key = fieldSchemaKey(form.projectId, form.trackerName);
     const riskField = (issueFormFieldsCache[key] || []).find(f => f.name === 'Risk Level');
+    if (form.riskLevel && !riskField) {
+      return { ok: false, error: 'ระบบยังไม่รู้จัก field Risk Level ของโปรเจกต์/tracker นี้ —ลองกดพรีวิวใหม่อีกครั้ง หรือกรอก issue นี้ผ่านหน้าเว็บ Redmine โดยตรง' };
+    }
     const body = buildIssuePayload(form, {
       trackerIdByName: trackerIdCache,
       priorityIdByName: priorityIdCache,

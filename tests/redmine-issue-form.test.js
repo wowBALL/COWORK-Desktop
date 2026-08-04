@@ -50,6 +50,17 @@ test('buildFieldSchema: ไม่มี custom_fields เลยก็ไม่ t
   assert.deepStrictEqual(schema[fieldSchemaKey(1, 'Bug')], []);
 });
 
+test('buildFieldSchema: project ที่มีทั้ง id และ identifier ต้องค้นได้ทั้งสองคีย์', () => {
+  const issues = [
+    { project: { id: 12, identifier: 'wallet' }, tracker: { name: 'Bug' }, custom_fields: [
+      { id: 5, name: 'Risk Level' },
+    ] },
+  ];
+  const schema = buildFieldSchema(issues);
+  assert.deepStrictEqual(schema[fieldSchemaKey(12, 'Bug')].map(f => f.name), ['Risk Level']);
+  assert.deepStrictEqual(schema[fieldSchemaKey('wallet', 'Bug')].map(f => f.name), ['Risk Level']);
+});
+
 const { composeDescription } = require('../redmine-issue-form.js');
 
 test('composeDescription: th-only ไม่มี block ภาษาอังกฤษเลย', () => {

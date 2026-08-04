@@ -15,12 +15,19 @@ function buildFieldSchema(issues) {
   for (const issue of issues || []) {
     if (!issue) continue;
     const projectId = issue.project && issue.project.id;
+    const projectIdentifier = issue.project && issue.project.identifier;
     const trackerName = issue.tracker && issue.tracker.name;
     if (projectId == null || !trackerName) continue;
-    const key = fieldSchemaKey(projectId, trackerName);
-    if (!schema[key]) schema[key] = [];
-    for (const cf of issue.custom_fields || []) {
-      if (!schema[key].some(f => f.id === cf.id)) schema[key].push({ id: cf.id, name: cf.name });
+    // ลงทะเบียนซ้ำสองคีย์ (numeric id + identifier ถ้ามี) — main.js:395 ใส่ identifier||id ลง
+    // qiKnownProjects แต่ในทางปฏิบัติ Redmine ไม่เคยส่ง identifier มาใน issue.project ตอนนี้
+    // (เลยเป็น id เสมอ) ทำแบบนี้กันพังเงียบๆ ถ้า Redmine เปลี่ยน response shape ในอนาคต
+    const keys = [fieldSchemaKey(projectId, trackerName)];
+    if (projectIdentifier) keys.push(fieldSchemaKey(projectIdentifier, trackerName));
+    for (const key of keys) {
+      if (!schema[key]) schema[key] = [];
+      for (const cf of issue.custom_fields || []) {
+        if (!schema[key].some(f => f.id === cf.id)) schema[key].push({ id: cf.id, name: cf.name });
+      }
     }
   }
   return schema;

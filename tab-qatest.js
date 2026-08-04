@@ -36,6 +36,16 @@
   function qiCloseForm() {
     document.getElementById('qaIssueForm').classList.add('hidden');
     document.getElementById('qaStage').classList.remove('hidden');
+    qiUploads = [];
+    document.getElementById('qiFileList').innerHTML = '';
+    document.getElementById('qiFiles').value = '';
+    document.getElementById('qiRawNotes').value = '';
+    document.getElementById('qiSubject').value = '';
+    document.getElementById('qiDescription').value = '';
+    document.getElementById('qiRiskLevel').value = '';
+    document.getElementById('qiDraftStatus').className = 'set-status';
+    document.getElementById('qiDraftStatus').textContent = '';
+    document.getElementById('qiFormError').style.display = 'none';
   }
 
   function qiLoadMetaForSelection() {
@@ -43,6 +53,7 @@
     const projectId = document.getElementById('qiProject').value;
     const trackerName = document.getElementById('qiTracker').value;
     if (!projectId) return;
+    const errEl = document.getElementById('qiFormError');
     api.getIssueFormMeta(Number(projectId), trackerName).then(res => {
       if (!res || !res.ok) { qiMeta = null; return; }
       qiMeta = res;
@@ -52,6 +63,9 @@
       document.getElementById('qiCustomFields').innerHTML = extra.map(f => `
         <div class="row-label">${esc(f.name)}</div>
         <textarea class="search qi-cf" data-field-id="${f.id}" rows="3"></textarea>`).join('');
+    }).catch(e => {
+      errEl.style.display = 'block';
+      errEl.textContent = 'โหลดข้อมูลฟอร์มไม่สำเร็จ: ' + e.message;
     });
     api.getProjectMembers(Number(projectId)).then(res => {
       qiMembers = (res && res.ok) ? res.members : [];
@@ -59,6 +73,9 @@
         qiMembers.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
       const match = qiMembers.find(m => m.name === qiCurrentUserName);
       qiCurrentUserId = match ? match.id : null;
+    }).catch(e => {
+      errEl.style.display = 'block';
+      errEl.textContent = 'โหลดรายชื่อสมาชิกไม่สำเร็จ: ' + e.message;
     });
   }
 
@@ -90,6 +107,11 @@
       document.getElementById('qiSubject').value = d.subject || '';
       document.getElementById('qiDescription').value = d.description || '';
       if (d.suggested_risk_level) document.getElementById('qiRiskLevel').value = d.suggested_risk_level;
+    }).catch(e => {
+      btn.disabled = false;
+      if (skipped) return;
+      status.className = 'set-status err';
+      status.textContent = 'เกิดข้อผิดพลาด: ' + e.message;
     });
   }
 
@@ -122,7 +144,7 @@
     errEl.style.display = 'none';
     document.getElementById('qaIssueForm').classList.add('hidden');
     document.getElementById('qaIssueReview').classList.remove('hidden');
-    const lines = buildReviewLines(form, qiMeta || { members: qiMembers, customFields: [] });
+    const lines = buildReviewLines(form, { ...(qiMeta || {}), members: qiMembers, customFields: (qiMeta && qiMeta.customFields) || [] });
     document.getElementById('qiReviewBody').innerHTML =
       '<dl>' + lines.map(l => `<dt>${esc(l.label)}</dt><dd>${esc(l.value)}</dd>`).join('') + '</dl>';
     document.getElementById('qiConfirmBtn').onclick = () => qiSubmit(form);
@@ -131,16 +153,42 @@
     document.getElementById('qaIssueReview').classList.add('hidden');
     document.getElementById('qaIssueForm').classList.remove('hidden');
   }
+  // ล้าง highlight ค้างของรอบก่อน แล้วไฮไลต์เฉพาะ field ที่ Redmine ฟ้อง 422 มา —
+  // ครอบทั้ง field ตายตัว (Subject/Description/...) และ custom field แบบไดนามิก
+  function qiHighlightFieldErrors(fieldErrors) {
+    document.querySelectorAll('.qi-field-error').forEach(el => el.classList.remove('qi-field-error'));
+    const builtinIds = { Subject: 'qiSubject', Description: 'qiDescription', 'Risk Level': 'qiRiskLevel', Priority: 'qiPriority' };
+    (fieldErrors || []).forEach(fe => {
+      if (!fe.fieldName) return;
+      if (builtinIds[fe.fieldName]) {
+        document.getElementById(builtinIds[fe.fieldName]).classList.add('qi-field-error');
+        return;
+      }
+      const cf = (qiMeta && qiMeta.customFields || []).find(f => f.name === fe.fieldName);
+      if (cf) {
+        const el = document.querySelector(`#qiCustomFields .qi-cf[data-field-id="${cf.id}"]`);
+        if (el) el.classList.add('qi-field-error');
+      }
+    });
+  }
   function qiSubmit(form) {
     const api = shell().api, btn = document.getElementById('qiConfirmBtn'), errEl = document.getElementById('qiReviewError');
     btn.disabled = true; btn.textContent = 'กำลังสร้าง...'; errEl.style.display = 'none';
     api.createIssue(form).then(result => {
       btn.disabled = false; btn.textContent = 'ยืนยันสร้าง';
       if (!result || !result.ok) {
-        errEl.style.display = 'block';
-        errEl.textContent = 'สร้างไม่สำเร็จ: ' + ((result && result.error) || 'ไม่ทราบสาเหตุ') +
+        const msg = 'สร้างไม่สำเร็จ: ' + ((result && result.error) || 'ไม่ทราบสาเหตุ') +
           ((result && result.fieldErrors && result.fieldErrors.length)
-            ? ' (' + result.fieldErrors.map(f => f.fieldName || f.message).join(', ') + ')' : '');
+            ? ' (' + result.fieldErrors.map(f => f.message).join(', ') + ')' : '');
+        if (result && result.fieldErrors && result.fieldErrors.length) {
+          qiHighlightFieldErrors(result.fieldErrors);
+          document.getElementById('qaIssueReview').classList.add('hidden');
+          document.getElementById('qaIssueForm').classList.remove('hidden');
+          const formErrEl = document.getElementById('qiFormError');
+          formErrEl.style.display = 'block'; formErrEl.textContent = msg;
+        } else {
+          errEl.style.display = 'block'; errEl.textContent = msg;
+        }
         return;
       }
       qiUploads = [];
@@ -149,6 +197,11 @@
       const el = document.getElementById('qaRows');
       el.innerHTML = `<div class="hint">สร้างสำเร็จ: <a href="#" id="qiCreatedLink">#${result.id}</a></div>` + el.innerHTML;
       document.getElementById('qiCreatedLink').onclick = (e) => { e.preventDefault(); shell().api.openLink(result.url); };
+      bindQaRowClicks(el);
+    }).catch(e => {
+      btn.disabled = false; btn.textContent = 'ยืนยันสร้าง';
+      errEl.style.display = 'block';
+      errEl.textContent = 'เกิดข้อผิดพลาด: ' + e.message;
     });
   }
 
@@ -295,6 +348,11 @@
         <span class="qa-name">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span>
         <span class="qa-time">${esc(r.endedAt?r.endedAt.slice(11):r.id)}</span>
       </div>`).join('');
+    bindQaRowClicks(el);
+  }
+  // ผูก click handler ของแถว .qa-row — แยกเป็นฟังก์ชันกลางเพราะ qiSubmit ก็ต้องเรียกซ้ำหลัง
+  // แทรก banner "สร้างสำเร็จ" ด้วย innerHTML (ซึ่งทำลาย .onclick เดิมของ DOM node ทุกตัว)
+  function bindQaRowClicks(el){
     el.querySelectorAll('.qa-row').forEach(row=>row.onclick=()=>{
       const r=qaData.runs.find(x=>x.id===row.dataset.id);
       if(r) qaOpenRun(r);
@@ -441,13 +499,20 @@
     document.getElementById('qaIssueReviewBack').onclick = qiBackToForm;
     document.getElementById('qiFiles').onchange = (e) => {
       const api = shell().api;
+      const errEl = document.getElementById('qiFormError');
       [...e.target.files].forEach(file => {
-        file.arrayBuffer().then(buf => api.uploadIssueAttachment(Buffer.from(buf), file.name)).then(res => {
+        file.arrayBuffer().then(buf => api.uploadIssueAttachment(new Uint8Array(buf), file.name)).then(res => {
           if (res && res.ok) {
             qiUploads.push({ token: res.token, filename: res.filename, content_type: file.type });
             document.getElementById('qiFileList').innerHTML =
               qiUploads.map(u => `<span class="qi-file-chip">${esc(u.filename)}</span>`).join('');
+            return;
           }
+          errEl.style.display = 'block';
+          errEl.textContent = `แนบไฟล์ "${file.name}" ไม่สำเร็จ: ${(res && res.error) || 'ไม่ทราบสาเหตุ'}`;
+        }).catch(e => {
+          errEl.style.display = 'block';
+          errEl.textContent = `แนบไฟล์ "${file.name}" ไม่สำเร็จ: ${e.message}`;
         });
       });
     };

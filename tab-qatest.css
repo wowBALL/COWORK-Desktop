@@ -76,3 +76,5 @@
 #qiReviewBody dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; margin: 0; }
 #qiReviewBody dt { color: var(--muted); }
 #qiReviewBody dd { margin: 0; white-space: pre-wrap; }
+/* field ที่ Redmine ฟ้อง 422 กลับมา — ไฮไลต์ตอนเด้งกลับหน้าฟอร์ม (โครงสีเดียวกับ .set-status.err) */
+.qi-field-error { border-color: var(--rose) !important; }

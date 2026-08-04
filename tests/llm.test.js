@@ -112,6 +112,15 @@ test('draftIssue: parse JSON ไม่สำเร็จ (แม้ผ่าน 
   assert.strictEqual(result.ok, false);
 });
 
+test('draftIssue: content เป็น JSON ที่ valid แต่ไม่ใช่ object ("null"/"42") = ok:false ไม่ throw', async () => {
+  for (const literal of ['null', '42']) {
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: literal } }] }) });
+    const result = await draftIssue('note', { apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+    assert.strictEqual(result.ok, false, `literal ${literal} ควรเป็น ok:false`);
+    assert.ok(result.error);
+  }
+});
+
 test('draftIssue: timeout ยกเลิกคำขอแล้วคืน ok:false ไม่ค้าง', async () => {
   const fetchImpl = (url, opts) => new Promise((resolve, reject) => {
     opts.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));

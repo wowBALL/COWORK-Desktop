@@ -67,6 +67,14 @@
 .rk2{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}    /* Moderate */
 .rk3{background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}  /* Medium */
 .rk4{background:color-mix(in srgb,var(--rose) 20%,transparent);color:var(--rose)}      /* High */
+.prio{font-size:8.5px;font-weight:700;letter-spacing:.02em;padding:2px 7px;border-radius:6px;
+  flex-shrink:0;width:66px;text-align:center;text-transform:uppercase}
+.prio.pr-none{background:transparent;color:var(--line);border:1px dashed var(--line)}
+.pr0{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}    /* Low */
+.pr1{background:transparent;color:var(--muted);border:1px solid var(--line)}           /* Normal */
+.pr2{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}    /* High */
+.pr3{background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}  /* Urgent */
+.pr4{background:color-mix(in srgb,var(--rose) 20%,transparent);color:var(--rose)}      /* Immediate */
 /* close-issue button (Resolved -> Closed) */
 .closeBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
   background:var(--panel);color:var(--muted);cursor:pointer;font-size:12px;flex-shrink:0;

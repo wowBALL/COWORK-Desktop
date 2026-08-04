@@ -22,6 +22,7 @@
   function whoColor(key){ return 'wc'+hashN(key,6); }
   const RISK_ORDER=['Low','Fairly Low','Moderate','Medium','High'];
   const RISK_COLORS=['var(--green)','var(--cyan)','var(--amber)','var(--orange)','var(--rose)'];
+  const PRIORITY_ORDER=['Low','Normal','High','Urgent','Immediate'];
   let lastPayload=null, activeStatus=null;
   let notes={};   // set from payload.notes in renderTasks(), before renderPanel() runs — never fetched separately
   const selectedProjects=new Set();    // empty = show all projects
@@ -144,6 +145,9 @@
       const rank=RISK_ORDER.indexOf(issue.risk);
       const riskCls=rank>=0?`rk${rank}`:'rk-none';
       const riskTxt=issue.risk||'–';
+      const prioRank=PRIORITY_ORDER.indexOf(issue.priority);
+      const prioCls=prioRank>=0?`pr${prioRank}`:'pr-none';
+      const prioTxt=issue.priority||'–';
       const idColor=STATUS_COLOR[issue.status]||'var(--dim)';
       row.innerHTML=`
         <span class="idnum" style="color:${idColor}" title="${esc(issue.status)}">#${issue.id}</span>
@@ -153,7 +157,8 @@
         </div>
         <span class="proj ${projColor(issue.project)}" title="${esc(issue.project)}">${esc(issue.project)}</span>
         <span class="who ${whoColor(issue.assignee)}" title="${esc(issue.assignee)}">${esc(issue.assignee)}</span>
-        <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>`;
+        <span class="risk ${riskCls}" title="Risk: ${esc(issue.risk||'ไม่ระบุ')}">${esc(riskTxt)}</span>
+        <span class="prio ${prioCls}" title="Priority: ${esc(issue.priority||'ไม่ระบุ')}">${esc(prioTxt)}</span>`;
       row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
       const slot=document.createElement('div');
       if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id, slot));

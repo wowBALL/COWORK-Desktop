@@ -26,4 +26,12 @@ function buildFieldSchema(issues) {
   return schema;
 }
 
-module.exports = { fieldSchemaKey, buildFieldSchema };
+function composeDescription(language, th, en) {
+  const thBlock = th ? `## 🇹🇭 รายละเอียด (ไทย)\n\n${th}` : '';
+  const enBlock = en ? `## 🇬🇧 Details (English)\n\n${en}` : '';
+  if (language === 'th') return thBlock;
+  if (language === 'en') return enBlock;
+  return [thBlock, enBlock].filter(Boolean).join('\n\n---\n\n');
+}
+
+module.exports = { fieldSchemaKey, buildFieldSchema, composeDescription };

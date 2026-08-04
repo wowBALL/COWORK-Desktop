@@ -93,6 +93,65 @@
     });
   }
 
+  function qiCollectForm() {
+    const customFieldValues = {};
+    document.querySelectorAll('#qiCustomFields .qi-cf').forEach(el => {
+      customFieldValues[el.dataset.fieldId] = el.value.trim();
+    });
+    const projectSel = document.getElementById('qiProject');
+    return {
+      projectId: Number(projectSel.value),
+      projectName: projectSel.selectedOptions[0] ? projectSel.selectedOptions[0].textContent : '',
+      trackerName: document.getElementById('qiTracker').value,
+      subject: document.getElementById('qiSubject').value.trim(),
+      description: document.getElementById('qiDescription').value.trim(),
+      priorityName: document.getElementById('qiPriority').value,
+      assigneeId: document.getElementById('qiAssignee').value ? Number(document.getElementById('qiAssignee').value) : null,
+      riskLevel: document.getElementById('qiRiskLevel').value,
+      customFieldValues,
+      uploads: qiUploads,
+    };
+  }
+  function qiShowReview() {
+    const errEl = document.getElementById('qiFormError');
+    const form = qiCollectForm();
+    if (!form.projectId || !form.subject || !form.description) {
+      errEl.style.display = 'block'; errEl.textContent = 'กรอกโปรเจกต์ / หัวข้อ / รายละเอียดให้ครบก่อน';
+      return;
+    }
+    errEl.style.display = 'none';
+    document.getElementById('qaIssueForm').classList.add('hidden');
+    document.getElementById('qaIssueReview').classList.remove('hidden');
+    const lines = buildReviewLines(form, qiMeta || { members: qiMembers, customFields: [] });
+    document.getElementById('qiReviewBody').innerHTML =
+      '<dl>' + lines.map(l => `<dt>${esc(l.label)}</dt><dd>${esc(l.value)}</dd>`).join('') + '</dl>';
+    document.getElementById('qiConfirmBtn').onclick = () => qiSubmit(form);
+  }
+  function qiBackToForm() {
+    document.getElementById('qaIssueReview').classList.add('hidden');
+    document.getElementById('qaIssueForm').classList.remove('hidden');
+  }
+  function qiSubmit(form) {
+    const api = shell().api, btn = document.getElementById('qiConfirmBtn'), errEl = document.getElementById('qiReviewError');
+    btn.disabled = true; btn.textContent = 'กำลังสร้าง...'; errEl.style.display = 'none';
+    api.createIssue(form).then(result => {
+      btn.disabled = false; btn.textContent = 'ยืนยันสร้าง';
+      if (!result || !result.ok) {
+        errEl.style.display = 'block';
+        errEl.textContent = 'สร้างไม่สำเร็จ: ' + ((result && result.error) || 'ไม่ทราบสาเหตุ') +
+          ((result && result.fieldErrors && result.fieldErrors.length)
+            ? ' (' + result.fieldErrors.map(f => f.fieldName || f.message).join(', ') + ')' : '');
+        return;
+      }
+      qiUploads = [];
+      document.getElementById('qaIssueReview').classList.add('hidden');
+      document.getElementById('qaStage').classList.remove('hidden');
+      const el = document.getElementById('qaRows');
+      el.innerHTML = `<div class="hint">สร้างสำเร็จ: <a href="#" id="qiCreatedLink">#${result.id}</a></div>` + el.innerHTML;
+      document.getElementById('qiCreatedLink').onclick = (e) => { e.preventDefault(); shell().api.openLink(result.url); };
+    });
+  }
+
   function qaBadge(status){
     const cls={PASS:'qa-b-pass',FAIL:'qa-b-fail',CRASH:'qa-b-crash'}[status]||'qa-b-crash';
     const label={PASS:'PASS',FAIL:'FAIL',CRASH:'ไม่จบ'}[status]||status;
@@ -105,6 +164,25 @@
   // ซึ่งได้แค่เปลี่ยนสี ไม่กระทบข้อมูล จึงยุบเข้าตัวกลาง
   function qaSrcTag(label){
     return `<span class="qa-src sp${hashN(label,8)}">${esc(label)}</span>`;
+  }
+  // แปลฟอร์ม issue กลับเป็นบรรทัด (label, value) สำหรับหน้า review — id -> ชื่อคนอ่านได้
+  // ฟังก์ชันบริสุทธิ์ ไม่แตะ DOM เพื่อให้เทสได้ตรงๆ
+  function buildReviewLines(form, meta) {
+    const member = (meta.members || []).find(m => m.id === form.assigneeId);
+    const lines = [
+      { label: 'โปรเจกต์', value: form.projectName },
+      { label: 'Tracker', value: form.trackerName },
+      { label: 'หัวข้อ', value: form.subject },
+      { label: 'Priority', value: form.priorityName },
+      { label: 'ผู้รับผิดชอบ', value: member ? member.name : '(ไม่ระบุ)' },
+      { label: 'Risk Level', value: form.riskLevel || '(ไม่ระบุ)' },
+    ];
+    for (const [fieldId, value] of Object.entries(form.customFieldValues || {})) {
+      const field = (meta.customFields || []).find(f => String(f.id) === String(fieldId));
+      if (field && value) lines.push({ label: field.name, value });
+    }
+    lines.push({ label: 'ไฟล์แนบ', value: (form.uploads || []).map(u => u.filename).join(', ') || '(ไม่มี)' });
+    return lines;
   }
   function qaDur(r){
     if(!r.startedAt||!r.endedAt) return '';
@@ -359,6 +437,20 @@
       if (qiCurrentUserId) document.getElementById('qiAssignee').value = qiCurrentUserId;
     };
     document.getElementById('qaRefresh').onclick=()=>api&&api.refreshQaTests&&api.refreshQaTests();
+    document.getElementById('qiPreviewBtn').onclick = qiShowReview;
+    document.getElementById('qaIssueReviewBack').onclick = qiBackToForm;
+    document.getElementById('qiFiles').onchange = (e) => {
+      const api = shell().api;
+      [...e.target.files].forEach(file => {
+        file.arrayBuffer().then(buf => api.uploadIssueAttachment(Buffer.from(buf), file.name)).then(res => {
+          if (res && res.ok) {
+            qiUploads.push({ token: res.token, filename: res.filename, content_type: file.type });
+            document.getElementById('qiFileList').innerHTML =
+              qiUploads.map(u => `<span class="qi-file-chip">${esc(u.filename)}</span>`).join('');
+          }
+        });
+      });
+    };
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====
@@ -412,4 +504,10 @@
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
   global.COWORK.tabs.qatest = { key:'qa', settingsCard:'cardQa', mount, mountSettings, loadSettings, onData, onTheme };
+
+  // เปิดทาง node --test แบบเดียวกับ tab-grafana.js / tab-meeting.js / tab-redmine.js
+  // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { buildReviewLines };
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

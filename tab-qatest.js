@@ -10,10 +10,87 @@
   const {esc, hashN} = global.COWORK.util;
   const {dateMatch, dateFilterHtml, wireDateFilter} = global.COWORK.dateFilter;
   const shell = () => global.COWORK.shell;   // เปลือกสร้างทีหลังไฟล์นี้ ต้องหยิบตอนเรียกใช้
+  // composeDescription มาจาก redmine-issue-form.js (ตรรกะล้วน ไม่มี Electron import) —
+  // ห่อด้วย typeof require !== 'undefined' แบบเดียวกับที่ meetingrun.js ทำกับ util.js
+  // เพื่อไม่พังตอนโหลดเป็น <script> ธรรมดาในเบราว์เซอร์ที่ไม่มี CommonJS
+  const {composeDescription} = (typeof require !== 'undefined' ? require('./redmine-issue-form.js') : {});
 
   let qaData=null, qaFilter='all', qaSrcFilter=null, qaOpen=null, qaXmlCache=new Map();
   const qaDateSel={y:null,m:null,d:null};
   let qaTab='log';                 // log = ข้อความ log, ui = วิวเวอร์ failure.xml, xml = XML ดิบ
+
+  // ===== ฟอร์มสร้าง issue =====
+  let qiMeta = null;          // ผลจาก getIssueFormMeta ล่าสุด: {trackerId, priorityOptions, customFields}
+  let qiMembers = [];         // ผลจาก getProjectMembers ล่าสุด
+  let qiUploads = [];         // [{token, filename, content_type}] ทีละไฟล์ที่ upload สำเร็จแล้ว
+  let qiCurrentUserId = null; // สำหรับปุ่ม "มอบหมายให้ตัวเอง"
+
+  function qiOpenForm() {
+    document.getElementById('qaStage').classList.add('hidden');
+    document.getElementById('qaIssueForm').classList.remove('hidden');
+    document.getElementById('qiProject').innerHTML =
+      [...new Set((qaData && qaData.projects) || [])].map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    qiLoadMetaForSelection();
+  }
+  function qiCloseForm() {
+    document.getElementById('qaIssueForm').classList.add('hidden');
+    document.getElementById('qaStage').classList.remove('hidden');
+  }
+
+  function qiLoadMetaForSelection() {
+    const api = shell().api;
+    const projectId = document.getElementById('qiProject').value;
+    const trackerName = document.getElementById('qiTracker').value;
+    if (!projectId) return;
+    api.getIssueFormMeta(Number(projectId), trackerName).then(res => {
+      if (!res || !res.ok) { qiMeta = null; return; }
+      qiMeta = res;
+      document.getElementById('qiPriority').innerHTML =
+        res.priorityOptions.map(p => `<option${p === 'Normal' ? ' selected' : ''}>${esc(p)}</option>`).join('');
+      const extra = res.customFields.filter(f => f.name !== 'Risk Level');
+      document.getElementById('qiCustomFields').innerHTML = extra.map(f => `
+        <div class="row-label">${esc(f.name)}</div>
+        <textarea class="search qi-cf" data-field-id="${f.id}" rows="3"></textarea>`).join('');
+    });
+    api.getProjectMembers(Number(projectId)).then(res => {
+      qiMembers = (res && res.ok) ? res.members : [];
+      document.getElementById('qiAssignee').innerHTML = '<option value="">(ไม่ระบุ)</option>' +
+        qiMembers.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+    });
+  }
+
+  function qiDraft() {
+    const api = shell().api;
+    const status = document.getElementById('qiDraftStatus');
+    const rawNotes = document.getElementById('qiRawNotes').value.trim();
+    if (!rawNotes) { status.className = 'set-status err'; status.textContent = 'พิมพ์โน้ตดิบก่อน'; return; }
+    const btn = document.getElementById('qiDraftBtn');
+    btn.disabled = true;
+    status.className = 'set-status';
+    status.innerHTML = 'กำลังร่าง... <button type="button" id="qiSkipDraft">ข้ามไปกรอกเองเลย</button>';
+    let skipped = false;
+    document.getElementById('qiSkipDraft').onclick = () => { skipped = true; btn.disabled = false; status.textContent = ''; };
+    api.draftIssueText(rawNotes, {
+      model: document.getElementById('qiModel').value,
+      language: document.getElementById('qiLanguage').value,
+      tracker: document.getElementById('qiTracker').value,
+    }).then(result => {
+      btn.disabled = false;
+      if (skipped) return;
+      if (!result || !result.ok) {
+        status.className = 'set-status err';
+        status.textContent = (result && result.error) || 'ร่างไม่สำเร็จ — กรอกมือแทน';
+        return;
+      }
+      status.className = 'set-status ok'; status.textContent = 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง';
+      const d = result.draft;
+      document.getElementById('qiSubject').value = d.subject_th || d.subject_en || '';
+      const lang = document.getElementById('qiLanguage').value;
+      document.getElementById('qiDescription').value =
+        composeDescription(lang, d.description_th || '', d.description_en || '');
+      if (d.suggested_risk_level) document.getElementById('qiRiskLevel').value = d.suggested_risk_level;
+    });
+  }
 
   function qaBadge(status){
     const cls={PASS:'qa-b-pass',FAIL:'qa-b-fail',CRASH:'qa-b-crash'}[status]||'qa-b-crash';
@@ -262,6 +339,14 @@
   function mount(){
     const api=shell().api;
     api && api.onQaTests && api.onQaTests(onData);
+    document.getElementById('qaNewIssueBtn').onclick = qiOpenForm;
+    document.getElementById('qaIssueFormBack').onclick = qiCloseForm;
+    document.getElementById('qiProject').onchange = qiLoadMetaForSelection;
+    document.getElementById('qiTracker').onchange = qiLoadMetaForSelection;
+    document.getElementById('qiDraftBtn').onclick = qiDraft;
+    document.getElementById('qiAssignMe').onclick = () => {
+      if (qiCurrentUserId) document.getElementById('qiAssignee').value = qiCurrentUserId;
+    };
     document.getElementById('qaRefresh').onclick=()=>api&&api.refreshQaTests&&api.refreshQaTests();
   }
 

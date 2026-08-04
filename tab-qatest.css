@@ -67,3 +67,12 @@
 .qa-src-row .qa-src-rm{-webkit-app-region:no-drag;flex-shrink:0;width:30px;height:30px;border-radius:8px;
   border:1px solid var(--line);background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px}
 .qa-src-row .qa-src-rm:hover{color:var(--rose);border-color:var(--rose)}
+
+/* ฟอร์มสร้าง issue (#qaIssueForm) + หน้า review (#qaIssueReview) */
+#qiCustomFields .row-label { margin-top: 10px; }
+#qiCustomFields textarea { width: 100%; min-height: 60px; }
+#qiFileList { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+#qiFileList .qi-file-chip { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font-size: 12px; }
+#qiReviewBody dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; margin: 0; }
+#qiReviewBody dt { color: var(--muted); }
+#qiReviewBody dd { margin: 0; white-space: pre-wrap; }

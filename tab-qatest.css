@@ -68,7 +68,13 @@
   border:1px solid var(--line);background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px}
 .qa-src-row .qa-src-rm:hover{color:var(--rose);border-color:var(--rose)}
 
-/* ฟอร์มสร้าง issue (#qaIssueForm) + หน้า review (#qaIssueReview) */
+/* ฟอร์มสร้าง issue (#qaIssueForm) + หน้า review (#qaIssueReview) — ปุ่ม "+" ย้ายไปแท็บ Redmine
+   แล้ว (widget.html) ฟอร์มเลย "ลอย" ทับทั้งหน้าต่างแทนที่จะแทรกอยู่ใต้เนื้อหาแท็บที่ active อยู่ —
+   กันปัญหาที่ต้องเลื่อนจอลงไปหาฟอร์มเอง (มันเริ่ม scroll ที่บนสุดของตัวเองเสมอ ไม่สืบทอด scroll
+   position ของ .body) และไม่ผูกกับว่าตอนนี้แท็บไหน active อยู่เลย */
+#qaIssueForm,#qaIssueReview{position:fixed;top:50px;bottom:20px;left:50%;transform:translateX(-50%);
+  width:100%;max-width:1200px;z-index:100;background:var(--bg);border:1px solid var(--line);border-radius:12px;
+  overflow-y:auto;padding:6px 16px 16px;box-shadow:0 10px 40px var(--shadow)}
 #qiCustomFields .row-label { margin-top: 10px; }
 #qiCustomFields textarea { width: 100%; min-height: 60px; }
 #qiFileList { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }

@@ -327,70 +327,72 @@
           <div id="qaRows"><div class="hint">กำลังโหลด...</div></div>
           <div id="qaReader" class="hidden"></div>
         </div>
+      </div>
 
-        <!-- ฟอร์มสร้าง issue — ซ่อนด้วย .hidden เหมือน qaReader จนกว่าจะกด qaNewIssueBtn -->
-        <div id="qaIssueForm" class="hidden">
-          <button class="mt-back" id="qaIssueFormBack">← ยกเลิก</button>
-          <h3>สร้าง issue ใหม่</h3>
-          <div class="row-label">โปรเจกต์</div>
-          <select id="qiProject" class="search"></select>
-          <div class="row-label">ประเภท (Tracker)</div>
-          <select id="qiTracker" class="search">
-            <option value="Bug">Bug</option>
-            <option value="Feature">Feature</option>
-            <option value="Epic">Epic</option>
-            <option value="Support">Support</option>
-          </select>
-          <div class="row-label">Priority</div>
-          <select id="qiPriority" class="search"></select>
-          <div class="row-label">ผู้รับผิดชอบ</div>
-          <select id="qiAssignee" class="search"><option value="">(ไม่ระบุ)</option></select>
-          <button type="button" id="qiAssignMe" class="set-cancel">มอบหมายให้ตัวเอง</button>
+      <!-- ฟอร์มสร้าง issue + หน้า review — ปุ่ม "+" อยู่ที่แท็บ Redmine (qaNewIssueBtn) แต่ตัวฟอร์ม
+           เป็นของแท็บ QA test เดิม (tab-qatest.js) ย้ายมาไว้นอก #qaView เป็น sibling ระดับ .body
+           เพื่อให้โชว์ได้พร้อมกับที่แท็บ Redmine ยังเป็นแท็บ active อยู่ (ไม่ต้องสลับแท็บ) -->
+      <div id="qaIssueForm" class="hidden">
+        <button class="mt-back" id="qaIssueFormBack">← ยกเลิก</button>
+        <h3>สร้าง issue ใหม่</h3>
+        <div class="row-label">โปรเจกต์</div>
+        <select id="qiProject" class="search"></select>
+        <div class="row-label">ประเภท (Tracker)</div>
+        <select id="qiTracker" class="search">
+          <option value="Bug">Bug</option>
+          <option value="Feature">Feature</option>
+          <option value="Epic">Epic</option>
+          <option value="Support">Support</option>
+        </select>
+        <div class="row-label">Priority</div>
+        <select id="qiPriority" class="search"></select>
+        <div class="row-label">ผู้รับผิดชอบ</div>
+        <select id="qiAssignee" class="search"><option value="">(ไม่ระบุ)</option></select>
+        <button type="button" id="qiAssignMe" class="set-cancel">มอบหมายให้ตัวเอง</button>
 
-          <div class="row-label">ให้ LLM ช่วยร่าง (ไม่บังคับ)</div>
-          <textarea id="qiRawNotes" class="search" rows="3" placeholder="พิมพ์/วางโน้ตดิบ เช่น &quot;ปุ่ม checkout กดไม่ติด android 13 ลอง 3 รอบ&quot;"></textarea>
-          <select id="qiModel">
-            <option value="Qwen/Qwen3.6-35B-A3B">Qwen (เร็ว)</option>
-            <option value="GLM-5.2">GLM (ช้ากว่า)</option>
-          </select>
-          <select id="qiLanguage">
-            <option value="both">TH + EN</option>
-            <option value="th">TH เท่านั้น</option>
-            <option value="en">EN เท่านั้น</option>
-          </select>
-          <button type="button" id="qiDraftBtn" class="set-cancel">🪄 ให้ LLM ช่วยร่าง</button>
-          <div id="qiDraftStatus" class="set-status"></div>
+        <div class="row-label">ให้ LLM ช่วยร่าง (ไม่บังคับ)</div>
+        <textarea id="qiRawNotes" class="search" rows="3" placeholder="พิมพ์/วางโน้ตดิบ เช่น &quot;ปุ่ม checkout กดไม่ติด android 13 ลอง 3 รอบ&quot;"></textarea>
+        <select id="qiModel">
+          <option value="Qwen/Qwen3.6-35B-A3B">Qwen (เร็ว)</option>
+          <option value="GLM-5.2">GLM (ช้ากว่า)</option>
+        </select>
+        <select id="qiLanguage">
+          <option value="both">TH + EN</option>
+          <option value="th">TH เท่านั้น</option>
+          <option value="en">EN เท่านั้น</option>
+        </select>
+        <button type="button" id="qiDraftBtn" class="set-cancel">🪄 ให้ LLM ช่วยร่าง</button>
+        <div id="qiDraftStatus" class="set-status"></div>
 
-          <div class="row-label">หัวข้อ (Subject)</div>
-          <input id="qiSubject" class="search" type="text">
-          <div class="row-label">รายละเอียด (Description)</div>
-          <textarea id="qiDescription" class="search" rows="6"></textarea>
+        <div class="row-label">หัวข้อ (Subject)</div>
+        <input id="qiSubject" class="search" type="text">
+        <div class="row-label">รายละเอียด (Description)</div>
+        <textarea id="qiDescription" class="search" rows="6"></textarea>
 
-          <div class="row-label">Risk Level</div>
-          <select id="qiRiskLevel">
-            <option value="">(ไม่ระบุ)</option>
-            <option>Low</option><option>Fairly Low</option><option>Moderate</option>
-            <option>High</option><option>Very High</option>
-          </select>
-          <div id="qiCustomFields"></div>
+        <div class="row-label">Risk Level</div>
+        <select id="qiRiskLevel">
+          <option value="">(ไม่ระบุ)</option>
+          <option>Low</option><option>Fairly Low</option><option>Moderate</option>
+          <option>High</option><option>Very High</option>
+        </select>
+        <div id="qiCustomFields"></div>
 
-          <div class="row-label">แนบรูป</div>
-          <input id="qiFiles" type="file" accept="image/*" multiple>
-          <div id="qiFileList"></div>
+        <div class="row-label">แนบรูป</div>
+        <input id="qiFiles" type="file" accept="image/*" multiple>
+        <div id="qiFileList"></div>
 
-          <div id="qiFormError" class="set-status err" style="display:none"></div>
-          <div class="set-actions"><button type="button" id="qiPreviewBtn" class="set-save">พรีวิว →</button></div>
-        </div>
+        <div id="qiFormError" class="set-status err" style="display:none"></div>
+        <div class="set-actions"><button type="button" id="qiPreviewBtn" class="set-save">พรีวิว →</button></div>
+      </div>
 
-        <!-- หน้า review — ต้องกด "ยืนยันสร้าง" จากตรงนี้เท่านั้นถึงจะ POST จริง -->
-        <div id="qaIssueReview" class="hidden">
-          <button class="mt-back" id="qaIssueReviewBack">← กลับไปแก้ฟอร์ม</button>
-          <h3>ตรวจสอบก่อนสร้างจริง</h3>
-          <div id="qiReviewBody"></div>
-          <div id="qiReviewError" class="set-status err" style="display:none"></div>
-          <div class="set-actions">
-            <button type="button" id="qiConfirmBtn" class="set-save">ยืนยันสร้าง</button>
-          </div>
+      <!-- หน้า review — ต้องกด "ยืนยันสร้าง" จากตรงนี้เท่านั้นถึงจะ POST จริง -->
+      <div id="qaIssueReview" class="hidden">
+        <button class="mt-back" id="qaIssueReviewBack">← กลับไปแก้ฟอร์ม</button>
+        <h3>ตรวจสอบก่อนสร้างจริง</h3>
+        <div id="qiReviewBody"></div>
+        <div id="qiReviewError" class="set-status err" style="display:none"></div>
+        <div class="set-actions">
+          <button type="button" id="qiConfirmBtn" class="set-save">ยืนยันสร้าง</button>
         </div>
       </div>
 
@@ -645,7 +647,7 @@
     navG.classList.toggle('on',gf);
     wsRefresh.classList.toggle('hidden',!ws);
     qaRefresh.classList.toggle('hidden',!qa);
-    qaNewIssueBtn.classList.toggle('hidden',!qa);
+    qaNewIssueBtn.classList.toggle('hidden',!rm);
     mtRefresh.classList.toggle('hidden',!mt);
     gfRefresh.classList.toggle('hidden',!gf);
     // แท็บที่มีอะไรต้องทำตอนถูกเปิดใส่ onShow ไว้ในสัญญา (ตอนนี้มีแค่ Meeting ที่ไปถามสถานะตัวรัน)

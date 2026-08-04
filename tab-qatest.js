@@ -199,14 +199,28 @@
         }
         return;
       }
-      document.getElementById('qaIssueReview').classList.add('hidden');
-      qiCloseForm();   // ครอบ qaStage.show + qiUploads=[] + reset ทุกช่องของฟอร์มให้แล้ว
-      const el = document.getElementById('qaRows');
-      el.innerHTML = `<div class="hint">สร้างสำเร็จ: <a href="#" id="qiCreatedLink">#${result.id}</a></div>` + el.innerHTML;
+      // แสดงผลสำเร็จอยู่ในแผง qaIssueReview เอง (ไม่พึ่ง qaRows ที่อาจถูกซ่อนอยู่ถ้าแท็บที่ active
+      // ตอนนี้ไม่ใช่ QA test — ปุ่ม "+" ย้ายไปแท็บ Redmine แล้ว ฟอร์ม/review เป็นแผงลอยที่โชว์ได้
+      // ไม่ว่าแท็บไหน active อยู่ก็ตาม) กด "ปิด" เมื่อไหร่ค่อยเรียก qiCloseForm() รีเซ็ตจริง
+      document.getElementById('qiReviewBody').innerHTML =
+        `<div class="hint">สร้างสำเร็จ: <a href="#" id="qiCreatedLink">#${result.id}</a></div>`;
       document.getElementById('qiCreatedLink').onclick = (e) => { e.preventDefault(); shell().api.openLink(result.url); };
-      bindQaRowClicks(el);
-      // แทรก banner ด้วย innerHTML ทำลาย .onclick เดิมของทุก node รวมถึงปุ่ม "ตั้งค่าเลย"
-      // ตอนยังไม่ได้ตั้งค่าโฟลเดอร์ QA — bindQaRowClicks จัดการแค่ .qa-row ต้องผูกปุ่มนี้แยก
+      document.getElementById('qaIssueReviewBack').classList.add('hidden');
+      btn.textContent = 'ปิด';
+      btn.onclick = () => {
+        document.getElementById('qaIssueReview').classList.add('hidden');
+        document.getElementById('qaIssueReviewBack').classList.remove('hidden');
+        btn.textContent = 'ยืนยันสร้าง';
+        qiCloseForm();
+      };
+      // ยังแทรก banner ใน qaRows ไว้ด้วยเผื่อเปิดแท็บ QA test ทีหลัง (ปลอดภัยแม้ตอนนี้ถูกซ่อนอยู่)
+      const el = document.getElementById('qaRows');
+      if (el) {
+        el.innerHTML = `<div class="hint">สร้างสำเร็จ: <a href="#" id="qiCreatedLink2">#${result.id}</a></div>` + el.innerHTML;
+        const link2 = document.getElementById('qiCreatedLink2');
+        if (link2) link2.onclick = (e) => { e.preventDefault(); shell().api.openLink(result.url); };
+        bindQaRowClicks(el);
+      }
       const notConfiguredBtn = document.getElementById('qaNotConfiguredBtn');
       if (notConfiguredBtn) notConfiguredBtn.onclick = () => shell().openSettings('cardQa');
     }).catch(e => {

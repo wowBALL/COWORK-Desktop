@@ -24,12 +24,16 @@
   let qiMembers = [];         // ผลจาก getProjectMembers ล่าสุด
   let qiUploads = [];         // [{token, filename, content_type}] ทีละไฟล์ที่ upload สำเร็จแล้ว
   let qiCurrentUserId = null; // สำหรับปุ่ม "มอบหมายให้ตัวเอง"
+  // รายชื่อโปรเจกต์จริงมาจาก payload ของแท็บ Redmine (tasks-update) ไม่ใช่ qaData ของแท็บนี้ —
+  // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
+  // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
+  let qiKnownProjects = new Map();  // projectId -> projectName
 
   function qiOpenForm() {
     document.getElementById('qaStage').classList.add('hidden');
     document.getElementById('qaIssueForm').classList.remove('hidden');
     document.getElementById('qiProject').innerHTML =
-      [...new Set((qaData && qaData.projects) || [])].map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+      [...qiKnownProjects.entries()].map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('');
     qiLoadMetaForSelection();
   }
   function qiCloseForm() {
@@ -339,6 +343,14 @@
   function mount(){
     const api=shell().api;
     api && api.onQaTests && api.onQaTests(onData);
+    // ดักฟัง broadcast เดียวกับที่แท็บ Redmine ใช้ (tasks-update) เพื่อรู้จักรายชื่อโปรเจกต์จริง —
+    // ipcRenderer.on รับ listener ได้หลายตัว จึงไม่ชนกับ onTasks ของ tab-redmine.js
+    shell().api.onTasks(payload => {
+      if (!payload || payload.error || !payload.groups) return;
+      payload.groups.forEach(g => g.issues.forEach(i => {
+        if (i.projectId) qiKnownProjects.set(i.projectId, i.project);
+      }));
+    });
     document.getElementById('qaNewIssueBtn').onclick = qiOpenForm;
     document.getElementById('qaIssueFormBack').onclick = qiCloseForm;
     document.getElementById('qiProject').onchange = qiLoadMetaForSelection;

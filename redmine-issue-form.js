@@ -38,7 +38,7 @@ function composeDescription(language, th, en) {
   const enBlock = en ? `## 🇬🇧 Details (English)\n\n${en}` : '';
   if (language === 'th') return thBlock;
   if (language === 'en') return enBlock;
-  return [thBlock, enBlock].filter(Boolean).join('\n\n---\n\n');
+  return [enBlock, thBlock].filter(Boolean).join('\n\n---\n\n');
 }
 
 function buildIssuePayload(form, ids) {

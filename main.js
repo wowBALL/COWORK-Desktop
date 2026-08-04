@@ -737,21 +737,29 @@ ipcMain.handle('draft-issue-text', async (_e, rawNotes, opts) => {
   if (!result.ok) return result;
   const d = result.draft;
   const description = composeDescription(opts.language || 'both', d.description_th || '', d.description_en || '');
-  const subject = d.subject_th || d.subject_en || '';
+  const subject = d.subject_en || d.subject_th || '';
   return { ok: true, draft: { ...d, subject, description } };
 });
 ipcMain.handle('upload-issue-attachment', async (_e, fileBuffer, filename) => {
   if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  console.log('[DEBUG upload-issue-attachment] filename', filename, 'type', fileBuffer && fileBuffer.constructor && fileBuffer.constructor.name, 'length', fileBuffer && fileBuffer.length);
   try {
     const res = await fetch(`${redmineConfig.url}/uploads.json`, {
       method: 'POST',
       headers: { 'X-Redmine-API-Key': redmineConfig.apiKey, 'Content-Type': 'application/octet-stream' },
       body: fileBuffer,
     });
-    if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
+    console.log('[DEBUG upload-issue-attachment] status', res.status);
+    if (!res.ok) {
+      const rawBody = await res.text().catch(() => '');
+      console.log('[DEBUG upload-issue-attachment] error body', rawBody);
+      return { ok: false, error: `Redmine HTTP ${res.status}` };
+    }
     const { upload } = await res.json();
+    console.log('[DEBUG upload-issue-attachment] success token', upload.token);
     return { ok: true, token: upload.token, filename };
   } catch (e) {
+    console.log('[DEBUG upload-issue-attachment] EXCEPTION', e.message, e.stack);
     return { ok: false, error: e.message };
   }
 });

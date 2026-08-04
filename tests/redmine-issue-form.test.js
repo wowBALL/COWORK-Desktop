@@ -75,13 +75,13 @@ test('composeDescription: en-only ไม่มี block ภาษาไทยเ
   assert.ok(!d.includes('🇹🇭'));
 });
 
-test('composeDescription: both มีครบสองภาษา คั่นด้วย ---', () => {
+test('composeDescription: both มีครบสองภาษา คั่นด้วย --- (EN ก่อน TH)', () => {
   const d = composeDescription('both', 'อาการ: กดไม่ติด', 'Symptom: not clickable');
   assert.ok(d.includes('🇹🇭'));
   assert.ok(d.includes('🇬🇧'));
   assert.ok(d.includes('---'));
-  assert.ok(d.indexOf('🇹🇭') < d.indexOf('---'));
-  assert.ok(d.indexOf('---') < d.indexOf('🇬🇧'));
+  assert.ok(d.indexOf('🇬🇧') < d.indexOf('---'));
+  assert.ok(d.indexOf('---') < d.indexOf('🇹🇭'));
 });
 
 test('composeDescription: th-only แต่ text ว่างเปล่า คืนสตริงว่าง ไม่ใช่หัวข้อลอย ๆ', () => {

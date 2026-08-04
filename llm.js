@@ -32,7 +32,7 @@ function schemaFieldsFor(language) {
   const risk = '"suggested_risk_level":"Low|Fairly Low|Moderate|High|Very High"';
   if (language === 'th') return `{"subject_th":"...","description_th":"...",${risk}}`;
   if (language === 'en') return `{"subject_en":"...","description_en":"...",${risk}}`;
-  return `{"subject_th":"...","subject_en":"...","description_th":"...","description_en":"...",${risk}}`;
+  return `{"subject_en":"...","subject_th":"...","description_en":"...","description_th":"...",${risk}}`;
 }
 
 function languageRulesFor(language) {

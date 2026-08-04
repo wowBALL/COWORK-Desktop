@@ -395,6 +395,7 @@ async function fetchRedmineTasks() {
         projectId: issue.project?.identifier || issue.project?.id || '',
         assignee: issue.assigned_to?.name || 'ไม่ระบุ',
         status,
+        priority: issue.priority?.name || '',
         risk,
         overdue,
         closed,

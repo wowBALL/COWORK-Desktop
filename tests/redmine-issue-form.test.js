@@ -159,3 +159,26 @@ test('buildIssuePayload: ไม่มี status_id/watcher_user_ids/start_date �
   assert.ok(!('watcher_user_ids' in issue));
   assert.ok(!('start_date' in issue));
 });
+
+const { parseValidationErrors } = require('../redmine-issue-form.js');
+
+test('parseValidationErrors: จับชื่อ field จากข้อความ error ได้ (ไม่สนตัวพิมพ์เล็กใหญ่)', () => {
+  const result = parseValidationErrors(
+    ["Rollback plan can't be blank", "Impact analysis can't be blank"],
+    ['Rollback Plan', 'Impact Analysis', 'Risk Level'],
+  );
+  assert.strictEqual(result.length, 2);
+  assert.strictEqual(result[0].fieldName, 'Rollback Plan');
+  assert.strictEqual(result[1].fieldName, 'Impact Analysis');
+});
+
+test('parseValidationErrors: field ที่จับชื่อไม่ได้ยังคืน message พร้อม fieldName เป็น null', () => {
+  const result = parseValidationErrors(["Subject can't be blank"], ['Rollback Plan']);
+  assert.strictEqual(result[0].fieldName, null);
+  assert.strictEqual(result[0].message, "Subject can't be blank");
+});
+
+test('parseValidationErrors: array ว่างคืน array ว่าง', () => {
+  assert.deepStrictEqual(parseValidationErrors([], ['Rollback Plan']), []);
+  assert.deepStrictEqual(parseValidationErrors(undefined, ['Rollback Plan']), []);
+});

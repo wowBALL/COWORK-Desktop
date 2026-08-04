@@ -58,4 +58,14 @@ function buildIssuePayload(form, ids) {
   return { issue };
 }
 
-module.exports = { fieldSchemaKey, buildFieldSchema, composeDescription, buildIssuePayload };
+function parseValidationErrors(errorMessages, knownFieldNames) {
+  const names = knownFieldNames || [];
+  return (errorMessages || []).map(msg => {
+    const hit = names.find(name => msg.toLowerCase().includes(name.toLowerCase()));
+    return { message: msg, fieldName: hit || null };
+  });
+}
+
+module.exports = {
+  fieldSchemaKey, buildFieldSchema, composeDescription, buildIssuePayload, parseValidationErrors,
+};

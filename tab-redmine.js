@@ -475,6 +475,10 @@
   // markup ของการ์ดอยู่ใน widget.html เหมือนเดิม (เปลือกเป็นเจ้าของ markup ทุก view)
   // ที่ย้ายมาคือสายไฟ: mountSettings ผูกปุ่มครั้งเดียวตอน boot, loadSettings ดึงค่าทุกครั้งที่เปิดหน้า
   let setUrl,setKey,setStatus,setSave;
+  // LLM อยู่ในการ์ดนี้ (ไม่ใช่การ์ดของตัวเอง) เพราะถูกใช้ที่เดียวคือปุ่ม "ให้ LLM ช่วยร่าง" ในฟอร์ม
+  // สร้าง issue ซึ่งเปิดจากปุ่ม "+" ของแท็บ Redmine — ตัวฟอร์มยังเป็นโค้ดใน tab-qatest.js ตามเดิม
+  // แต่ค่าตั้งค่าเดินตามแท็บที่ผู้ใช้เห็น ไม่ใช่ตามไฟล์ที่โค้ดบังเอิญอยู่
+  let setLlmUrl,setLlmKey,setLlmStatus,setLlmSave;
   function mountSettings(){
     setUrl=document.getElementById('setUrl'); setKey=document.getElementById('setKey');
     setStatus=document.getElementById('setStatus'); setSave=document.getElementById('setSave');
@@ -496,11 +500,27 @@
         });
       });
     };
+    setLlmUrl=document.getElementById('setLlmUrl'); setLlmKey=document.getElementById('setLlmKey');
+    setLlmStatus=document.getElementById('setLlmStatus'); setLlmSave=document.getElementById('setLlmSave');
+    setLlmSave.onclick=()=>{
+      const baseUrl=setLlmUrl.value.trim(), apiKey=setLlmKey.value.trim();
+      if(!baseUrl || !apiKey){ setLlmStatus.className='set-status err'; setLlmStatus.textContent='กรอก Base URL และ API key ให้ครบ'; return; }
+      setLlmSave.disabled=true; setLlmStatus.className='set-status'; setLlmStatus.textContent='กำลังบันทึก...';
+      api.saveLlmConfig({baseUrl,apiKey}).then(()=>{
+        setLlmSave.disabled=false;
+        setLlmStatus.className='set-status ok';
+        setLlmStatus.textContent='บันทึกแล้ว';
+      });
+    };
   }
   function loadSettings(){
     setStatus.textContent=''; setStatus.className='set-status';
     api && api.getRedmineConfig && api.getRedmineConfig().then(cfg=>{
       setUrl.value=(cfg&&cfg.url)||''; setKey.value=(cfg&&cfg.apiKey)||'';
+    });
+    setLlmStatus.textContent=''; setLlmStatus.className='set-status';
+    api && api.getLlmConfig && api.getLlmConfig().then(cfg=>{
+      setLlmUrl.value=(cfg&&cfg.baseUrl)||''; setLlmKey.value=(cfg&&cfg.apiKey)||'';
     });
   }
 

@@ -157,6 +157,9 @@
   .set-card-header .chev{margin-left:auto;color:var(--dim);transition:transform .15s;font-style:normal}
   .set-card.open .set-card-header .chev{transform:rotate(90deg)}
   .set-card-body{display:none;padding:12px 13px 13px}
+  /* หัวข้อย่อยในการ์ดเดียว — ใช้ตอนการ์ดหนึ่งมีค่าของหลายบริการที่บันทึกแยกกัน (Redmine + LLM) */
+  .set-subhead{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;
+    color:var(--muted);border-top:1px solid var(--line);padding-top:13px;margin-top:6px;margin-bottom:9px}
   .set-card.open .set-card-body{display:block}
   .not-configured{border:1px dashed var(--line);border-radius:10px;padding:14px;margin-bottom:12px;
     display:flex;flex-direction:column;gap:10px;align-items:flex-start}
@@ -480,6 +483,16 @@
             <div class="hint" style="margin:-4px 0 12px">หาได้ที่ Redmine → มุมขวาบน → My account → API access key</div>
             <div id="setStatus" class="set-status"></div>
             <div class="set-actions"><button id="setSave" class="set-save">บันทึก</button></div>
+            <!-- LLM อยู่ในการ์ด Redmine เพราะมันถูกใช้ที่เดียวคือปุ่ม "ให้ LLM ช่วยร่าง" ในฟอร์ม
+                 สร้าง issue ซึ่งเปิดจากปุ่ม "+" ของแท็บ Redmine — ค่าของแท็บไหนอยู่ในการ์ดแท็บนั้น -->
+            <div class="set-subhead">LLM ช่วยร่าง issue</div>
+            <div class="hint" style="margin:-2px 0 10px">endpoint แบบ OpenAI-compatible ที่ใช้ตอนกดปุ่ม "ให้ LLM ช่วยร่าง" ในฟอร์มสร้าง issue</div>
+            <div class="row-label">Base URL</div>
+            <input id="setLlmUrl" class="search" type="text" placeholder="https://api.example.com/v1" autocomplete="off">
+            <div class="row-label">API key</div>
+            <input id="setLlmKey" class="search" type="password" placeholder="API key" autocomplete="off">
+            <div id="setLlmStatus" class="set-status"></div>
+            <div class="set-actions"><button id="setLlmSave" class="set-save">บันทึก</button></div>
           </div>
         </div>
         <div class="set-card" id="cardWorkspace">
@@ -532,18 +545,6 @@
               <button id="setGfTest">ทดสอบ</button>
               <button id="setGfSave" class="set-save">บันทึก</button>
             </div>
-          </div>
-        </div>
-        <div class="set-card" id="cardLlm">
-          <div class="set-card-header" data-card="cardLlm"><span>◈ LLM (ร่าง issue)</span><span class="chev">›</span></div>
-          <div class="set-card-body">
-            <div class="hint" style="margin:-2px 0 10px">endpoint แบบ OpenAI-compatible ที่ใช้ตอนกด "ให้ LLM ช่วยร่าง" ในฟอร์มสร้าง issue</div>
-            <div class="row-label">Base URL</div>
-            <input id="setLlmUrl" class="search" type="text" placeholder="https://api.example.com/v1" autocomplete="off">
-            <div class="row-label">API key</div>
-            <input id="setLlmKey" class="search" type="password" placeholder="API key" autocomplete="off">
-            <div id="setLlmStatus" class="set-status"></div>
-            <div class="set-actions"><button id="setLlmSave" class="set-save">บันทึก</button></div>
           </div>
         </div>
         <button id="setCancel" class="set-cancel" style="width:100%">ปิด</button>

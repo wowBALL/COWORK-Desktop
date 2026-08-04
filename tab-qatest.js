@@ -41,6 +41,7 @@
     document.getElementById('qiSubject').value = '';
     document.getElementById('qiDescription').value = '';
     document.getElementById('qiRiskLevel').value = '';
+    document.getElementById('qiRiskLevelRow').classList.remove('hidden');
     document.getElementById('qiDraftStatus').className = 'set-status';
     document.getElementById('qiDraftStatus').textContent = '';
     document.getElementById('qiFormError').style.display = 'none';
@@ -64,6 +65,12 @@
       qiMeta = res;
       document.getElementById('qiPriority').innerHTML =
         res.priorityOptions.map(p => `<option${p === 'Normal' ? ' selected' : ''}>${esc(p)}</option>`).join('');
+      // false = tracker นี้ไม่มี Risk Level แน่ (เคยเห็น issue ของคู่นี้แล้วไม่มี) — ซ่อนไปเลย
+      // ไม่งั้นผู้ใช้เลือกค่าที่ส่งไม่ได้ แล้วไปเจอ error ตอนกด "ยืนยันสร้าง" ซึ่งสายเกินไป
+      // null = ยังไม่เคยเห็น issue ของคู่นี้ ตอบไม่ได้ → โชว์ไว้ก่อนแบบ best-effort
+      const hideRisk = res.riskLevelAvailable === false;
+      document.getElementById('qiRiskLevelRow').classList.toggle('hidden', hideRisk);
+      if (hideRisk) document.getElementById('qiRiskLevel').value = '';
       const extra = res.customFields.filter(f => f.name !== 'Risk Level');
       document.getElementById('qiCustomFields').innerHTML = extra.map(f => `
         <div class="row-label">${esc(f.name)}</div>

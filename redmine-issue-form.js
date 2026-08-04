@@ -44,6 +44,29 @@ function buildFieldSchema(issues) {
   return schema;
 }
 
+// Redmine นิยาม custom field ครั้งเดียวทั้ง instance แล้วค่อยเปิดใช้รายโปรเจกต์/tracker — field
+// ชื่อเดียวกันจึงเป็น id เดียวกันเสมอ (ยืนยันกับ Redmine จริงแล้ว: Risk Level = 7 ทุกโปรเจกต์)
+// แคชแนวทาง A แยกตาม project+tracker ซึ่งถูกสำหรับ "คู่นี้ต้องกรอกอะไร" แต่ไม่ใช่สำหรับ "field
+// ชื่อนี้ id อะไร" — คู่ที่ยังไม่เคยเห็น issue เลยเลยหา id ไม่เจอ ทั้งที่รู้จากโปรเจกต์อื่นอยู่แล้ว
+function findFieldIdByName(schema, name, key) {
+  const inCombo = (schema[key] || []).find(f => f.name === name);
+  if (inCombo) return inCombo.id;
+  for (const fields of Object.values(schema || {})) {
+    const hit = (fields || []).find(f => f.name === name);
+    if (hit) return hit.id;
+  }
+  return null;
+}
+
+// สามสถานะ ไม่ใช่สอง: true = คู่นี้มี field นี้แน่ / false = ไม่มีแน่ (เคยเห็น issue ของคู่นี้แล้ว
+// ไม่มี field นี้ เช่น tracker Support ที่ไม่มี custom field เลยสักตัว) / null = ยังไม่เคยเห็น
+// issue ของคู่นี้เลย ตอบไม่ได้ ต้องเดาแบบ best-effort แล้วให้ 422 ของ Redmine เป็นตาข่ายรอง
+function fieldAvailability(schema, name, key) {
+  const fields = (schema || {})[key];
+  if (!fields) return null;
+  return fields.some(f => f.name === name);
+}
+
 function composeDescription(language, th, en) {
   const thBlock = th ? `## 🇹🇭 รายละเอียด (ไทย)\n\n${th}` : '';
   const enBlock = en ? `## 🇬🇧 Details (English)\n\n${en}` : '';
@@ -86,5 +109,5 @@ function parseValidationErrors(errorMessages, knownFieldNames) {
 
 module.exports = {
   fieldSchemaKey, buildFieldSchema, composeDescription, buildIssuePayload, parseValidationErrors,
-  canonicalRiskLevel,
+  canonicalRiskLevel, findFieldIdByName, fieldAvailability,
 };

@@ -212,3 +212,40 @@ test('canonicalRiskLevel: ค่าที่ไม่รู้จัก/ว่�
   assert.strictEqual(canonicalRiskLevel(''), '');
   assert.strictEqual(canonicalRiskLevel(undefined), '');
 });
+
+const { findFieldIdByName, fieldAvailability } = require('../redmine-issue-form.js');
+
+// id ของ custom field เป็นตัวเดียวกันทั้ง Redmine instance (ยืนยันกับของจริง: Risk Level = 7
+// ทุกโปรเจกต์) — คู่ที่ยังไม่เคยเห็น issue จึงยืมจากคู่อื่นได้
+const SCHEMA = {
+  '12||Bug': [{ id: 7, name: 'Risk Level' }, { id: 4, name: 'Rollback Plan' }],
+  '12||Support': [],
+};
+
+test('findFieldIdByName: เจอใน key ของตัวเองคืน id นั้น', () => {
+  assert.strictEqual(findFieldIdByName(SCHEMA, 'Risk Level', '12||Bug'), 7);
+});
+
+test('findFieldIdByName: key ที่ไม่มี field นี้ ยืม id จาก key อื่นได้', () => {
+  assert.strictEqual(findFieldIdByName(SCHEMA, 'Risk Level', '12||Support'), 7);
+  assert.strictEqual(findFieldIdByName(SCHEMA, 'Risk Level', '99||Epic'), 7);
+});
+
+test('findFieldIdByName: ไม่รู้จักชื่อนี้ทั้งแคช คืน null', () => {
+  assert.strictEqual(findFieldIdByName(SCHEMA, 'Sprint', '12||Bug'), null);
+  assert.strictEqual(findFieldIdByName({}, 'Risk Level', '12||Bug'), null);
+});
+
+test('fieldAvailability: true เมื่อคู่นั้นมี field นี้', () => {
+  assert.strictEqual(fieldAvailability(SCHEMA, 'Risk Level', '12||Bug'), true);
+});
+
+test('fieldAvailability: false เมื่อเคยเห็น issue ของคู่นั้นแล้วไม่มี field นี้', () => {
+  assert.strictEqual(fieldAvailability(SCHEMA, 'Risk Level', '12||Support'), false);
+  assert.strictEqual(fieldAvailability(SCHEMA, 'Sprint', '12||Bug'), false);
+});
+
+test('fieldAvailability: null เมื่อยังไม่เคยเห็น issue ของคู่นั้นเลย (ตอบไม่ได้ ไม่ใช่ไม่มี)', () => {
+  assert.strictEqual(fieldAvailability(SCHEMA, 'Risk Level', '99||Epic'), null);
+  assert.strictEqual(fieldAvailability({}, 'Risk Level', '12||Bug'), null);
+});

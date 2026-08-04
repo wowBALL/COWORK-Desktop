@@ -7,7 +7,7 @@ const { readMeetings, readTranscript } = require('./meetings');
 const { readQaResults } = require('./qatest');
 const { Grafana, APP_GROUPS } = require('./grafana');
 const { parseGlossary, planWrite } = require('./glossary');
-const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors, canonicalRiskLevel } = require('./redmine-issue-form');
+const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors, canonicalRiskLevel, findFieldIdByName, fieldAvailability } = require('./redmine-issue-form');
 const { draftIssue } = require('./llm');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
@@ -703,12 +703,17 @@ ipcMain.handle('get-issue-form-meta', async (_e, projectId, trackerName) => {
   if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
   try {
     await Promise.all([loadTrackerMeta(), loadPriorityMeta()]);
-    const customFields = issueFormFieldsCache[fieldSchemaKey(projectId, trackerName)] || [];
+    const key = fieldSchemaKey(projectId, trackerName);
+    const customFields = issueFormFieldsCache[key] || [];
     return {
       ok: true,
       trackerId: trackerIdCache[trackerName],
       priorityOptions: Object.keys(priorityIdCache),
       customFields,
+      // Risk Level เป็น dropdown ตายตัวใน markup ไม่ได้วาดจาก customFields เหมือนตัวอื่น
+      // เลยต้องบอก renderer แยกว่าคู่นี้มี field นี้ไหม ไม่งั้นมันโชว์ให้เลือกทั้งที่ tracker
+      // ไม่มี field นี้ (เช่น Support ที่ไม่มี custom field เลย) แล้วไปเด้ง error ตอนกดส่งจริง
+      riskLevelAvailable: fieldAvailability(issueFormFieldsCache, 'Risk Level', key),
     };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -767,14 +772,17 @@ ipcMain.handle('create-issue', async (_e, form) => {
   try {
     await Promise.all([loadTrackerMeta(), loadPriorityMeta()]);
     const key = fieldSchemaKey(form.projectId, form.trackerName);
-    const riskField = (issueFormFieldsCache[key] || []).find(f => f.name === 'Risk Level');
-    if (form.riskLevel && !riskField) {
-      return { ok: false, error: 'ระบบยังไม่รู้จัก field Risk Level ของโปรเจกต์/tracker นี้ (แคชยังไม่มีข้อมูล) — เปิดแท็บ Redmine ทิ้งไว้สักครู่ให้โหลดข้อมูลใหม่ แล้วกลับมาสร้าง issue อีกครั้ง หรือกรอก issue นี้ผ่านหน้าเว็บ Redmine โดยตรงแทน' };
+    // id ของ custom field เป็นตัวเดียวกันทั้ง instance — หาข้ามคู่ project/tracker ได้ ไม่ต้อง
+    // ล้มทั้งการสร้างเพราะคู่นี้ยังไม่เคยมี issue ติด Risk Level มาก่อน ถ้า tracker ไม่รับ field นี้
+    // จริง Redmine จะตอบ 422 กลับมา ซึ่งตกลงมาที่ตาข่ายรอง C ข้างล่างอยู่แล้ว
+    const riskLevelFieldId = findFieldIdByName(issueFormFieldsCache, 'Risk Level', key);
+    if (form.riskLevel && !riskLevelFieldId) {
+      return { ok: false, error: 'ระบบยังไม่รู้จัก field Risk Level ของ Redmine ตัวนี้ (แคชยังไม่มีข้อมูล) — เปิดแท็บ Redmine ทิ้งไว้สักครู่ให้โหลดข้อมูลใหม่ แล้วกลับมาสร้าง issue อีกครั้ง หรือกรอก issue นี้ผ่านหน้าเว็บ Redmine โดยตรงแทน' };
     }
     const body = buildIssuePayload(form, {
       trackerIdByName: trackerIdCache,
       priorityIdByName: priorityIdCache,
-      riskLevelFieldId: riskField && riskField.id,
+      riskLevelFieldId,
     });
     const res = await fetch(`${redmineConfig.url}/issues.json`, {
       method: 'POST',

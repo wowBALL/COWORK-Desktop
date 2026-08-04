@@ -368,12 +368,17 @@
         <div class="row-label">รายละเอียด (Description)</div>
         <textarea id="qiDescription" class="search" rows="6"></textarea>
 
-        <div class="row-label">Risk Level</div>
-        <select id="qiRiskLevel">
-          <option value="">(ไม่ระบุ)</option>
-          <option>Low</option><option>Fairly Low</option><option>Moderate</option>
-          <option>High</option><option>Very High</option>
-        </select>
+        <!-- Risk Level เป็น dropdown ตายตัว ไม่ได้วาดจาก customFields เหมือน custom field ตัวอื่น
+             เพราะเป็นตัวเลือกปิด (5 ระดับ) ไม่ใช่ textarea — tab-qatest.js ซ่อนทั้งก้อนนี้เมื่อ
+             tracker ที่เลือกไม่มี field นี้ (เช่น Support) จึงต้องครอบ div ให้ซ่อนพร้อม label ได้ -->
+        <div id="qiRiskLevelRow">
+          <div class="row-label">Risk Level</div>
+          <select id="qiRiskLevel">
+            <option value="">(ไม่ระบุ)</option>
+            <option>Low</option><option>Fairly Low</option><option>Moderate</option>
+            <option>High</option><option>Very High</option>
+          </select>
+        </div>
         <div id="qiCustomFields"></div>
 
         <div class="row-label">แนบรูป</div>

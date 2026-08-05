@@ -57,3 +57,9 @@
 .ws-task-proj{font-size:11.5px;font-weight:700;color:var(--accent);margin-bottom:4px}
 .ws-task-item{font-size:12px;color:var(--muted);line-height:1.5}
 .ws-back{-webkit-app-region:no-drag;background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:6px 0;margin-bottom:8px}
+
+.ws-badge-task{margin-left:auto;background:var(--amber);color:var(--on-accent);font-size:9.5px;font-weight:700;border-radius:8px;padding:1px 6px}
+.ws-detail-meta{display:flex;gap:10px;align-items:center;margin:6px 0 10px}
+.ws-detail-actions{margin-top:14px}
+.ws-detail-actions button{-webkit-app-region:no-drag;background:var(--panel);border:1px solid var(--line-soft);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;color:var(--ink)}
+.ws-detail-actions button:hover{border-color:var(--accent)}

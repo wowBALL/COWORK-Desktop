@@ -17,6 +17,7 @@
     active:{c:'var(--green)',t:'🟢 กำลังทำ',label:'กำลังทำ'},
     pause :{c:'var(--amber)',t:'🟡 พัก',   label:'พัก'},
     done  :{c:'var(--dim)',  t:'✅ จบแล้ว',label:'จบแล้ว'},
+    dropped:{c:'var(--rose)',t:'⛔ ปิดโปรเจกต์',label:'ปิดแล้ว'},
     unknown:{c:'var(--dim)', t:'– ไม่ระบุ',label:'ไม่ระบุ'},
   };
   const PROJ_HUES=['var(--accent)','var(--green)','var(--amber)','var(--rose)','var(--cyan)','var(--violet)'];
@@ -132,6 +133,113 @@
   function renderWsToday(){
     renderWsStats(); renderWsRulesBox(); renderWsTasks(); renderWsFeed();
   }
+  function wsProjectsFiltered(){
+    if(!wsData||!wsData.projects) return [];
+    const terms=wsQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return wsData.projects.filter(p=>{
+      const hay=(p.name+' '+(p.path||'')+' '+(p.desc||'')).toLowerCase();
+      return (wsStatSel.size===0 || wsStatSel.has(p.status)) && terms.every(t=>hay.includes(t));
+    });
+  }
+  // createElement ทีละ chip + ผูก .onclick ตรง node เดียวกับที่ Task 23 ทำกับ renderWsSegments
+  // (ไม่ใช้ innerHTML+querySelectorAll — เหตุผลเดียวกับที่อธิบายไว้ใน Task 23 Step 1)
+  function renderWsStatusChips(){
+    const ps=(wsData&&wsData.projects)||[];
+    const stEl=document.getElementById('wsStatus');
+    stEl.innerHTML='';
+    const allChip=document.createElement('div');
+    allChip.className='chip'+(wsStatSel.size===0?' active':'');
+    allChip.innerHTML=`ทั้งหมด<span class="n">${ps.length}</span>`;
+    allChip.onclick=()=>{ wsStatSel.clear(); renderWsStatusChips(); renderWsProjects(); };
+    stEl.appendChild(allChip);
+    const order=['active','pause','dropped','done','unknown'];
+    order.filter(k=>ps.some(p=>p.status===k)).forEach(k=>{
+      const n=ps.filter(p=>p.status===k).length;
+      const chip=document.createElement('div');
+      chip.className='chip'+(wsStatSel.has(k)?' active':'');
+      chip.innerHTML=`<span class="dot" style="--cc:${ST_META[k].c}"></span>${ST_META[k].label}<span class="n">${n}</span>`;
+      chip.onclick=()=>{
+        const only=wsStatSel.size===1 && wsStatSel.has(k);
+        wsStatSel.clear();
+        if(!only) wsStatSel.add(k);
+        renderWsStatusChips(); renderWsProjects();
+      };
+      stEl.appendChild(chip);
+    });
+  }
+  function renderWsProjects(){
+    renderWsStatusChips();
+    const el=document.getElementById('wsProjects');
+    const list=wsProjectsFiltered();
+    if(!list.length){
+      el.innerHTML=`<div class="empty">${wsQuery.trim()?'ไม่พบโปรเจกต์ที่ตรงกับ "'+esc(wsQuery.trim())+'"':'ไม่มีโปรเจกต์ตามตัวกรองนี้'}</div>`;
+      return;
+    }
+    el.innerHTML='';
+    list.forEach(p=>{
+      const m=ST_META[p.status]||ST_META.unknown;
+      const card=document.createElement('div');
+      card.className='card'; card.style.setProperty('--sc',m.c);
+      card.title='เปิดรายละเอียดโปรเจกต์';
+      card.innerHTML=`
+        <div class="ctop">
+          <span class="sdot"></span>
+          <span class="name" title="${esc(p.name)}">${esc(p.name)}</span>
+          ${p.tasks&&p.tasks.length?`<span class="ws-badge-task">${p.tasks.length}</span>`:''}
+        </div>
+        <div class="path" title="${esc(p.path)}">${esc(p.path)}</div>
+        <div class="desc${p.desc?'':' none'}">${p.desc?esc(p.desc):'ยังไม่มีภาพรวม'}</div>
+        <div class="foot">
+          <span class="stag">${m.t}</span>
+          <span class="upd">${p.updated?'↻ '+esc(p.updated):''}</span>
+        </div>`;
+      card.onclick=()=>{ wsProjectOpen=p.file; renderWsViewVisibility(); renderWsProjectDetail(p); };
+      el.appendChild(card);
+    });
+  }
+  // "[[Name]]" → "Name" — how lessons/refs record a project link in frontmatter
+  function unwrapLink(s){ return String(s).replace(/^\[\[|\]\]$/g,''); }
+  // wsProjectDetailBody เองไม่เคยเซ็ต .innerHTML ตรงๆ — สร้างเป็นลูกๆ ด้วย createElement
+  // แล้ว appendChild เข้าไปทีละก้อน (header/tasks/linked-list/actions) แต่ละก้อนตั้ง .innerHTML
+  // หรือ .onclick บนตัวมันเองได้อิสระ ตามแพตเทิร์นเดียวกับ renderWsStatusChips ข้างบน
+  function renderWsProjectDetail(p){
+    const el=document.getElementById('wsProjectDetailBody');
+    el.innerHTML='';
+    const linked=[...(wsData.lessons||[]),...(wsData.refs||[])]
+      .filter(k=>(k.projects||[]).some(link=>unwrapLink(link)===p.name));
+    const m=ST_META[p.status]||ST_META.unknown;
+
+    const header=document.createElement('div');
+    header.innerHTML=`<h3>${esc(p.name)}</h3>
+      <div class="ws-detail-meta"><span class="stag">${m.t}</span><span class="upd">${p.updated?'↻ '+esc(p.updated):''}</span></div>
+      <div class="desc${p.desc?'':' none'}">${p.desc?esc(p.desc):'ยังไม่มีภาพรวม'}</div>`;
+    el.appendChild(header);
+
+    if(p.tasks&&p.tasks.length){
+      const tasksBox=document.createElement('div');
+      tasksBox.innerHTML=`<h4>งานค้าง</h4><div class="ws-tasklist">${p.tasks.map(t=>`<div class="ws-task-item">- ${esc(t)}</div>`).join('')}</div>`;
+      el.appendChild(tasksBox);
+    }
+
+    if(linked.length){
+      const linkedHeading=document.createElement('h4'); linkedHeading.textContent='บทเรียน/อ้างอิงที่เกี่ยวข้อง';
+      el.appendChild(linkedHeading);
+      const grid=document.createElement('div'); grid.className='lgrid';
+      linked.forEach(k=>{
+        const card=document.createElement('div'); card.className='lcard';
+        card.innerHTML=`<div class="lname">${esc(k.name)}</div>`;
+        card.onclick=()=>openFile(k.file);
+        grid.appendChild(card);
+      });
+      el.appendChild(grid);
+    }
+
+    const actions=document.createElement('div'); actions.className='ws-detail-actions';
+    const openBtn=document.createElement('button'); openBtn.textContent='เปิด .md';
+    openBtn.onclick=()=>openFile(p.file);
+    actions.appendChild(openBtn);
+    el.appendChild(actions);
+  }
   function onData(payload){
     wsData=payload;
     if(!payload || payload.error){
@@ -160,6 +268,9 @@
     api && api.onWorkspace && api.onWorkspace(onData);
     renderWsViewVisibility();
     document.getElementById('wsRefresh').onclick=()=>api&&api.refreshWorkspace&&api.refreshWorkspace();
+    const wsSearch=document.getElementById('wsSearch');
+    wsSearch.oninput=()=>{ wsQuery=wsSearch.value; renderWsProjects(); };
+    document.getElementById('wsProjectBack').onclick=()=>{ wsProjectOpen=null; renderWsViewVisibility(); };
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====

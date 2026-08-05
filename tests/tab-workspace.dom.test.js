@@ -69,3 +69,48 @@ test('คลิก segment โปรเจกต์ สลับมุมมอ�
   assert.strictEqual(byId.wsToday.classList.contains('hidden'), true);
   assert.strictEqual(byId.wsProjectsView.classList.contains('hidden'), false);
 });
+
+function sampleData(){
+  return {
+    projects: [
+      { name: 'COWORK Desktop', visibility: 'Public', status: 'active', path: 'D:/COWORK/COWORK Desktop', updated: '2026-08-05', desc: 'วิดเจ็ต', tasks: ['เขียนเทสต์เพิ่ม'], file: 'projects/COWORK-Desktop.md' },
+      { name: 'old-thing', visibility: 'None', status: 'dropped', path: 'D:/COWORK/old', updated: '2026-01-01', desc: '', tasks: [], file: 'projects/old-thing.md' },
+    ],
+    daily: [], playbooks: [],
+    lessons: [{ name: 'ล็อกไฟล์บน Windows', date: '2026-08-05', severity: 'near-miss', projects: ['[[COWORK Desktop]]'], tags: ['lesson','when/windows'], file: 'lessons/x.md', meta: '' }],
+    refs: [],
+    rules: [],
+    stats: { projects: 2, active: 1, pause: 0, done: 0, dropped: 1, tasks: 1, lessons: 1, refs: 0, rules: 0, playbooks: 0 },
+    error: null,
+  };
+}
+const cardsShown = () => walk(byId.wsProjects).filter(e => String(e.className).includes('card'));
+
+test('มุมมองโปรเจกต์แสดงการ์ดครบตามข้อมูล และคลิกเปิดแผงรายละเอียด', () => {
+  tab.onData(sampleData());
+  segLabel('โปรเจกต์').onclick();
+  const cards=cardsShown();
+  assert.strictEqual(cards.length, 2);
+  cards[0].onclick();
+  assert.strictEqual(byId.wsProjectDetail.classList.contains('hidden'), false);
+  assert.strictEqual(byId.wsProjectsView.classList.contains('hidden'), true);
+});
+
+test('แผงรายละเอียดโปรเจกต์แสดงบทเรียนที่ลิงก์มาถึงโปรเจกต์นั้น', () => {
+  tab.onData(sampleData());
+  segLabel('โปรเจกต์').onclick();
+  cardsShown()[0].onclick();
+  // wsProjectDetailBody เองไม่เคยตั้ง .innerHTML ตรงๆ (สร้างลูกด้วย createElement) จึงต้อง
+  // walk .children แล้วรวม .innerHTML ของแต่ละลูก แบบเดียวกับ shown() ใน tab-redmine.dom.test.js
+  const shown = walk(byId.wsProjectDetailBody).map(e => e.innerHTML).join('');
+  assert.match(shown, /ล็อกไฟล์บน Windows/);
+});
+
+test('ปุ่มกลับปิดแผงรายละเอียด กลับไปรายการ', () => {
+  tab.onData(sampleData());
+  segLabel('โปรเจกต์').onclick();
+  cardsShown()[0].onclick();
+  byId.wsProjectBack.onclick();
+  assert.strictEqual(byId.wsProjectDetail.classList.contains('hidden'), true);
+  assert.strictEqual(byId.wsProjectsView.classList.contains('hidden'), false);
+});

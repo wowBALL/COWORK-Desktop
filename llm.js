@@ -14,6 +14,9 @@ const PROVIDERS = {
   // reasoning model — max_tokens คุมผลรวมของ reasoning + คำตอบ ไม่ใช่คำตอบอย่างเดียว
   // ต้องกว้างกว่า Qwen มาก ไม่งั้น content ว่างเปล่าบ่อย (ดู meeting-notes/src/llm.py บรรทัด 24-29)
   'GLM-5.2': { maxTokens: 8192, vision: false },
+  // ไม่ใช่ reasoning model เหมือน Qwen (ดู meeting-notes/src/llm.py บรรทัด 42-49) แต่ยังไม่เคย
+  // ทดสอบรับภาพ — ถือว่าไม่รับไว้ก่อนเหมือน GLM แทนที่จะเดา
+  'litellm/gemma4': { maxTokens: 2048, vision: false },
 };
 const DEFAULT_MODEL = 'Qwen/Qwen3.6-35B-A3B';
 const REQUEST_TIMEOUT_MS = 30000;

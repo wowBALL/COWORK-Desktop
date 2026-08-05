@@ -133,6 +133,14 @@
     return `clipboard-${qiStamp()}.${ext}`;
   }
 
+  // บางแหล่ง (เช่นคัดลอกจาก devtools/หน้าเว็บ) ใส่ "data:image/...;base64,...." ลงคลิปบอร์ดเป็น
+  // ข้อความ ไม่ใช่ไฟล์รูป — clipboardData.items จะไม่มี kind:'file' เลย qiPastedImages() เลยไม่เห็น
+  // มัน ถ้าปล่อยผ่านจะได้ก้อน base64 ยาวหลายพันตัวอักษรลงในโน้ตที่ถูกส่งเป็น prompt ทั้งดุ้น —
+  // เปลืองโทเคนฟรี ๆ และไม่ใช่รูปที่โมเดลมองเห็นได้ (มันเห็นแค่ตัวหนังสือ)
+  function qiIsImageDataUrlText(text) {
+    return /^\s*data:image\/[a-z0-9.+-]+;base64,/i.test(text || '');
+  }
+
   function qiDraftGapsHtml(list) {
     if (!list || !list.length) return '';
     return '<b>ข้อมูลที่ยังขาด — เติมก่อนส่งจะลดรอบที่ dev ถามกลับ</b><ul>'
@@ -724,9 +732,20 @@
     // ลงในโน้ต เพราะโน้ตทั้งก้อนถูกส่งเป็น prompt แท็ก <img> ในนั้นมีแต่ทำให้โมเดลสับสน
     document.getElementById('qiRawNotes').addEventListener('paste', (e) => {
       const files = qiPastedImages(e);
-      if (!files.length) return;
-      e.preventDefault();
-      files.forEach(file => qiAttachImageToNotes(file, qiPastedName(file)));
+      if (files.length) {
+        e.preventDefault();
+        files.forEach(file => qiAttachImageToNotes(file, qiPastedName(file)));
+        return;
+      }
+      // ไม่มีไฟล์รูปเลย เช็คต่อว่าที่วางเป็นข้อความ data:image/...;base64 มั่ว ๆ ไหม (ดูคอมเมนต์
+      // qiIsImageDataUrlText) ถ้าใช่ กันไม่ให้มันตกลงไปในโน้ต แล้วเตือนแทนที่จะปล่อยเงียบ ๆ
+      const text = (e.clipboardData && e.clipboardData.getData('text')) || '';
+      if (qiIsImageDataUrlText(text)) {
+        e.preventDefault();
+        const status = document.getElementById('qiDraftStatus');
+        status.className = 'set-status err';
+        status.textContent = 'นี่คือ "ที่อยู่" ของรูปแบบข้อความ ไม่ใช่ตัวรูป — ก๊อปรูปจริงมาวางแทน (Ctrl+C จากรูปโดยตรง)';
+      }
     });
     document.getElementById('qiNotesImages').onclick = (e) => {
       const btn = e.target.closest('.qi-thumb-drop');
@@ -791,6 +810,8 @@
   // เปิดทาง node --test แบบเดียวกับ tab-grafana.js / tab-meeting.js / tab-redmine.js
   // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName };
+    module.exports = {
+      buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName, qiIsImageDataUrlText,
+    };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

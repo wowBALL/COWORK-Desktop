@@ -33,7 +33,9 @@ test('buildReviewLines: ไม่มี assignee แสดง "(ไม่ระ�
 });
 
 // ===== รูปที่ส่งให้ LLM ดู + ข้อมูลที่ยังขาด (spec 2026-08-05) =====
-const { qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName } = require('../tab-qatest.js');
+const {
+  qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName, qiIsImageDataUrlText,
+} = require('../tab-qatest.js');
 
 // util.js esc() escape ด้วย textContent→innerHTML ของจริง จึงต้องมี document ให้มันเรียก
 // (แนวเดียวกับ fake DOM ใน tab-redmine.dom.test.js) — เลียนพฤติกรรมจริงให้ครบ รวมทั้ง
@@ -102,4 +104,21 @@ test('qiPastedName: jpeg ตั้งนามสกุลเป็น jpg แ�
 
 test('qiPastedName: type ที่อ่านไม่ได้ยังได้ชื่อไฟล์ที่ใช้ได้ ไม่ใช่ ".undefined"', () => {
   assert.ok(qiPastedName({ type: '' }).endsWith('.png'));
+});
+
+// ===== วางข้อความ "ที่อยู่ของรูป" (data:image/...) ลงช่องโน้ต ไม่ใช่ไฟล์รูปจริง =====
+// เกิดจริง: คัดลอกจากที่อื่นแล้ว clipboard เก็บเป็นข้อความ ไม่ใช่ไฟล์ — clipboardData.items
+// ไม่เห็นเป็น kind:'file' เลย ปล่อยผ่านจะได้ base64 ยาวหลายพันตัวอักษรลงในโน้ตที่ส่งเป็น prompt
+test('qiIsImageDataUrlText: จับ data:image/...;base64 ได้ ไม่ว่าจะเป็น png/svg/jpeg', () => {
+  assert.ok(qiIsImageDataUrlText('data:image/png;base64,iVBORw0KGgo='));
+  assert.ok(qiIsImageDataUrlText('data:image/svg+xml;base64,PHN2Zw=='));
+  assert.ok(qiIsImageDataUrlText('  data:image/jpeg;base64,/9j/'), 'ต้องทนช่องว่างนำหน้าจากการวาง');
+});
+
+test('qiIsImageDataUrlText: ข้อความปกติหรือ data URL ที่ไม่ใช่รูปต้องผ่าน ไม่ถูกกัน', () => {
+  assert.ok(!qiIsImageDataUrlText('ปุ่ม checkout กดไม่ติด android 13'));
+  assert.ok(!qiIsImageDataUrlText('data:text/plain;base64,aGVsbG8='));
+  assert.ok(!qiIsImageDataUrlText(''));
+  assert.ok(!qiIsImageDataUrlText(null));
+  assert.ok(!qiIsImageDataUrlText(undefined));
 });

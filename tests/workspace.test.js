@@ -3,73 +3,22 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { readWorkspace } = require('../workspace.js');
+const { readWorkspace, parseFrontmatter } = require('../workspace.js');
 
-function makeVault(dailyContent) {
+function makeVault() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-ws-test-'));
-  const dailyDir = path.join(root, 'Public', 'daily', '2026', '08');
-  fs.mkdirSync(dailyDir, { recursive: true });
-  fs.mkdirSync(path.join(root, 'Public', 'projects'), { recursive: true });
-  fs.mkdirSync(path.join(root, 'Private', 'daily'), { recursive: true });
-  fs.mkdirSync(path.join(root, 'Private', 'projects'), { recursive: true });
-  fs.writeFileSync(path.join(dailyDir, '2026-08-03.md'), dailyContent, 'utf8');
+  for (const d of ['projects', 'daily/2026/08', 'lessons', 'refs', 'rules', 'playbooks']) {
+    fs.mkdirSync(path.join(root, d), { recursive: true });
+  }
   return root;
 }
+function writeFile(root, relPath, content) {
+  const full = path.join(root, relPath);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, content, 'utf8');
+}
 
-// ── ทำอะไรไปบ้าง แบบหลายบูลเลต ──────────────────────────────────────────
-// บั๊กเดิม: regex อ่านแค่บรรทัดเดียวหลัง "ทำอะไรไปบ้าง:**" ทำให้วันที่มีหลายบูลเลต
-// (แบบ A_Workspace/Private/daily/2026/08/2026-08-03.md ของจริง) เห็นแค่บูลเลตแรก
-// ที่เหลือหายไปเงียบๆ ต้องเปิด .md เองถึงจะเห็นครบ
-test('parseDaily อ่านทุกบูลเลตใต้ "ทำอะไรไปบ้าง" ไม่ใช่แค่บรรทัดแรก', () => {
-  const root = makeVault(`# บันทึกงาน 2026-08-03
-
-## COWORK Desktop
-
-- **ทำอะไรไปบ้าง:**
-  - เพิ่มโมเดล Qwen 3.6
-  - รันเทสต์ครบ 257/257
-  - ปล่อยเวอร์ชัน v1.9.7
-- **เจออะไร / ค้นพบอะไร:** —
-`);
-  const { daily } = readWorkspace(root);
-  const entries = daily[0].entries.filter((e) => e.project === 'COWORK Desktop');
-  assert.deepStrictEqual(entries.map((e) => e.text), [
-    'เพิ่มโมเดล Qwen 3.6',
-    'รันเทสต์ครบ 257/257',
-    'ปล่อยเวอร์ชัน v1.9.7',
-  ]);
-});
-
-test('parseDaily ยังอ่านแบบข้อความบรรทัดเดียวได้เหมือนเดิม (ไม่ regression)', () => {
-  const root = makeVault(`# บันทึกงาน 2026-08-03
-
-## meeting-notes
-
-- **ทำอะไรไปบ้าง:** เริ่มอัดประชุม "Standup" เวลา 09:59 — ยังอัดอยู่
-- **เจออะไร / ค้นพบอะไร:** —
-`);
-  const { daily } = readWorkspace(root);
-  const entries = daily[0].entries.filter((e) => e.project === 'meeting-notes');
-  assert.deepStrictEqual(entries.map((e) => e.text), [
-    'เริ่มอัดประชุม "Standup" เวลา 09:59 — ยังอัดอยู่',
-  ]);
-});
-
-test('parseDaily ข้ามส่วนที่ยังไม่มีเนื้อหา (แค่ — หรือว่างเปล่า)', () => {
-  const root = makeVault(`# บันทึกงาน 2026-08-03
-
-## Empty Project
-
-- **ทำอะไรไปบ้าง:** —
-- **เจออะไร / ค้นพบอะไร:**
-`);
-  const { daily } = readWorkspace(root);
-  assert.deepStrictEqual(daily[0].entries, []);
-});
-
-// ── parseFrontmatter ─────────────────────────────────────────────────────
-const { parseFrontmatter } = require('../workspace.js');
-
+// ── parseFrontmatter ────────────────────────────────────────────────────
 test('parseFrontmatter แยก YAML frontmatter ออกจากเนื้อความ', () => {
   const { data, body } = parseFrontmatter(`---
 type: project
@@ -115,4 +64,97 @@ tags: [project, when/release]
 เนื้อความ`);
   assert.strictEqual(data.related, '[[Some Note]]');
   assert.deepStrictEqual(data.tags, ['project', 'when/release']);
+});
+
+// ── readWorkspace: flat folders ─────────────────────────────────────────
+test('readWorkspace อ่าน projects/ แบบแบนราบ ไม่ต้องมี Public/Private', () => {
+  const root = makeVault();
+  writeFile(root, 'projects/meeting-notes.md', `---
+type: project
+status: active
+repo_visibility: public
+repo: wowBALL/meeting-notes
+path: D:/COWORK/meeting-notes
+updated: 2026-08-05
+tags: [project]
+---
+
+# meeting-notes
+
+## ภาพรวม
+
+ระบบอัดและสรุปประชุม`);
+  const { projects } = readWorkspace(root);
+  assert.strictEqual(projects.length, 1);
+  assert.strictEqual(projects[0].name, 'meeting-notes');
+  assert.strictEqual(projects[0].status, 'active');
+  assert.strictEqual(projects[0].visibility, 'Public');
+  assert.strictEqual(projects[0].repo, 'wowBALL/meeting-notes');
+  assert.strictEqual(projects[0].desc, 'ระบบอัดและสรุปประชุม');
+});
+
+test('readWorkspace รู้จักสถานะ dropped (⛔)', () => {
+  const root = makeVault();
+  writeFile(root, 'projects/old.md', `---
+type: project
+status: dropped
+repo_visibility: none
+---
+
+# old`);
+  const { projects } = readWorkspace(root);
+  assert.strictEqual(projects[0].status, 'dropped');
+});
+
+test('readWorkspace ยัง fallback อ่านตาราง Markdown เดิมได้ถ้าไม่มี frontmatter', () => {
+  const root = makeVault();
+  writeFile(root, 'projects/legacy.md', `# legacy
+
+| | |
+|---|---|
+| **สถานะ** | 🟢 กำลังทำ |
+| **ที่อยู่โปรเจกต์** | D:\\COWORK\\legacy |
+| **อัปเดตล่าสุด** | 2026-07-01 |
+
+## ภาพรวม
+
+โปรเจกต์เก่าที่ยังไม่ได้ migrate`);
+  const { projects } = readWorkspace(root);
+  assert.strictEqual(projects[0].status, 'active');
+  assert.strictEqual(projects[0].desc, 'โปรเจกต์เก่าที่ยังไม่ได้ migrate');
+});
+
+test('readWorkspace อ่าน daily/ แบบแบนราบ', () => {
+  const root = makeVault();
+  writeFile(root, 'daily/2026/08/2026-08-03.md', `---
+type: daily
+date: 2026-08-03
+tags: [daily]
+---
+
+# บันทึกงาน 2026-08-03
+
+## COWORK Desktop
+
+- **ทำอะไรไปบ้าง:**
+  - เพิ่มโมเดล Qwen 3.6
+  - รันเทสต์ครบ 257/257
+- **เจออะไร / ค้นพบอะไร:** —
+`);
+  const { daily } = readWorkspace(root);
+  const entries = daily[0].entries.filter((e) => e.project === 'COWORK Desktop');
+  assert.deepStrictEqual(entries.map((e) => e.text), ['เพิ่มโมเดล Qwen 3.6', 'รันเทสต์ครบ 257/257']);
+});
+
+test('readWorkspace ข้ามส่วนที่ยังไม่มีเนื้อหา', () => {
+  const root = makeVault();
+  writeFile(root, 'daily/2026/08/2026-08-03.md', `# บันทึกงาน 2026-08-03
+
+## Empty Project
+
+- **ทำอะไรไปบ้าง:** —
+- **เจออะไร / ค้นพบอะไร:**
+`);
+  const { daily } = readWorkspace(root);
+  assert.deepStrictEqual(daily[0].entries, []);
 });

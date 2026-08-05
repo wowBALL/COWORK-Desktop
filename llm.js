@@ -94,6 +94,36 @@ function structureFor(tracker) {
   return profileFor(tracker).structure;
 }
 
+const RISK_LEVELS = ['Low', 'Fairly Low', 'Moderate', 'High', 'Very High'];
+
+// ฟิลด์ที่ต้องมีในคำตอบ แยกตามภาษาที่เลือก — ชุดเดียวกับที่ schemaFieldsFor บอกในพรอมป์
+function fieldsFor(language) {
+  if (language === 'th') return ['subject_th', 'description_th'];
+  if (language === 'en') return ['subject_en', 'description_en'];
+  return ['subject_en', 'subject_th', 'description_en', 'description_th'];
+}
+
+// JSON Schema ที่ส่งไปให้ decoder บังคับ ไม่ใช่แค่ขอในพรอมป์
+//
+// ทำไมต้องเป็น json_schema ไม่ใช่ json_object (วัด 2026-08-05): json_object บังคับแค่ว่า
+// ผลลัพธ์ต้องเป็น JSON ที่ถูกไวยากรณ์ ไม่ได้บังคับว่าต้องมีฟิลด์ไหนบ้าง — Qwen จึงปิดวงเล็บ
+// ตั้งแต่ยังไม่เขียน suggested_risk_level กับ missing_info ได้ (5 ใน 12 เคส) โดย
+// finish_reason ยังเป็น "stop" และใช้ไปแค่ 500 จาก 2048 token คือไม่ได้ถูกตัด แต่เลือก
+// จบเอง ผลคือได้ JSON ที่ parse ผ่านแต่ข้อมูลหายเงียบ ๆ ซึ่งแย่กว่า parse พังที่มองเห็นได้
+// required ใน schema ปิดช่องนี้ และ enum ยังกัน suggested_risk_level เพี้ยนไปในตัว
+function responseSchemaFor(language) {
+  const properties = {};
+  for (const f of fieldsFor(language)) properties[f] = { type: 'string' };
+  properties.suggested_risk_level = { type: 'string', enum: RISK_LEVELS };
+  properties.missing_info = { type: 'array', items: { type: 'string' } };
+  return {
+    type: 'object',
+    properties,
+    required: Object.keys(properties),
+    additionalProperties: false,
+  };
+}
+
 function schemaFieldsFor(language) {
   const risk = '"suggested_risk_level":"Low|Fairly Low|Moderate|High|Very High"';
   // missing_info ไม่ขึ้น Redmine — โชว์ในฟอร์มให้ผู้ใช้เติมก่อนส่งเท่านั้น จึงเป็นไทยเสมอ
@@ -194,6 +224,20 @@ async function draftIssue(rawNotes, opts = {}) {
       body: JSON.stringify({
         model,
         max_tokens: maxTokens,
+        // บังคับ decoder ให้เดินอยู่ในรูปร่างที่เราต้องการ ไม่ใช่แค่ขอในพรอมป์แล้วหวังว่าจะทำตาม
+        //
+        // ปัญหาที่แก้ (วัด 2026-08-05): Support + โน้ตเรื่องระบบครัว โมเดลจบย่อหน้าใน
+        // description ด้วย \n\n แล้วเขียนชื่อฟิลด์ถัดไปต่อเลยเหมือนเป็นหัวข้อใหม่
+        // (...ก่อนเปิดใช้งานจริง\n\nmissing_info":[) แทนที่จะปิดสตริงก่อน — finish_reason
+        // เป็น "stop" ไม่ใช่ "length" จึงไม่ใช่การถูกตัด แต่เป็นการสับสนระหว่างตัวคั่นย่อหน้า
+        // กับตัวคั่นฟิลด์ โครง BMAD ทำให้เจอบ่อยขึ้นเพราะ description มีย่อหน้ามากกว่าเดิม
+        // ราวเท่าตัว จุดที่พลาดได้จึงมากตาม
+        //
+        // ดูเหตุผลที่ต้องเป็น json_schema ไม่ใช่ json_object ที่ responseSchemaFor()
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'issue_draft', schema: responseSchemaFor(language), strict: true },
+        },
         messages: [
           { role: 'system', content: systemPromptFor(tracker, language, imgs) },
           // ไม่มีรูป = ส่ง content เป็น string เหมือนเดิมเป๊ะ ไม่เปลี่ยนรูปคำขอของเคสที่ใช้อยู่ทุกวัน

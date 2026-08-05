@@ -348,3 +348,42 @@ test('draftIssue: JSON พังโดยที่ไม่ได้ถูกต
   assert.ok(result.error.includes('parse JSON'));
   assert.ok(!result.error.includes('ถูกตัด'));
 });
+
+// ── บังคับรูปร่างคำตอบด้วย json_schema (2026-08-05) ─────────────────────────────
+// วัดจริงแล้วว่าการขอ JSON ในพรอมป์อย่างเดียวไม่พอ: โมเดลจบย่อหน้าใน description ด้วย
+// \n\n แล้วเขียนชื่อฟิลด์ถัดไปต่อเหมือนเป็นหัวข้อใหม่ ทำให้ JSON เสีย และเมื่อบังคับแค่
+// json_object มันก็ปิดวงเล็บตั้งแต่ยังไม่เขียนสองฟิลด์ท้าย ได้ JSON ที่ parse ผ่านแต่ข้อมูลหาย
+
+test('draftIssue: ส่ง response_format แบบ json_schema ไม่ใช่ json_object เปล่า ๆ', async () => {
+  const cap = {};
+  await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
+  const rf = cap.body.response_format;
+  assert.strictEqual(rf.type, 'json_schema',
+    'json_object บังคับแค่ไวยากรณ์ ไม่ได้บังคับว่าฟิลด์ต้องครบ — ข้อมูลหายเงียบได้');
+  assert.strictEqual(rf.json_schema.strict, true);
+});
+
+test('draftIssue: schema บังคับให้ทุกฟิลด์ที่พรอมป์ขอเป็น required จริง', async () => {
+  const expected = {
+    th: ['subject_th', 'description_th'],
+    en: ['subject_en', 'description_en'],
+    both: ['subject_en', 'subject_th', 'description_en', 'description_th'],
+  };
+  for (const [language, fields] of Object.entries(expected)) {
+    const cap = {};
+    await draftIssue('โน้ต', { language, apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
+    const schema = cap.body.response_format.json_schema.schema;
+    const want = [...fields, 'suggested_risk_level', 'missing_info'];
+    assert.deepStrictEqual([...schema.required].sort(), [...want].sort(), `language=${language}`);
+    // ฟิลด์ภาษาอื่นต้องไม่หลุดเข้ามา — เทสพรอมป์ข้างบนกันไว้แล้วว่า th ต้องไม่มีคำว่า subject_en
+    // ตรงนี้กันฝั่ง schema ด้วย ไม่งั้นบังคับให้โมเดลตอบภาษาที่ผู้ใช้ไม่ได้ขอ
+    assert.strictEqual(Object.keys(schema.properties).length, want.length, `language=${language}`);
+  }
+});
+
+test('draftIssue: schema จำกัด suggested_risk_level ให้เป็นห้าระดับที่ Redmine รู้จักเท่านั้น', async () => {
+  const cap = {};
+  await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
+  const risk = cap.body.response_format.json_schema.schema.properties.suggested_risk_level;
+  assert.deepStrictEqual(risk.enum, ['Low', 'Fairly Low', 'Moderate', 'High', 'Very High']);
+});

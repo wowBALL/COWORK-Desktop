@@ -66,3 +66,39 @@ test('parseDaily ข้ามส่วนที่ยังไม่มีเน
   const { daily } = readWorkspace(root);
   assert.deepStrictEqual(daily[0].entries, []);
 });
+
+// ── parseFrontmatter ─────────────────────────────────────────────────────
+const { parseFrontmatter } = require('../workspace.js');
+
+test('parseFrontmatter แยก YAML frontmatter ออกจากเนื้อความ', () => {
+  const { data, body } = parseFrontmatter(`---
+type: project
+status: active
+tags: [project, when/release]
+---
+
+# หัวข้อ
+
+เนื้อความ`);
+  assert.strictEqual(data.type, 'project');
+  assert.strictEqual(data.status, 'active');
+  assert.deepStrictEqual(data.tags, ['project', 'when/release']);
+  assert.strictEqual(body.trim(), '# หัวข้อ\n\nเนื้อความ'.trim());
+});
+
+test('parseFrontmatter คืน data ว่างเมื่อไม่มี frontmatter', () => {
+  const { data, body } = parseFrontmatter('# แค่หัวข้อ\n\nเนื้อความ');
+  assert.deepStrictEqual(data, {});
+  assert.strictEqual(body, '# แค่หัวข้อ\n\nเนื้อความ');
+});
+
+test('parseFrontmatter อ่าน block list (บรรทัดขึ้นต้น -) ได้ด้วย', () => {
+  const { data } = parseFrontmatter(`---
+projects:
+  - "[[meeting-notes]]"
+  - "[[COWORK-Desktop]]"
+---
+
+เนื้อความ`);
+  assert.deepStrictEqual(data.projects, ['[[meeting-notes]]', '[[COWORK-Desktop]]']);
+});

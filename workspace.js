@@ -7,6 +7,42 @@ const path = require('path');
 const VIS = ['Public', 'Private'];
 const SKIP = new Set(['_TEMPLATE.md', 'README.md', 'INDEX.md']);
 
+// แยก YAML frontmatter (--- ... ---) ออกจากเนื้อความ — พาร์สเฉพาะ subset ที่ vault ใช้จริง
+// (scalar string, flow-sequence [a, b], block list ด้วย "- ") ไม่ใช่ YAML เต็มรูปแบบ
+function parseFrontmatter(content) {
+  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!m) return { data: {}, body: content };
+  const data = {};
+  const lines = m[1].split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const kv = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
+    if (!kv) { i++; continue; }
+    const [, key, rawValue] = kv;
+    if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
+      // flow sequence: [a, b, "c"]
+      data[key] = rawValue.slice(1, -1).split(',').map(s => s.trim().replace(/^"(.*)"$/, '$1')).filter(Boolean);
+      i++;
+    } else if (rawValue === '') {
+      // possible block list on following indented "- " lines
+      const items = [];
+      let j = i + 1;
+      while (j < lines.length && /^\s*-\s+/.test(lines[j])) {
+        items.push(lines[j].replace(/^\s*-\s+/, '').trim().replace(/^"(.*)"$/, '$1'));
+        j++;
+      }
+      if (items.length) { data[key] = items; i = j; }
+      else { data[key] = ''; i++; }
+    } else {
+      data[key] = rawValue.replace(/^"(.*)"$/, '$1');
+      i++;
+    }
+  }
+  const body = content.slice(m[0].length);
+  return { data, body };
+}
+
 // map the emoji in the "สถานะ" row to a stable key the UI styles by
 function statusKey(raw) {
   if (!raw) return 'unknown';
@@ -178,7 +214,7 @@ function readWorkspace(root) {
   return { projects, daily, lessons, playbooks, stats, error: null };
 }
 
-module.exports = { readWorkspace };
+module.exports = { readWorkspace, parseFrontmatter };
 
 // standalone sanity run: node workspace.js "D:\COWORK\A_Workspace"
 if (require.main === module) {

@@ -38,8 +38,6 @@
 .lcard.pb:hover{border-color:var(--green)}
 .lcard .lt{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .lcard .badge{font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px}
-.badge.les{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}
-.badge.pbk{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
 .lcard .ldate{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);margin-left:auto}
 .lcard .lname{font-size:13px;font-weight:600;line-height:1.35;margin-bottom:5px}
 .lcard .lmeta{font-size:11px;color:var(--muted);line-height:1.4}

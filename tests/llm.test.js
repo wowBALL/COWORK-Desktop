@@ -269,3 +269,82 @@ test('draftIssue: ไม่มีรูป = system prompt ที่ส่งไ
   await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
   assert.ok(!cap.body.messages[0].content.includes('สกรีนช็อต'));
 });
+
+// ── BMAD (2026-08-05) ────────────────────────────────────────────────────────
+// prompt เปลี่ยนจาก "ผู้ช่วยเรียบเรียง" เป็นบทบาทแบบทีม agile + หลักการ + คำถามที่ควรถาม
+// แยกตาม tracker เทสชุดนี้ล็อกเฉพาะ "มีครบทุกชั้น" ไม่ล็อกถ้อยคำทั้งประโยค เพราะถ้อยคำ
+// ต้องปรับได้ตามผลที่วัดจากโมเดลจริง
+
+test('systemPromptFor: ทุก tracker ได้บทบาทเฉพาะของงานประเภทนั้น ไม่ใช่บทบาทกลาง ๆ ตัวเดียว', () => {
+  assert.ok(systemPromptFor('Bug', 'th').includes('QA'), 'Bug ต้องคิดแบบ QA');
+  assert.ok(systemPromptFor('Feature', 'th').includes('Product Owner'), 'Feature ต้องคิดแบบ PO');
+  // tracker ที่ไม่มีโปรไฟล์ต้องไม่พัง และต้องได้บทบาทสำรอง ไม่ใช่ undefined โผล่ในพรอมป์
+  const other = systemPromptFor('ไม่รู้จัก', 'th');
+  assert.ok(other.includes('นักวิเคราะห์ระบบ'));
+  assert.ok(!other.includes('undefined'), 'tracker แปลก ๆ ต้องไม่ทำให้ undefined หลุดเข้าพรอมป์');
+});
+
+test('systemPromptFor: หลักการร่วมของ BMAD ติดไปทุก tracker', () => {
+  for (const t of ['Bug', 'Feature', 'Epic', 'Support', 'ไม่รู้จัก']) {
+    const p = systemPromptFor(t, 'th');
+    assert.ok(p.includes('ตรวจสอบหรือทดสอบได้'), `${t} ต้องมีหลักว่าผลลัพธ์ต้องทดสอบได้`);
+    assert.ok(p.includes('ห้ามแต่งข้อมูลที่โน้ตไม่ได้บอก'), `${t} ต้องมีหลักห้ามแต่งข้อมูล`);
+  }
+});
+
+test('systemPromptFor: คำถามที่ควรถาม (missing_info) ต่างกันตามชนิดงาน ไม่ใช่ลิสต์เดียวใช้ทุกที่', () => {
+  const bug = systemPromptFor('Bug', 'th');
+  const feature = systemPromptFor('Feature', 'th');
+  assert.ok(bug.includes('browser'), 'Bug ต้องถามเรื่อง environment');
+  assert.ok(feature.includes('ผู้ใช้'), 'Feature ต้องถามว่าใครคือผู้ใช้');
+  assert.ok(!feature.includes('ขนาดจอ'), 'Feature ไม่ควรลากคำถามสไตล์ bug มาถาม');
+});
+
+test('systemPromptFor: Feature บังคับเกณฑ์การยอมรับที่ทดสอบได้ (ไม่ใช่แค่บอกเป้าหมายลอย ๆ)', () => {
+  const p = systemPromptFor('Feature', 'th');
+  assert.ok(p.includes('เกณฑ์การยอมรับ'));
+  assert.ok(p.includes('เป้าหมาย'), 'เทสเดิมล็อกคำนี้ไว้ ห้ามหลุด');
+});
+
+test('BMAD prompt ใช้กับทุกโมเดลเหมือนกันหมด — เลือกโมเดลไหนก็ได้ prompt ชุดเดียวกัน', async () => {
+  const sent = {};
+  for (const model of Object.keys(PROVIDERS)) {
+    const cap = {};
+    await draftIssue('โน้ต', { model, apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
+    sent[model] = cap.body.messages[0].content;
+  }
+  const all = Object.values(sent);
+  assert.ok(all.length >= 3, 'ต้องครอบคลุมโมเดลที่มีจริงทั้งหมด รวม gemma4');
+  assert.ok(all.every((p) => p === all[0]), 'system prompt ต้องไม่ผูกกับโมเดล');
+  assert.ok(all[0].includes('QA'), 'และต้องเป็น prompt แบบ BMAD จริง ไม่ใช่ของเดิม');
+});
+
+test('PROVIDERS: gemma4 มี budget กว้างกว่า Qwen เพราะ BMAD ทำให้คำตอบยาวขึ้น', () => {
+  assert.ok(PROVIDERS['litellm/gemma4'].maxTokens > PROVIDERS[DEFAULT_MODEL].maxTokens,
+    'meeting-notes วัดแล้วว่า gemma4 รับได้เกิน 100K token และไม่เคยถูกตัด — ไม่มีเหตุให้บีบเท่า Qwen');
+});
+
+// เดิมเคสนี้เด้ง "parse JSON จากคำตอบไม่สำเร็จ: Unexpected end of JSON input" ซึ่งอ่านแล้ว
+// ไม่รู้ว่าต้องทำอะไรต่อ ทั้งที่สาเหตุชัดและมีทางแก้ชัด (ลดภาษา/เปลี่ยนโมเดล)
+test('draftIssue: คำตอบถูกตัดเพราะ budget หมด = บอกสาเหตุกับทางแก้ ไม่ใช่โยน parse error ดิบ', async () => {
+  const truncated = '{"subject_th":"ปุ่มกดไม่ติด","description_th":"**อาการ:**\n\nกดแล้วไม่มีอะไรเ';
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({ choices: [{ finish_reason: 'length', message: { content: truncated } }] }),
+  });
+  const result = await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.error.includes('ถูกตัด'), 'ต้องบอกว่าคำตอบถูกตัด ไม่ใช่บอกว่า parse ไม่ผ่าน');
+  assert.ok(/ภาษาเดียว|เปลี่ยนโมเดล/.test(result.error), 'ต้องบอกทางแก้ที่ผู้ใช้ทำได้จริง');
+});
+
+test('draftIssue: JSON พังโดยที่ไม่ได้ถูกตัด = ยังคงข้อความเดิม ไม่ไปโทษ budget มั่ว', async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: 'ไม่ใช่ JSON เลย' } }] }),
+  });
+  const result = await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.error.includes('parse JSON'));
+  assert.ok(!result.error.includes('ถูกตัด'));
+});

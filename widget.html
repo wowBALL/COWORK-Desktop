@@ -275,22 +275,41 @@
 
       <!-- ===== Workspace view ===== -->
       <div id="workspaceView" class="hidden">
-        <h3>ภาพรวม Workspace</h3>
-        <div id="wsStats" class="stats w5"></div>
+        <div id="wsSegments" class="chips ws-segments"></div>
 
-        <h3>โปรเจกต์</h3>
-        <input id="wsSearch" class="search" type="text" placeholder="🔍 ค้นหาโปรเจกต์ (ชื่อ / path / คำอธิบาย)" autocomplete="off">
-        <div class="row-label">การมองเห็น</div>
-        <div id="wsVis" class="chips"></div>
-        <div class="row-label">สถานะ</div>
-        <div id="wsStatus" class="chips"></div>
-        <div id="wsProjects" class="grid"><div class="hint">กำลังโหลด...</div></div>
+        <!-- A: วันนี้ -->
+        <div id="wsToday">
+          <div id="wsStats" class="stats"></div>
+          <div id="wsRulesBox" class="ws-collapsible"></div>
+          <h3>📌 งานค้าง</h3>
+          <div id="wsTasks" class="ws-tasklist"></div>
+          <h3>🕐 บันทึกล่าสุด</h3>
+          <div id="wsFeed" class="feed"></div>
+        </div>
 
-        <h3>บันทึกรายวันล่าสุด</h3>
-        <div id="wsFeed" class="feed"></div>
+        <!-- B: โปรเจกต์ -->
+        <div id="wsProjectsView" class="hidden">
+          <input id="wsSearch" class="search" type="text" placeholder="🔍 ค้นหาโปรเจกต์ (ชื่อ / path / คำอธิบาย)" autocomplete="off">
+          <div class="row-label">สถานะ</div>
+          <div id="wsStatus" class="chips"></div>
+          <div id="wsProjects" class="grid"><div class="hint">กำลังโหลด...</div></div>
+        </div>
 
-        <h3>บทเรียน &amp; แผนรับมือ</h3>
-        <div id="wsKnow" class="lgrid"></div>
+        <!-- B2: รายละเอียดโปรเจกต์ (เปิดทับ wsProjectsView) -->
+        <div id="wsProjectDetail" class="hidden">
+          <button id="wsProjectBack" class="ws-back">← กลับไปรายการโปรเจกต์</button>
+          <div id="wsProjectDetailBody"></div>
+        </div>
+
+        <!-- C: ความรู้ -->
+        <div id="wsKnowledgeView" class="hidden">
+          <input id="wsKnowSearch" class="search" type="text" placeholder="🔍 ค้นหาความรู้" autocomplete="off">
+          <div class="row-label">ชนิด</div>
+          <div id="wsKnowType" class="chips"></div>
+          <div class="row-label">เกี่ยวกับ</div>
+          <div id="wsKnowTag" class="chips"></div>
+          <div id="wsKnow" class="lgrid"></div>
+        </div>
       </div>
 
       <!-- ===== QA test view ===== -->

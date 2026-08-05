@@ -54,6 +54,7 @@
   }
   function renderWsViewVisibility(){
     renderWsSegments();
+    document.getElementById('wsError').classList.add('hidden');
     document.getElementById('wsToday').classList.toggle('hidden', wsView!=='today');
     document.getElementById('wsProjectsView').classList.toggle('hidden', wsView!=='projects' || !!wsProjectOpen);
     document.getElementById('wsProjectDetail').classList.toggle('hidden', wsView!=='projects' || !wsProjectOpen);
@@ -242,6 +243,7 @@
   }
   const KNOW_TYPES=[['lesson','Lesson','lessons'],['ref','Ref','refs'],['rule','Rule','rules'],['playbook','Playbook','playbooks']];
   function wsAllKnow(){
+    if(!wsData) return [];
     return KNOW_TYPES.flatMap(([type,,field])=>(wsData[field]||[]).map(x=>({...x,type})));
   }
   function wsAllKnowTags(){
@@ -315,20 +317,37 @@
     wsData=payload;
     if(!payload || payload.error){
       const notSetUp=payload && payload.error && payload.error.startsWith('ไม่พบโฟลเดอร์ A_Workspace');
-      const proj=document.getElementById('wsToday');
+      // เขียนลง #wsError (sibling ของ #wsToday) ไม่ใช่ #wsToday เอง — #wsToday เป็น
+      // parent ของ #wsStats/#wsRulesBox/#wsTasks/#wsFeed, การ innerHTML ทับตัวมันเอง
+      // จะทำให้ id ลูกทั้งหมดหายถาวร แล้ว renderWsStats() รอบถัดไปพัง (getElementById คืน null)
+      document.getElementById('wsToday').classList.add('hidden');
+      document.getElementById('wsProjectsView').classList.add('hidden');
+      document.getElementById('wsProjectDetail').classList.add('hidden');
+      document.getElementById('wsKnowledgeView').classList.add('hidden');
+      const errEl=document.getElementById('wsError');
+      errEl.classList.remove('hidden');
       if(notSetUp){
-        proj.innerHTML=`<div class="not-configured">
+        errEl.innerHTML=`<div class="not-configured">
           <p>ยังไม่ได้ตั้งค่าตำแหน่ง Workspace vault</p>
           <button id="wsNotConfiguredBtn">ตั้งค่าเลย</button>
         </div>`;
         document.getElementById('wsNotConfiguredBtn').onclick=()=>shell().openSettings('cardWorkspace');
       } else {
-        proj.innerHTML=`<div class="empty">โหลด Workspace ไม่สำเร็จ: ${esc((payload&&payload.error)||'ไม่ทราบสาเหตุ')}</div>`;
+        errEl.innerHTML=`<div class="empty">โหลด Workspace ไม่สำเร็จ: ${esc((payload&&payload.error)||'ไม่ทราบสาเหตุ')}</div>`;
       }
       return;
     }
     const stats=new Set((payload.projects||[]).map(p=>p.status));
     [...wsStatSel].forEach(s=>{ if(!stats.has(s)) wsStatSel.delete(s); });
+    // แท็กที่หายไปจากข้อมูลรอบใหม่ต้องเอาออกจาก selection ด้วย ไม่งั้น chip ของมันจะไม่
+    // render อีกต่อไป (renderWsKnowChips วนจาก wsAllKnowTags()) แต่ selection ยังค้างอยู่
+    // ทำให้ filter เหลือ 0 การ์ดตลอดไปโดยไม่มีทางเคลียร์ (ไม่มี "ทั้งหมด" chip ที่แถวแท็ก)
+    const tags=new Set(wsAllKnowTags());
+    [...wsKnowTagSel].forEach(t=>{ if(!tags.has(t)) wsKnowTagSel.delete(t); });
+    if(wsProjectOpen){
+      const p=(payload.projects||[]).find(x=>x.file===wsProjectOpen);
+      if(p) renderWsProjectDetail(p); else wsProjectOpen=null;
+    }
     renderWsViewVisibility();
     renderWsToday();
     if(typeof renderWsProjects==='function') renderWsProjects();      // defined in Task 24

@@ -31,7 +31,7 @@ function El(tag) {
   return el;
 }
 const byId = {};
-for (const id of ['wsSegments', 'wsStats', 'wsRulesBox', 'wsTasks', 'wsFeed', 'wsToday',
+for (const id of ['wsSegments', 'wsError', 'wsStats', 'wsRulesBox', 'wsTasks', 'wsFeed', 'wsToday',
                    'wsProjectsView', 'wsProjectDetail', 'wsProjectDetailBody', 'wsProjectBack',
                    'wsSearch', 'wsStatus', 'wsProjects', 'wsKnowledgeView', 'wsKnowSearch',
                    'wsKnowType', 'wsKnowTag', 'wsKnow', 'wsRefresh']) {
@@ -48,6 +48,10 @@ tab.mount();
 
 const walk = (el, out = []) => { out.push(el); el.children.forEach(c => walk(c, out)); return out; };
 const segLabel = (n) => walk(byId.wsSegments).find(e => e.className && e.className.includes('chip') && e._text === n);
+
+test('ช่องค้นหาความรู้ไม่พังถ้ายังไม่มี onData มาถึงเลย', () => {
+  assert.doesNotThrow(() => { byId.wsKnowSearch.oninput(); });
+});
 
 const EMPTY = {
   projects: [], daily: [], lessons: [], refs: [], rules: [], playbooks: [],
@@ -68,6 +72,21 @@ test('คลิก segment โปรเจกต์ สลับมุมมอ�
   segLabel('โปรเจกต์').onclick();
   assert.strictEqual(byId.wsToday.classList.contains('hidden'), true);
   assert.strictEqual(byId.wsProjectsView.classList.contains('hidden'), false);
+});
+
+test('payload error ไม่เขียนทับ #wsToday (parent ของ wsStats/wsRulesBox/wsTasks/wsFeed) — เขียนลง #wsError แทน', () => {
+  tab.onData(EMPTY);
+  segLabel('วันนี้').onclick(); // สถานะ wsView อาจค้างจากเทสต์ก่อนหน้าในไฟล์เดียวกัน — บังคับกลับมาที่ 'today' ให้แน่ใจ
+  byId.wsToday.textContent = 'MARKER-ต้องไม่ถูกเขียนทับ';
+  tab.onData({ error: 'ไม่พบโฟลเดอร์ A_Workspace: D:\\ไม่มีจริง' });
+  assert.strictEqual(byId.wsToday.textContent, 'MARKER-ต้องไม่ถูกเขียนทับ');
+  assert.strictEqual(byId.wsError.classList.contains('hidden'), false);
+  assert.match(byId.wsError.innerHTML, /ตั้งค่าเลย|ไม่ทราบสาเหตุ|D:\\ไม่มีจริง/);
+  assert.strictEqual(byId.wsToday.classList.contains('hidden'), true);
+  // payload สำเร็จรอบถัดไปต้องไม่พัง (ก่อนแก้ไข ตัว render จะพังเพราะ #wsStats ถูกเขียนทับหายไปแล้ว)
+  tab.onData(EMPTY);
+  assert.strictEqual(byId.wsError.classList.contains('hidden'), true);
+  assert.strictEqual(byId.wsToday.classList.contains('hidden'), false);
 });
 
 function sampleData(){
@@ -137,4 +156,43 @@ test('มุมมองความรู้กรองด้วย tag when/*
   const remaining=lcardsShown();
   assert.strictEqual(remaining.length, 1);
   assert.match(walk(remaining[0]).map(e=>e.innerHTML).join(''), /ล็อกไฟล์บน Windows/);
+});
+
+test('เลือกแท็ก when/* ไว้ แล้วข้อมูลรอบใหม่ไม่มีแท็กนั้นอีก — selection ต้องถูกล้างอัตโนมัติ ไม่ค้างเป็นตัวกรองที่เคลียร์ไม่ได้', () => {
+  const data=sampleData();
+  tab.onData(data);
+  segLabel('ความรู้').onclick();
+  tagChipsShown().find(c=>c._text.includes('when/windows')).onclick();
+  assert.strictEqual(lcardsShown().length, 1);
+
+  const data2=sampleData();
+  data2.lessons=[]; // when/windows ไม่มีในข้อมูลรอบใหม่แล้ว
+  data2.rules=[{ name:'push ต้องขอทุกครั้ง', file:'rules/x.md', tags:['rule','when/push-publish'], meta:'' }];
+  tab.onData(data2);
+  segLabel('ความรู้').onclick();
+  // ถ้า wsKnowTagSel ยังค้าง 'when/windows' อยู่ รายการนี้จะกรองเหลือ 0 ตลอดไปโดยไม่มี chip ให้กด "ทั้งหมด"
+  const remaining=lcardsShown();
+  assert.strictEqual(remaining.length, 1);
+  assert.match(walk(remaining[0]).map(e=>e.innerHTML).join(''), /push ต้องขอทุกครั้ง/);
+});
+
+test('แผงรายละเอียดโปรเจกต์อัปเดตตามข้อมูลรอบใหม่ และปิดกลับไปรายการถ้าโปรเจกต์นั้นหายไป', () => {
+  const data=sampleData();
+  tab.onData(data);
+  segLabel('โปรเจกต์').onclick();
+  cardsShown()[0].onclick();
+  assert.strictEqual(byId.wsProjectDetail.classList.contains('hidden'), false);
+
+  const data2=sampleData();
+  data2.projects[0].desc='คำอธิบายใหม่หลังรีเฟรช';
+  tab.onData(data2);
+  const shownAfterUpdate=walk(byId.wsProjectDetailBody).map(e=>e.innerHTML).join('');
+  assert.match(shownAfterUpdate, /คำอธิบายใหม่หลังรีเฟรช/);
+  assert.strictEqual(byId.wsProjectDetail.classList.contains('hidden'), false);
+
+  const data3=sampleData();
+  data3.projects=data3.projects.filter(p=>p.name!=='COWORK Desktop');
+  tab.onData(data3);
+  assert.strictEqual(byId.wsProjectDetail.classList.contains('hidden'), true);
+  assert.strictEqual(byId.wsProjectsView.classList.contains('hidden'), false);
 });

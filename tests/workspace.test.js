@@ -122,6 +122,29 @@ test('readWorkspace ยัง fallback อ่านตาราง Markdown เ�
   const { projects } = readWorkspace(root);
   assert.strictEqual(projects[0].status, 'active');
   assert.strictEqual(projects[0].desc, 'โปรเจกต์เก่าที่ยังไม่ได้ migrate');
+  // path/updated ก็ต้อง fallback อ่านจากตารางเดิมได้เหมือนกัน ไม่ใช่แค่ status/desc
+  assert.strictEqual(projects[0].path, 'D:\\COWORK\\legacy');
+  assert.strictEqual(projects[0].updated, '2026-07-01');
+});
+
+test('readWorkspace: daily แบบเดิม (ไม่มี frontmatter) อ่าน date จากชื่อไฟล์', () => {
+  const root = makeVault();
+  writeFile(root, 'daily/2026/07/2026-07-01.md', `# บันทึกงาน 2026-07-01
+
+## legacy
+
+- **ทำอะไรไปบ้าง:** งานเก่าก่อน migrate`);
+  const { daily } = readWorkspace(root);
+  assert.strictEqual(daily[0].date, '2026-07-01');
+});
+
+test('readWorkspace: lessons/refs/rules แบบเดิม (ชื่อไฟล์นำวันที่, ไม่มี frontmatter) อ่าน date+name fallback ได้', () => {
+  const root = makeVault();
+  writeFile(root, 'lessons/2026-07-01-legacy-lesson-name.md', `เนื้อความบทเรียนเก่าก่อน migrate ไม่มี frontmatter และไม่มี heading #`);
+  const { lessons } = readWorkspace(root);
+  assert.strictEqual(lessons.length, 1);
+  assert.strictEqual(lessons[0].date, '2026-07-01');
+  assert.strictEqual(lessons[0].name, 'legacy lesson name');
 });
 
 test('readWorkspace อ่าน daily/ แบบแบนราบ', () => {

@@ -158,3 +158,67 @@ test('readWorkspace ข้ามส่วนที่ยังไม่มีเ
   const { daily } = readWorkspace(root);
   assert.deepStrictEqual(daily[0].entries, []);
 });
+
+test('readWorkspace อ่าน refs/ พร้อม subject และ projects link', () => {
+  const root = makeVault();
+  writeFile(root, 'refs/windows-file-lock-after-close.md', `---
+type: ref
+updated: 2026-08-05
+subject: windows
+projects: ["[[COWORK-Desktop]]"]
+tags: [ref, when/windows]
+---
+
+# ไฟล์ที่เพิ่งปิดบน Windows ถูกล็อกอยู่ ~900ms
+
+เนื้อความเต็ม`);
+  const { refs } = readWorkspace(root);
+  assert.strictEqual(refs.length, 1);
+  assert.strictEqual(refs[0].subject, 'windows');
+  assert.deepStrictEqual(refs[0].projects, ['[[COWORK-Desktop]]']);
+  assert.deepStrictEqual(refs[0].tags, ['ref', 'when/windows']);
+});
+
+test('readWorkspace อ่าน rules/', () => {
+  const root = makeVault();
+  writeFile(root, 'rules/gate-push-not-commit.md', `---
+type: rule
+tags: [rule, when/push-publish]
+---
+
+# Commit อิสระเมื่อเทสต์ผ่าน แต่ push ต้องขอทุกครั้ง
+
+เนื้อความ`);
+  const { rules } = readWorkspace(root);
+  assert.strictEqual(rules.length, 1);
+  assert.strictEqual(rules[0].name, 'Commit อิสระเมื่อเทสต์ผ่าน แต่ push ต้องขอทุกครั้ง');
+});
+
+test('readWorkspace ดึงงานค้าง (- [ ]) จากหน้าโปรเจกต์', () => {
+  const root = makeVault();
+  writeFile(root, 'projects/x.md', `---
+type: project
+status: active
+repo_visibility: none
+---
+
+# x
+
+## สถานะปัจจุบัน / งานค้าง
+
+- [ ] เขียนเทสต์เพิ่ม
+- [x] ทำเสร็จแล้ว ไม่นับ
+- [ ] ปล่อยเวอร์ชัน v2`);
+  const { projects, stats } = readWorkspace(root);
+  assert.deepStrictEqual(projects[0].tasks, ['เขียนเทสต์เพิ่ม', 'ปล่อยเวอร์ชัน v2']);
+  assert.strictEqual(stats.tasks, 2);
+});
+
+test('readWorkspace stats.dropped นับสถานะ ⛔', () => {
+  const root = makeVault();
+  writeFile(root, 'projects/a.md', '---\ntype: project\nstatus: active\nrepo_visibility: none\n---\n\n# a');
+  writeFile(root, 'projects/b.md', '---\ntype: project\nstatus: dropped\nrepo_visibility: none\n---\n\n# b');
+  const { stats } = readWorkspace(root);
+  assert.strictEqual(stats.active, 1);
+  assert.strictEqual(stats.dropped, 1);
+});

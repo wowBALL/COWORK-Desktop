@@ -162,7 +162,13 @@ test('เลือกแท็ก when/* ไว้ แล้วข้อมู�
   const data=sampleData();
   tab.onData(data);
   segLabel('ความรู้').onclick();
-  tagChipsShown().find(c=>c._text.includes('when/windows')).onclick();
+  // chip toggle เปิด/ปิด — เทสต์ก่อนหน้าในไฟล์นี้อาจเหลือ when/windows ถูกเลือกค้างอยู่แล้ว
+  // (module state ของ wsKnowTagSel ไม่รีเซ็ตข้ามเทสต์) ต้องเช็ค precondition ก่อน ไม่ใช่กดเฉยๆ
+  // เพราะถ้ามันเลือกอยู่แล้ว การกดซ้ำจะ "ถอด" ออก ทำให้ assertion ผ่านได้แม้โค้ด prune พังจริง
+  let tagChip=tagChipsShown().find(c=>c._text.includes('when/windows'));
+  if(!String(tagChip.className).includes('active')) tagChip.onclick();
+  tagChip=tagChipsShown().find(c=>c._text.includes('when/windows'));
+  assert.ok(String(tagChip.className).includes('active'), 'precondition: when/windows ต้องถูกเลือกอยู่ก่อนเช็คว่ามันถูกล้างทีหลัง');
   assert.strictEqual(lcardsShown().length, 1);
 
   const data2=sampleData();

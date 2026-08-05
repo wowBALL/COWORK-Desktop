@@ -1,0 +1,68 @@
+/* แท็บ Workspace — คู่กับ tab-workspace.js
+ *
+ * โหลดหลัง </style> ของ widget.html (ตำแหน่งเหมือน tab-redmine.css/tab-qatest.css)
+ * เฉพาะกลุ่ม "daily feed" (.feed/.day/.entry) กับ "lessons grid" (.lgrid/.lcard) เท่านั้น
+ * ส่วนการ์ดโปรเจกต์ (.card/.grid/.ctop/.sdot/.name/.vis/.path/.desc/.foot/.stag/.upd)
+ * กับ .navrow/.search ยังอยู่ใน widget.html โดยตั้งใจ — Task 22 ยังไม่แตะ รอ Task 23-25
+ * ที่จะเขียน markup/JS ของส่วนนั้นใหม่พร้อมกัน
+ *
+ * ของที่ "ไม่" ได้ย้ายมา ทั้งที่เกิดในบล็อกเดียวกัน เพราะแท็บอื่นใช้ด้วย:
+ *   .chips / .chip   ตัวกรองทุกแท็บใช้
+ *   .stats / .stat   แถวตัวเลขสรุปหัวแท็บ ใช้หลายแท็บ
+ *   .empty           กล่อง "ไม่มีข้อมูล" ใช้ทั้งแท็บ Workspace/Meeting/QA/Grafana
+ * ทั้งสามยังอยู่ใน widget.html ห้ามยกตามมา
+ */
+
+.feed{display:flex;flex-direction:column;gap:2px}
+.day{margin-bottom:6px}
+.day .dhead{display:flex;align-items:center;gap:9px;margin:6px 0 8px}
+.day .ddate{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent)}
+.day .dsub{font-size:10px;color:var(--dim)}
+.entry{display:flex;gap:11px;padding:2px 0 12px;cursor:pointer}
+.entry:hover .ptext{color:var(--ink)}
+.entry .rail{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:10px}
+.entry .rail .pin{width:9px;height:9px;border-radius:50%;background:var(--pc,var(--accent));margin-top:4px;flex-shrink:0}
+.entry .rail .ln{flex:1;width:2px;background:var(--line-soft);margin-top:3px}
+.entry:last-child .rail .ln{display:none}
+.entry .content{flex:1}
+.entry .pname{font-size:12px;font-weight:700;color:var(--pc,var(--ink));margin-bottom:3px}
+.entry .ptext{font-size:12px;color:var(--muted);line-height:1.5;transition:.12s;cursor:pointer;
+  display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.entry .ptext.expanded{display:block;-webkit-line-clamp:unset;overflow:visible}
+.entry .ptext:hover{color:var(--ink)}
+.entry .ptext + .ptext{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line-soft)}
+
+.lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.lcard{background:var(--panel);border:1px solid var(--line-soft);border-radius:11px;padding:12px 14px;cursor:pointer;transition:.14s}
+.lcard:hover{border-color:var(--amber);background:var(--panel-2)}
+.lcard.pb:hover{border-color:var(--green)}
+.lcard .lt{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.lcard .badge{font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px}
+.lcard .ldate{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);margin-left:auto}
+.lcard .lname{font-size:13px;font-weight:600;line-height:1.35;margin-bottom:5px}
+.lcard .lmeta{font-size:11px;color:var(--muted);line-height:1.4}
+
+.ws-segments{margin-bottom:10px}
+.ws-collapsible{margin-bottom:10px}
+.ws-details{background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px}
+.ws-details summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--amber)}
+.ws-rules-list{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.ws-rule-item{font-size:11.5px;color:var(--muted);cursor:pointer;padding:4px 0;border-top:1px dashed var(--line-soft)}
+.ws-rule-item:first-child{border-top:none}
+.ws-rule-item:hover{color:var(--ink)}
+.ws-tasklist{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.ws-task-group{background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:9px 12px}
+.ws-task-proj{font-size:11.5px;font-weight:700;color:var(--accent);margin-bottom:4px}
+.ws-task-item{font-size:12px;color:var(--muted);line-height:1.5}
+.ws-back{-webkit-app-region:no-drag;background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:6px 0;margin-bottom:8px}
+
+.ws-badge-task{margin-left:auto;background:var(--amber);color:var(--on-accent);font-size:9.5px;font-weight:700;border-radius:8px;padding:1px 6px}
+.ws-detail-meta{display:flex;gap:10px;align-items:center;margin:6px 0 10px}
+.ws-detail-actions{margin-top:14px}
+.ws-detail-actions button{-webkit-app-region:no-drag;background:var(--panel);border:1px solid var(--line-soft);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;color:var(--ink)}
+.ws-detail-actions button:hover{border-color:var(--accent)}
+
+.badge.les{background:var(--amber);color:var(--on-accent)}
+.badge.ref{background:var(--cyan);color:var(--on-accent)}
+.badge.rule{background:var(--violet);color:var(--on-accent)}
+.badge.pbk{background:var(--green);color:var(--on-accent)}

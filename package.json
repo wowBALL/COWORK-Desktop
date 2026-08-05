@@ -36,6 +36,7 @@
       "tab-redmine.js",
       "tab-redmine.css",
       "tab-workspace.js",
+      "tab-workspace.css",
       "tab-qatest.js",
       "tab-qatest.css",
       "tab-meeting.js",

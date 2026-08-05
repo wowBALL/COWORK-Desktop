@@ -4,16 +4,65 @@
 const fs = require('fs');
 const path = require('path');
 
-const VIS = ['Public', 'Private'];
-const SKIP = new Set(['_TEMPLATE.md', 'README.md', 'INDEX.md']);
+const SKIP = new Set(['_TEMPLATE.md', 'README.md', 'INDEX.md', 'HOME.md']);
 
-// map the emoji in the "สถานะ" row to a stable key the UI styles by
+// แยก YAML frontmatter (--- ... ---) ออกจากเนื้อความ — พาร์สเฉพาะ subset ที่ vault ใช้จริง
+// (scalar string, flow-sequence [a, b], block list ด้วย "- ") ไม่ใช่ YAML เต็มรูปแบบ
+function parseFrontmatter(content) {
+  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!m) return { data: {}, body: content };
+  const data = {};
+  const lines = m[1].split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const kv = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
+    if (!kv) { i++; continue; }
+    const [, key, rawValue] = kv;
+    if (rawValue.startsWith('[') && rawValue.endsWith(']') && !rawValue.startsWith('[[')) {
+      // flow sequence: [a, b, "c"] — but NOT a bare `[[wikilink]]` scalar, which also
+      // starts/ends with brackets and would otherwise get corrupted into a 1-item array
+      // with its outer link brackets stripped (e.g. "related: [[Some Note]]" → ["[Some Note]"])
+      data[key] = rawValue.slice(1, -1).split(',').map(s => s.trim().replace(/^"(.*)"$/, '$1')).filter(Boolean);
+      i++;
+    } else if (rawValue === '') {
+      // possible block list on following indented "- " lines
+      const items = [];
+      let j = i + 1;
+      while (j < lines.length && /^\s*-\s+/.test(lines[j])) {
+        items.push(lines[j].replace(/^\s*-\s+/, '').trim().replace(/^"(.*)"$/, '$1'));
+        j++;
+      }
+      if (items.length) { data[key] = items; i = j; }
+      else { data[key] = ''; i++; }
+    } else {
+      data[key] = rawValue.replace(/^"(.*)"$/, '$1');
+      i++;
+    }
+  }
+  const body = content.slice(m[0].length);
+  return { data, body };
+}
+
+// map the emoji in the "สถานะ" table cell OR frontmatter status: value to a stable key
 function statusKey(raw) {
   if (!raw) return 'unknown';
-  if (raw.includes('🟢')) return 'active';
-  if (raw.includes('🟡')) return 'pause';
-  if (raw.includes('✅') || raw.includes('🔵')) return 'done';
+  const s = String(raw).trim().toLowerCase();
+  if (raw.includes && raw.includes('🟢')) return 'active';
+  if (raw.includes && raw.includes('🟡')) return 'pause';
+  if (raw.includes && raw.includes('⛔')) return 'dropped';
+  if (raw.includes && raw.includes('✅')) return 'done';
+  if (s === 'active') return 'active';
+  if (s === 'paused') return 'pause';
+  if (s === 'done') return 'done';
+  if (s === 'dropped') return 'dropped';
   return 'unknown';
+}
+
+function visLabel(v) {
+  if (v === 'public') return 'Public';
+  if (v === 'private') return 'Private';
+  return 'None';
 }
 
 // value cell of a 2-column markdown table row whose label cell contains `label`
@@ -67,26 +116,32 @@ function walkMd(dir) {
   return out;
 }
 
-function parseProject(file, visibility) {
+function parseProject(file, folderVisibilityFallback) {
   const content = fs.readFileSync(file, 'utf8');
-  const name = firstHeading(content, path.basename(file, '.md'));
+  const { data, body } = parseFrontmatter(content);
+  const name = firstHeading(body, path.basename(file, '.md'));
+  const hasFrontmatter = Object.keys(data).length > 0;
   return {
     name,
-    visibility,                                            // Public | Private (from folder)
-    status: statusKey(tableValue(content, '**สถานะ**')),
-    path: tableValue(content, '**ที่อยู่โปรเจกต์**') || `D:\\COWORK\\${name}`,
-    updated: tableValue(content, '**อัปเดตล่าสุด**'),
-    desc: section(content, 'ภาพรวม'),
+    visibility: hasFrontmatter ? visLabel(data.repo_visibility) : (folderVisibilityFallback || 'None'),
+    repo: data.repo || '',
+    status: statusKey(data.status || tableValue(body, '**สถานะ**')),
+    path: data.path || tableValue(body, '**ที่อยู่โปรเจกต์**') || `D:\\COWORK\\${name}`,
+    updated: data.updated || tableValue(body, '**อัปเดตล่าสุด**'),
+    desc: section(body, 'ภาพรวม'),
+    tasks: openTasks(body),
     file,
   };
 }
 
-// pull "ทำอะไรไปบ้าง" from a daily project section as a list of items -- the label
-// takes text inline on the same line (single-line entries like meeting-notes' logs)
-// *or* as indented "  - " sub-bullets on the following lines (multi-item days like
-// this project's own). The old version only ever read the inline case, so a day with
-// five sub-bullets silently showed just the first one -- everything else was only
-// visible by opening the .md file, defeating the point of the feed.
+// เก็บ "- [ ]" ที่ยังไม่ทำจากทั้งไฟล์โปรเจกต์ (ไม่ผูกกับ heading เจาะจง — ใช้รวมทุก section)
+function openTasks(body) {
+  return body.split('\n')
+    .map(l => l.match(/^\s*-\s*\[ \]\s+(.+)$/))
+    .filter(Boolean)
+    .map(m => m[1].trim());
+}
+
 function dailyDid(block) {
   const m = block.match(/ทำอะไรไปบ้าง:\*\*([\s\S]*?)(?=\n- \*\*|$)/);
   if (!m) return [];
@@ -101,35 +156,36 @@ function dailyDid(block) {
   return items;
 }
 
-function parseDaily(file, visibility) {
+function parseDaily(file) {
   const content = fs.readFileSync(file, 'utf8');
-  const date = (path.basename(file, '.md').match(/\d{4}-\d{2}-\d{2}/) || [''])[0];
-  const parts = content.split(/^##\s+/m).slice(1);       // each part starts at a project name
+  const { data, body } = parseFrontmatter(content);
+  const date = data.date || (path.basename(file, '.md').match(/\d{4}-\d{2}-\d{2}/) || [''])[0];
+  const parts = body.split(/^##\s+/m).slice(1);
   const entries = [];
   for (const part of parts) {
     const nl = part.indexOf('\n');
     const project = (nl === -1 ? part : part.slice(0, nl)).trim();
-    if (!project || project.startsWith('[')) continue;    // skip template placeholders
-    // one entry per bullet -- the Workspace tab's feed already groups entries by
-    // project/day and renders each as its own line, so this is the only change needed
-    // to turn a multi-bullet day into a real list instead of one truncated line
+    if (!project || project.startsWith('[')) continue;
     for (const item of dailyDid(part)) entries.push({ project, text: item });
   }
-  return { date, visibility, entries, file };
+  return { date, entries, file };
 }
 
-// filename like 2026-07-21-topic.md → { date, name }
-function parseNote(file, visibility) {
+function parseNote(file) {
   const base = path.basename(file, '.md');
-  const dm = base.match(/^(\d{4}-\d{2}-\d{2})[-_ ]?(.*)$/);
   const content = fs.readFileSync(file, 'utf8');
+  const { data, body } = parseFrontmatter(content);
+  const dm = base.match(/^(\d{4}-\d{2}-\d{2})[-_ ]?(.*)$/); // legacy date-prefixed filenames, pre-migration
   const fallback = dm ? (dm[2] || base).replace(/[-_]/g, ' ').trim() : base;
   return {
-    date: dm ? dm[1] : '',
-    name: firstHeading(content, fallback),
-    meta: section(content, 'สรุป') || section(content, 'บทเรียน') || '',
+    date: data.date || (dm ? dm[1] : ''),
+    name: firstHeading(body, fallback),
+    meta: section(body, 'สรุป') || section(body, 'บทเรียน') || section(body, 'เกิดอะไรขึ้น') || '',
+    severity: data.severity || '',
+    subject: data.subject || '',
+    projects: data.projects || [],
+    tags: data.tags || [],
     file,
-    visibility,
   };
 }
 
@@ -137,48 +193,39 @@ function readWorkspace(root) {
   if (!root || !fs.existsSync(root)) {
     return { error: `ไม่พบโฟลเดอร์ A_Workspace: ${root || '(ไม่ได้ตั้งค่า)'}` };
   }
-  const projects = [];
-  const daily = [];
-  const lessons = [];
-  const playbooks = [];
-
-  for (const vis of VIS) {
-    const base = path.join(root, vis);
-    for (const f of readDir(path.join(base, 'projects')))
-      if (f.endsWith('.md') && !SKIP.has(f))
-        projects.push(parseProject(path.join(base, 'projects', f), vis));
-    for (const f of walkMd(path.join(base, 'daily')))
-      daily.push(parseDaily(f, vis));
-    for (const f of readDir(path.join(base, 'lessons')))
-      if (f.endsWith('.md') && !SKIP.has(f))
-        lessons.push(parseNote(path.join(base, 'lessons', f), vis));
-    for (const f of readDir(path.join(base, 'playbooks')))
-      if (f.endsWith('.md') && !SKIP.has(f))
-        playbooks.push(parseNote(path.join(base, 'playbooks', f), vis));
-  }
+  const projects = readDir(path.join(root, 'projects'))
+    .filter(f => f.endsWith('.md') && !SKIP.has(f))
+    .map(f => parseProject(path.join(root, 'projects', f)));
+  const daily = walkMd(path.join(root, 'daily')).map(f => parseDaily(f));
+  const lessons = readDir(path.join(root, 'lessons'))
+    .filter(f => f.endsWith('.md') && !SKIP.has(f))
+    .map(f => parseNote(path.join(root, 'lessons', f)));
+  const refs = readDir(path.join(root, 'refs'))
+    .filter(f => f.endsWith('.md') && !SKIP.has(f))
+    .map(f => parseNote(path.join(root, 'refs', f)));
+  const rules = readDir(path.join(root, 'rules'))
+    .filter(f => f.endsWith('.md') && !SKIP.has(f))
+    .map(f => parseNote(path.join(root, 'rules', f)));
+  const playbooks = readDir(path.join(root, 'playbooks'))
+    .filter(f => f.endsWith('.md') && !SKIP.has(f))
+    .map(f => parseNote(path.join(root, 'playbooks', f)));
 
   projects.sort((a, b) => (b.updated || '').localeCompare(a.updated || '') || a.name.localeCompare(b.name));
   daily.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const byDate = (a, b) => (b.date || '').localeCompare(a.date || '');
-  lessons.sort(byDate);
-  playbooks.sort(byDate);
+  lessons.sort(byDate); refs.sort(byDate); rules.sort((a, b) => a.name.localeCompare(b.name)); playbooks.sort(byDate);
 
   const count = k => projects.filter(p => p.status === k).length;
   const stats = {
     projects: projects.length,
-    public: projects.filter(p => p.visibility === 'Public').length,
-    private: projects.filter(p => p.visibility === 'Private').length,
-    active: count('active'),
-    pause: count('pause'),
-    done: count('done'),
-    lessons: lessons.length,
-    playbooks: playbooks.length,
+    active: count('active'), pause: count('pause'), done: count('done'), dropped: count('dropped'),
+    tasks: projects.reduce((n, p) => n + p.tasks.length, 0),
+    lessons: lessons.length, refs: refs.length, rules: rules.length, playbooks: playbooks.length,
   };
-
-  return { projects, daily, lessons, playbooks, stats, error: null };
+  return { projects, daily, lessons, refs, rules, playbooks, stats, error: null };
 }
 
-module.exports = { readWorkspace };
+module.exports = { readWorkspace, parseFrontmatter };
 
 // standalone sanity run: node workspace.js "D:\COWORK\A_Workspace"
 if (require.main === module) {

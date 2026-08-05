@@ -195,36 +195,8 @@
   .card .stag{font-size:10px;font-weight:600;color:var(--sc)}
   .card .upd{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim)}
 
-  .feed{display:flex;flex-direction:column;gap:2px}
-  .day{margin-bottom:6px}
-  .day .dhead{display:flex;align-items:center;gap:9px;margin:6px 0 8px}
-  .day .ddate{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent)}
-  .day .dsub{font-size:10px;color:var(--dim)}
-  .entry{display:flex;gap:11px;padding:2px 0 12px;cursor:pointer}
-  .entry:hover .ptext{color:var(--ink)}
-  .entry .rail{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:10px}
-  .entry .rail .pin{width:9px;height:9px;border-radius:50%;background:var(--pc,var(--accent));margin-top:4px;flex-shrink:0}
-  .entry .rail .ln{flex:1;width:2px;background:var(--line-soft);margin-top:3px}
-  .entry:last-child .rail .ln{display:none}
-  .entry .content{flex:1}
-  .entry .pname{font-size:12px;font-weight:700;color:var(--pc,var(--ink));margin-bottom:3px}
-  .entry .ptext{font-size:12px;color:var(--muted);line-height:1.5;transition:.12s;cursor:pointer;
-    display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
-  .entry .ptext.expanded{display:block;-webkit-line-clamp:unset;overflow:visible}
-  .entry .ptext:hover{color:var(--ink)}
-  .entry .ptext + .ptext{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line-soft)}
-
-  .lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
-  .lcard{background:var(--panel);border:1px solid var(--line-soft);border-radius:11px;padding:12px 14px;cursor:pointer;transition:.14s}
-  .lcard:hover{border-color:var(--amber);background:var(--panel-2)}
-  .lcard.pb:hover{border-color:var(--green)}
-  .lcard .lt{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-  .lcard .badge{font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px}
-  .badge.les{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}
-  .badge.pbk{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
-  .lcard .ldate{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);margin-left:auto}
-  .lcard .lname{font-size:13px;font-weight:600;line-height:1.35;margin-bottom:5px}
-  .lcard .lmeta{font-size:11px;color:var(--muted);line-height:1.4}
+  /* .feed/.day/.entry (daily feed) กับ .lgrid/.lcard (lessons grid) ย้ายไป tab-workspace.css
+     ส่วน .card/.grid ของการ์ดโปรเจกต์ข้างบนยังอยู่ที่นี่ — รอ Task 23-25 ที่จะแก้ markup/JS พร้อมกัน */
   .empty{font-size:12px;color:var(--dim);padding:10px 2px;border:1px dashed var(--line);border-radius:10px;text-align:center}
 
   /* ---- Meeting tab ---- ย้ายไป tab-meeting.css ทั้งก้อน ยกเว้นสองกฎข้างล่าง */
@@ -248,6 +220,7 @@
 <link rel="stylesheet" href="tab-meeting.css">
 <link rel="stylesheet" href="tab-qatest.css">
 <link rel="stylesheet" href="tab-grafana.css">
+<link rel="stylesheet" href="tab-workspace.css">
 </head>
 <body>
   <div class="shell">
@@ -302,22 +275,42 @@
 
       <!-- ===== Workspace view ===== -->
       <div id="workspaceView" class="hidden">
-        <h3>ภาพรวม Workspace</h3>
-        <div id="wsStats" class="stats w5"></div>
+        <div id="wsSegments" class="chips ws-segments"></div>
+        <div id="wsError" class="hidden"></div>
 
-        <h3>โปรเจกต์</h3>
-        <input id="wsSearch" class="search" type="text" placeholder="🔍 ค้นหาโปรเจกต์ (ชื่อ / path / คำอธิบาย)" autocomplete="off">
-        <div class="row-label">การมองเห็น</div>
-        <div id="wsVis" class="chips"></div>
-        <div class="row-label">สถานะ</div>
-        <div id="wsStatus" class="chips"></div>
-        <div id="wsProjects" class="grid"><div class="hint">กำลังโหลด...</div></div>
+        <!-- A: วันนี้ -->
+        <div id="wsToday">
+          <div id="wsStats" class="stats"></div>
+          <div id="wsRulesBox" class="ws-collapsible"></div>
+          <h3>📌 งานค้าง</h3>
+          <div id="wsTasks" class="ws-tasklist"></div>
+          <h3>🕐 บันทึกล่าสุด</h3>
+          <div id="wsFeed" class="feed"></div>
+        </div>
 
-        <h3>บันทึกรายวันล่าสุด</h3>
-        <div id="wsFeed" class="feed"></div>
+        <!-- B: โปรเจกต์ -->
+        <div id="wsProjectsView" class="hidden">
+          <input id="wsSearch" class="search" type="text" placeholder="🔍 ค้นหาโปรเจกต์ (ชื่อ / path / คำอธิบาย)" autocomplete="off">
+          <div class="row-label">สถานะ</div>
+          <div id="wsStatus" class="chips"></div>
+          <div id="wsProjects" class="grid"><div class="hint">กำลังโหลด...</div></div>
+        </div>
 
-        <h3>บทเรียน &amp; แผนรับมือ</h3>
-        <div id="wsKnow" class="lgrid"></div>
+        <!-- B2: รายละเอียดโปรเจกต์ (เปิดทับ wsProjectsView) -->
+        <div id="wsProjectDetail" class="hidden">
+          <button id="wsProjectBack" class="ws-back">← กลับไปรายการโปรเจกต์</button>
+          <div id="wsProjectDetailBody"></div>
+        </div>
+
+        <!-- C: ความรู้ -->
+        <div id="wsKnowledgeView" class="hidden">
+          <input id="wsKnowSearch" class="search" type="text" placeholder="🔍 ค้นหาความรู้" autocomplete="off">
+          <div class="row-label">ชนิด</div>
+          <div id="wsKnowType" class="chips"></div>
+          <div class="row-label">เกี่ยวกับ</div>
+          <div id="wsKnowTag" class="chips"></div>
+          <div id="wsKnow" class="lgrid"></div>
+        </div>
       </div>
 
       <!-- ===== QA test view ===== -->

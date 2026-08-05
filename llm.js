@@ -14,8 +14,13 @@ const PROVIDERS = {
   // reasoning model — max_tokens คุมผลรวมของ reasoning + คำตอบ ไม่ใช่คำตอบอย่างเดียว
   // ต้องกว้างกว่า Qwen มาก ไม่งั้น content ว่างเปล่าบ่อย (ดู meeting-notes/src/llm.py บรรทัด 24-29)
   'GLM-5.2': { maxTokens: 8192, vision: false },
-  // ไม่ใช่ reasoning model เหมือน Qwen (ดู meeting-notes/src/llm.py บรรทัด 42-49) แต่ยังไม่เคย
-  // ทดสอบรับภาพ — ถือว่าไม่รับไว้ก่อนเหมือน GLM แทนที่จะเดา
+  // ไม่ใช่ reasoning model เหมือน Qwen (ดู meeting-notes/src/llm.py บรรทัด 42-49)
+  //
+  // vision: false ที่นี่คือผลวัด ไม่ใช่การกันไว้ก่อน (2026-08-05) — ยิงภาพคุมสองสีเข้าไปจริง
+  // ได้ HTTP 400 ใน 0.1 วินาที: "LilaRest/gemma-4-31B-it-NVFP4-turbo is not a multimodal
+  // model" (ภาพเดียวกัน Qwen ตอบถูกใน 0.5 วินาที) สาเหตุไม่ใช่ข้อจำกัดของ Gemma 4 ซึ่งตัวจริง
+  // เป็น multimodal — แต่ endpoint รัน build ที่ model card เขียนไว้เองว่าถอด vision/audio
+  // encoder ออก แก้ที่โค้ดไม่ได้ ต้องให้เจ้าของ endpoint สลับ build
   //
   // budget กว้างกว่า Qwen เพราะไม่มีเหตุให้บีบ: meeting-notes วัดจริง 2026-08-05 แล้ว gemma4
   // ไม่เคยถูกตัดสักครั้ง (ทั้ง map ก้อนเล็กและ single-call ทั้งประชุม 84 นาที) และรับ input

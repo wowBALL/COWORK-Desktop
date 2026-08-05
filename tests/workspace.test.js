@@ -102,3 +102,17 @@ projects:
 เนื้อความ`);
   assert.deepStrictEqual(data.projects, ['[[meeting-notes]]', '[[COWORK-Desktop]]']);
 });
+
+// บั๊กที่ reviewer ของ Task 16 จับได้: heuristic เดิม startsWith('[') && endsWith(']')
+// เข้าใจผิดว่า [[wikilink]] เดี่ยวๆ (scalar) เป็น flow-sequence แล้วตัดวงเล็บนอกทิ้งพร้อม
+// บังคับเป็น array — ทั้งที่ค่าจริงควรเป็น string เฉยๆ
+test('parseFrontmatter ไม่เข้าใจผิดว่า scalar [[wikilink]] เดี่ยวๆ เป็น flow-sequence', () => {
+  const { data } = parseFrontmatter(`---
+related: [[Some Note]]
+tags: [project, when/release]
+---
+
+เนื้อความ`);
+  assert.strictEqual(data.related, '[[Some Note]]');
+  assert.deepStrictEqual(data.tags, ['project', 'when/release']);
+});

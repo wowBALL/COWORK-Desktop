@@ -20,8 +20,10 @@ function parseFrontmatter(content) {
     const kv = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
     if (!kv) { i++; continue; }
     const [, key, rawValue] = kv;
-    if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
-      // flow sequence: [a, b, "c"]
+    if (rawValue.startsWith('[') && rawValue.endsWith(']') && !rawValue.startsWith('[[')) {
+      // flow sequence: [a, b, "c"] — but NOT a bare `[[wikilink]]` scalar, which also
+      // starts/ends with brackets and would otherwise get corrupted into a 1-item array
+      // with its outer link brackets stripped (e.g. "related: [[Some Note]]" → ["[Some Note]"])
       data[key] = rawValue.slice(1, -1).split(',').map(s => s.trim().replace(/^"(.*)"$/, '$1')).filter(Boolean);
       i++;
     } else if (rawValue === '') {

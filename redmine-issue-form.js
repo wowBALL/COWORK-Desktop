@@ -68,11 +68,9 @@ function fieldAvailability(schema, name, key) {
 }
 
 function composeDescription(language, th, en) {
-  const thBlock = th ? `## 🇹🇭 รายละเอียด (ไทย)\n\n${th}` : '';
-  const enBlock = en ? `## 🇬🇧 Details (English)\n\n${en}` : '';
-  if (language === 'th') return thBlock;
-  if (language === 'en') return enBlock;
-  return [enBlock, thBlock].filter(Boolean).join('\n\n---\n\n');
+  if (language === 'th') return th || '';
+  if (language === 'en') return en || '';
+  return [en, th].filter(Boolean).join('\n\n---\n\n');
 }
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;

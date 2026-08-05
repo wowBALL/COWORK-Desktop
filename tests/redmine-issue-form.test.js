@@ -63,25 +63,23 @@ test('buildFieldSchema: project ที่มีทั้ง id และ identif
 
 const { composeDescription } = require('../redmine-issue-form.js');
 
-test('composeDescription: th-only ไม่มี block ภาษาอังกฤษเลย', () => {
+test('composeDescription: th-only คืนเนื้อหาไทยตรง ๆ ไม่มีหัวข้อลอย', () => {
   const d = composeDescription('th', 'อาการ: กดไม่ติด', '');
-  assert.ok(d.includes('🇹🇭'));
-  assert.ok(!d.includes('🇬🇧'));
+  assert.strictEqual(d, 'อาการ: กดไม่ติด');
 });
 
-test('composeDescription: en-only ไม่มี block ภาษาไทยเลย', () => {
+test('composeDescription: en-only คืนเนื้อหาอังกฤษตรง ๆ ไม่มีหัวข้อลอย', () => {
   const d = composeDescription('en', '', 'Symptom: not clickable');
-  assert.ok(d.includes('🇬🇧'));
-  assert.ok(!d.includes('🇹🇭'));
+  assert.strictEqual(d, 'Symptom: not clickable');
 });
 
-test('composeDescription: both มีครบสองภาษา คั่นด้วย --- (EN ก่อน TH)', () => {
+test('composeDescription: both มีครบสองภาษา คั่นด้วย --- (EN ก่อน TH) ไม่มีหัวข้อ 🇬🇧/🇹🇭', () => {
   const d = composeDescription('both', 'อาการ: กดไม่ติด', 'Symptom: not clickable');
-  assert.ok(d.includes('🇹🇭'));
-  assert.ok(d.includes('🇬🇧'));
+  assert.ok(!d.includes('🇹🇭'));
+  assert.ok(!d.includes('🇬🇧'));
   assert.ok(d.includes('---'));
-  assert.ok(d.indexOf('🇬🇧') < d.indexOf('---'));
-  assert.ok(d.indexOf('---') < d.indexOf('🇹🇭'));
+  assert.ok(d.indexOf('Symptom: not clickable') < d.indexOf('---'));
+  assert.ok(d.indexOf('---') < d.indexOf('อาการ: กดไม่ติด'));
 });
 
 test('composeDescription: th-only แต่ text ว่างเปล่า คืนสตริงว่าง ไม่ใช่หัวข้อลอย ๆ', () => {

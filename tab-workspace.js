@@ -240,6 +240,77 @@
     actions.appendChild(openBtn);
     el.appendChild(actions);
   }
+  const KNOW_TYPES=[['lesson','Lesson','lessons'],['ref','Ref','refs'],['rule','Rule','rules'],['playbook','Playbook','playbooks']];
+  function wsAllKnow(){
+    return KNOW_TYPES.flatMap(([type,,field])=>(wsData[field]||[]).map(x=>({...x,type})));
+  }
+  function wsAllKnowTags(){
+    const set=new Set();
+    wsAllKnow().forEach(k=>(k.tags||[]).forEach(t=>{ if(t.startsWith('when/')||t.startsWith('risk/')) set.add(t); }));
+    return [...set].sort();
+  }
+  function wsKnowFiltered(){
+    const terms=wsKnowQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return wsAllKnow().filter(k=>{
+      const hay=(k.name+' '+(k.meta||'')).toLowerCase();
+      return (wsKnowTypeSel.size===0 || wsKnowTypeSel.has(k.type)) &&
+        (wsKnowTagSel.size===0 || (k.tags||[]).some(t=>wsKnowTagSel.has(t))) &&
+        terms.every(t=>hay.includes(t));
+    }).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  }
+  // createElement + .onclick ต่อ node เดียวกับที่ Task 23/24 ทำ — ไม่ใช้ innerHTML+querySelectorAll
+  function renderWsKnowChips(){
+    const typeEl=document.getElementById('wsKnowType');
+    typeEl.innerHTML='';
+    const allChip=document.createElement('div');
+    allChip.className='chip'+(wsKnowTypeSel.size===0?' active':'');
+    allChip.textContent='ทั้งหมด';
+    allChip.onclick=()=>{ wsKnowTypeSel.clear(); renderWsKnowChips(); renderWsKnowList(); };
+    typeEl.appendChild(allChip);
+    KNOW_TYPES.forEach(([type,label])=>{
+      const chip=document.createElement('div');
+      chip.className='chip'+(wsKnowTypeSel.has(type)?' active':'');
+      chip.textContent=label;
+      chip.onclick=()=>{
+        const only=wsKnowTypeSel.size===1 && wsKnowTypeSel.has(type);
+        wsKnowTypeSel.clear();
+        if(!only) wsKnowTypeSel.add(type);
+        renderWsKnowChips(); renderWsKnowList();
+      };
+      typeEl.appendChild(chip);
+    });
+
+    const tagEl=document.getElementById('wsKnowTag');
+    tagEl.innerHTML='';
+    wsAllKnowTags().forEach(tag=>{
+      const chip=document.createElement('div');
+      chip.className='chip'+(wsKnowTagSel.has(tag)?' active':'');
+      chip.textContent=tag;
+      chip.onclick=()=>{
+        if(wsKnowTagSel.has(tag)) wsKnowTagSel.delete(tag); else wsKnowTagSel.add(tag);
+        renderWsKnowChips(); renderWsKnowList();
+      };
+      tagEl.appendChild(chip);
+    });
+  }
+  const KNOW_BADGE={lesson:'les',ref:'ref',rule:'rule',playbook:'pbk'};
+  function renderWsKnowList(){
+    const el=document.getElementById('wsKnow');
+    const items=wsKnowFiltered();
+    if(!items.length){ el.innerHTML='<div class="empty">ไม่พบความรู้ตามตัวกรองนี้</div>'; return; }
+    el.innerHTML='';
+    items.forEach(k=>{
+      const c=document.createElement('div'); c.className='lcard '+KNOW_BADGE[k.type];
+      c.title='เปิดไฟล์';
+      c.innerHTML=`<div class="lt"><span class="badge ${KNOW_BADGE[k.type]}">${k.type}</span>
+        <span class="ldate">${esc(k.date||'')}</span></div>
+        <div class="lname">${esc(k.name)}</div>
+        ${k.meta?`<div class="lmeta">${esc(k.meta)}</div>`:''}`;
+      c.onclick=()=>openFile(k.file);
+      el.appendChild(c);
+    });
+  }
+  function renderWsKnow(){ renderWsKnowChips(); renderWsKnowList(); }
   function onData(payload){
     wsData=payload;
     if(!payload || payload.error){
@@ -271,6 +342,8 @@
     const wsSearch=document.getElementById('wsSearch');
     wsSearch.oninput=()=>{ wsQuery=wsSearch.value; renderWsProjects(); };
     document.getElementById('wsProjectBack').onclick=()=>{ wsProjectOpen=null; renderWsViewVisibility(); };
+    const wsKnowSearch=document.getElementById('wsKnowSearch');
+    wsKnowSearch.oninput=()=>{ wsKnowQuery=wsKnowSearch.value; renderWsKnowList(); };
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====

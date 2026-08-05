@@ -114,3 +114,27 @@ test('ปุ่มกลับปิดแผงรายละเอียด �
   assert.strictEqual(byId.wsProjectDetail.classList.contains('hidden'), true);
   assert.strictEqual(byId.wsProjectsView.classList.contains('hidden'), false);
 });
+
+const lcardsShown = () => walk(byId.wsKnow).filter(e => String(e.className).includes('lcard'));
+const tagChipsShown = () => walk(byId.wsKnowTag).filter(e => String(e.className).includes('chip'));
+
+test('มุมมองความรู้แสดงบทเรียน+อ้างอิง+กติกา และกรองด้วยชนิด', () => {
+  tab.onData(sampleData());
+  segLabel('ความรู้').onclick();
+  const items=lcardsShown();
+  assert.strictEqual(items.length, 1); // sampleData has 1 lesson, 0 refs, 0 rules, 0 playbooks
+  assert.match(walk(items[0]).map(e=>e.innerHTML).join(''), /ล็อกไฟล์บน Windows/);
+});
+
+test('มุมมองความรู้กรองด้วย tag when/*', () => {
+  const data=sampleData();
+  data.rules=[{ name:'push ต้องขอทุกครั้ง', file:'rules/x.md', tags:['rule','when/push-publish'], meta:'' }];
+  tab.onData(data);
+  segLabel('ความรู้').onclick();
+  assert.strictEqual(lcardsShown().length, 2);
+  const tagChip=tagChipsShown().find(c=>c._text.includes('when/windows'));
+  tagChip.onclick();
+  const remaining=lcardsShown();
+  assert.strictEqual(remaining.length, 1);
+  assert.match(walk(remaining[0]).map(e=>e.innerHTML).join(''), /ล็อกไฟล์บน Windows/);
+});

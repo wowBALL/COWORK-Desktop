@@ -63,3 +63,8 @@
 .ws-detail-actions{margin-top:14px}
 .ws-detail-actions button{-webkit-app-region:no-drag;background:var(--panel);border:1px solid var(--line-soft);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;color:var(--ink)}
 .ws-detail-actions button:hover{border-color:var(--accent)}
+
+.badge.les{background:var(--amber);color:var(--on-accent)}
+.badge.ref{background:var(--cyan);color:var(--on-accent)}
+.badge.rule{background:var(--violet);color:var(--on-accent)}
+.badge.pbk{background:var(--green);color:var(--on-accent)}

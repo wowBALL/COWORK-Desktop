@@ -783,3 +783,37 @@ test('draftIssue: th/en เดี่ยว ต้องไม่เตือน�
     assert.deepStrictEqual(r.warnings, [], language);
   }
 });
+
+// ===== คำถามของหัวข้อประเมินความเสี่ยงต่างกันตามชนิดงาน (2026-08-06) =====
+// เดิมใช้ถ้อยคำชุดเดียวที่คิดจากมุม Bug ("อะไรทำงานผิดหรือหยุด") พอเป็น Feature ที่ยังไม่มี
+// อะไรพัง โมเดลเลยหันไปเขียนประโยชน์ที่จะได้ถ้าทำแทน ซึ่งไม่ใช่ความเสี่ยง และซ้ำกับหัวข้อ
+// "ผลกระทบถ้าไม่ทำ" ที่โครง Feature มีอยู่แล้ว
+test('systemPromptFor(Bug): ถามถึงสิ่งที่พังอยู่ตอนนี้', () => {
+  const p = systemPromptFor('Bug', 'th', []);
+  assert.ok(/อะไรทำงานผิดหรือหยุด/.test(p));
+  assert.ok(!/ขึ้นระบบ/.test(p), 'Bug ไม่ควรได้คำถามเรื่องความเสี่ยงตอนดีพลอย');
+});
+
+test('systemPromptFor(Feature): ถามถึงความเสี่ยงตอนนำขึ้นระบบ ไม่ใช่สิ่งที่พังอยู่', () => {
+  const p = systemPromptFor('Feature', 'th', []);
+  assert.ok(/ขึ้นระบบ/.test(p), 'ต้องถามเรื่องการนำขึ้นระบบ');
+  assert.ok(!/อะไรทำงานผิดหรือหยุด/.test(p), 'ถ้อยคำมุม Bug ต้องไม่ติดมาด้วย');
+});
+
+test('systemPromptFor(Feature): ห้ามเขียนประโยชน์ที่จะได้ลงหัวข้อความเสี่ยง', () => {
+  assert.ok(/ห้ามเขียนประโยชน์/.test(systemPromptFor('Feature', 'th', [])));
+});
+
+test('systemPromptFor: tracker ที่ไม่รู้จักต้องได้ชุดคำถามสำรอง ไม่ใช่ undefined หลุดเข้าพรอมป์', () => {
+  const p = systemPromptFor('Trackerใหม่', 'th', []);
+  assert.ok(!/undefined/.test(p), p.slice(0, 200));
+  assert.ok(/ผลกระทบต่อระบบ/.test(p) && /ผลกระทบต่อผู้ใช้/.test(p));
+});
+
+for (const tracker of ['Bug', 'Feature', 'Epic', 'Support', 'ไม่รู้จัก']) {
+  test(`systemPromptFor(${tracker}): ยังคงสองส่วน + ประโยคสรุประดับ ไม่ว่าคำถามจะต่างกันแค่ไหน`, () => {
+    const p = systemPromptFor(tracker, 'th', []);
+    assert.ok(p.indexOf('ผลกระทบต่อระบบ') < p.indexOf('ผลกระทบต่อผู้ใช้'));
+    assert.ok(/ประโยคสุดท้ายของหัวข้อต้องระบุชื่อระดับ/.test(p));
+  });
+}

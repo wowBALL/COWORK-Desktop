@@ -354,7 +354,7 @@
     qiFitImagesToBudget(images).then(fit => {
       fitNotice = fit.notice;
       return api.draftIssueText(rawNotes, {
-        model: document.getElementById('qiModel').value,
+        model: shell().llmModel(),   // ตัวเลือกอยู่บน navrow (🪄) ไม่ใช่ในฟอร์มนี้แล้ว
         language: document.getElementById('qiLanguage').value,
         tracker: document.getElementById('qiTracker').value,
         images: fit.images,

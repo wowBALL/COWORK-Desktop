@@ -128,6 +128,28 @@
 .testPreview .tp-actions button.confirm{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .testPreview .tp-actions button.confirm:disabled{opacity:.4;cursor:not-allowed;background:var(--panel);color:var(--dim)}
 .testPreview .tp-actions button.pending{opacity:.6;pointer-events:none}
+/* send-to-Testing-Room button/panel (สถานะ Test เท่านั้น) — เขียนใบเทสลงเครื่อง ไม่แตะ Redmine
+   ใช้ --cyan แยกจาก ✓ (accent) และ 📝 (violet) ให้แถวเดียวกันไม่กลืนกัน */
+.testBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel);color:var(--muted);cursor:pointer;font-size:12px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;transition:.15s}
+.testBtn:hover{color:var(--cyan);border-color:var(--cyan)}
+.testBtn.pending{opacity:.5;pointer-events:none}
+.testBtn.err{background:var(--rose);color:var(--on-accent);border-color:var(--rose)}
+.qtestPanel{background:var(--panel-2);border:1px solid color-mix(in srgb,var(--cyan) 38%,var(--line));
+  border-left:3px solid var(--cyan);border-radius:10px;padding:12px;margin:0 0 10px}
+.qtestPanel .qt-label{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--cyan);
+  font-weight:700;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.qtestPanel .qt-label .local{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:10px;font-weight:600}
+.qtestPanel .qt-list{margin:0;padding-left:20px;font-size:12.5px;line-height:1.65;color:var(--ink);
+  max-height:220px;overflow-y:auto}
+.qtestPanel .qt-err{font-size:12px;line-height:1.5;color:var(--rose)}
+.qtestPanel .qt-actions{display:flex;gap:8px;margin-top:10px}
+.qtestPanel .qt-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
+  border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);
+  color:var(--muted);transition:.15s}
+.qtestPanel .qt-actions button:hover{color:var(--ink);border-color:var(--cyan)}
+.qtestPanel .qt-actions button.open{background:var(--cyan);color:var(--on-accent);border-color:var(--cyan)}
 /* private note button/panel — local-only, never sent to Redmine */
 .noteBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
   background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px;flex-shrink:0;

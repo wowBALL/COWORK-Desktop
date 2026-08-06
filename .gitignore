@@ -11,3 +11,7 @@ _harness-*.css
 
 # Obsidian workspace state (personal editor config)
 .obsidian/
+
+# ใบเทสจริงของ Testing Room — repo นี้ public และใบเทสมีหัวเรื่อง issue ภายในติดไปด้วย
+# (โครงไฟล์ดูได้จาก testingroom/TEMPLATE.md ซึ่ง track ไว้ เพราะเป็นตัวอย่างล้วน)
+testingroom/Qtest/

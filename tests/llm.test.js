@@ -817,3 +817,77 @@ for (const tracker of ['Bug', 'Feature', 'Epic', 'Support', 'ไม่รู้�
     assert.ok(/ประโยคสุดท้ายของหัวข้อต้องระบุชื่อระดับ/.test(p));
   });
 }
+
+// ---- เช็กลิสต์ E2E สำหรับ Testing Room ----
+const { draftTestChecklist, cleanChecklistItems, CHECKLIST_MAX } = require('../llm.js');
+
+const okChecklist = items => async () => ({
+  ok: true,
+  json: async () => ({ choices: [{ message: { content: JSON.stringify({ items }) } }] }),
+});
+const ISSUE = { subject: 'login แล้ว sidebar ว่าง', description: 'พบบน uat', tracker: 'Bug' };
+const CFG = { apiKey: 'k', baseUrl: 'https://x' };
+
+test('cleanChecklistItems: ตัดเลขลำดับ/บุลเล็ตที่โมเดลใส่นำหน้ามา', () => {
+  assert.deepStrictEqual(
+    cleanChecklistItems(['1. เข้าสู่ระบบ', '2) ดู sidebar', '- ดู dashboard', '• ออกจากระบบ']),
+    ['เข้าสู่ระบบ', 'ดู sidebar', 'ดู dashboard', 'ออกจากระบบ']);
+});
+test('cleanChecklistItems: ตัดข้อว่างและข้อซ้ำ', () => {
+  assert.deepStrictEqual(cleanChecklistItems(['เข้าสู่ระบบ', '  ', 'เข้าสู่ระบบ', null]), ['เข้าสู่ระบบ']);
+});
+test('cleanChecklistItems: ยุบขึ้นบรรทัดใหม่ในข้อเดียวให้เป็นบรรทัดเดียว', () => {
+  // ข้อหนึ่งข้อ = หนึ่งแถวในตาราง markdown ขึ้นบรรทัดใหม่กลางข้อทำให้ตารางขาด
+  assert.deepStrictEqual(cleanChecklistItems(['เข้าสู่ระบบ\nแล้วดู sidebar']), ['เข้าสู่ระบบ แล้วดู sidebar']);
+});
+test('cleanChecklistItems: ตัดที่เพดาน CHECKLIST_MAX', () => {
+  const many = Array.from({ length: CHECKLIST_MAX + 5 }, (_, i) => 'ข้อ ' + i);
+  assert.strictEqual(cleanChecklistItems(many).length, CHECKLIST_MAX);
+});
+
+test('draftTestChecklist: ยังไม่ตั้งค่า LLM = ไม่ยิงเน็ต', async () => {
+  let called = false;
+  const fetchImpl = async () => { called = true; return { ok: true, json: async () => ({}) }; };
+  const r = await draftTestChecklist(ISSUE, { apiKey: '', baseUrl: '', fetchImpl });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(called, false);
+});
+test('draftTestChecklist: งานที่ไม่มีหัวเรื่อง = ไม่ยิงเน็ต', async () => {
+  let called = false;
+  const fetchImpl = async () => { called = true; return { ok: true, json: async () => ({}) }; };
+  const r = await draftTestChecklist({ subject: '   ' }, { ...CFG, fetchImpl });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(called, false);
+});
+test('draftTestChecklist: บังคับรูปร่างคำตอบด้วย json_schema ไม่ใช่ json_object', async () => {
+  let body = null;
+  const fetchImpl = async (_u, init) => { body = JSON.parse(init.body); return okChecklist(['ก'])(); };
+  await draftTestChecklist(ISSUE, { ...CFG, fetchImpl });
+  assert.strictEqual(body.response_format.type, 'json_schema');
+  assert.deepStrictEqual(body.response_format.json_schema.schema.required, ['items']);
+});
+test('draftTestChecklist: คืนข้อที่ล้างแล้ว', async () => {
+  const r = await draftTestChecklist(ISSUE, { ...CFG, fetchImpl: okChecklist(['1. เข้าสู่ระบบ', 'เข้าสู่ระบบ', 'ดู sidebar']) });
+  assert.deepStrictEqual(r, { ok: true, items: ['เข้าสู่ระบบ', 'ดู sidebar'] });
+});
+test('draftTestChecklist: โมเดลไม่เสนอข้อเลย = ok:false พร้อมบอกทางออก', async () => {
+  const r = await draftTestChecklist(ISSUE, { ...CFG, fetchImpl: okChecklist([]) });
+  assert.strictEqual(r.ok, false);
+  assert.match(r.error, /เพิ่มข้อเองได้/);
+});
+test('draftTestChecklist: คำตอบถูกตัดเพราะ budget บอกให้เปลี่ยนโมเดล', async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({ choices: [{ finish_reason: 'length', message: { content: '{"items":["เข้าสู่' } }] }),
+  });
+  const r = await draftTestChecklist(ISSUE, { ...CFG, fetchImpl });
+  assert.strictEqual(r.ok, false);
+  assert.match(r.error, /budget/);
+});
+test('draftTestChecklist: โมเดลที่ไม่รู้จักไม่ยิงเน็ต', async () => {
+  let called = false;
+  const fetchImpl = async () => { called = true; return { ok: true, json: async () => ({}) }; };
+  const r = await draftTestChecklist(ISSUE, { ...CFG, model: 'ไม่มีอยู่จริง', fetchImpl });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(called, false);
+});

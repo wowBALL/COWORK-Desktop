@@ -488,7 +488,134 @@ async function draftIssue(rawNotes, opts = {}) {
   return { ok: true, draft: { ...parsed, ...guarded, missing_info: missingInfo }, warnings };
 }
 
+// ---- เช็กลิสต์ E2E สำหรับ Testing Room ----
+// ตั้งใจไม่รวมท่อ fetch กับ draftIssue: ตัวนั้นถูกจูนมาหลายรอบด้วยการวัดจริง (budget ต่อภาษา,
+// ข้อความ error ต่อ finish_reason, guard หลัง parse) การดึงออกมาเป็นตัวกลางร่วมกันจะเปลี่ยน
+// พฤติกรรมของเส้นทางที่ใช้อยู่ทุกวันเพื่อความสวยของโค้ด — คนละเรื่องกับสิ่งที่ฟีเจอร์นี้ต้องการ
+
+const CHECKLIST_MAX = 12;
+
+// ขอในพรอมป์ได้แค่คุณภาพ ส่วนรูปร่างบังคับด้วย json_schema (ดูเหตุผลที่ responseSchemaFor)
+function checklistSchema() {
+  return {
+    type: 'object',
+    properties: {
+      items: {
+        type: 'array',
+        description: 'รายการสิ่งที่ต้องทดสอบ เขียนเป็นภาษาไทยเสมอ',
+        items: { type: 'string', description: 'สิ่งที่ต้องทดสอบหนึ่งข้อ ภาษาไทย ไม่ต้องใส่เลขลำดับนำหน้า' },
+      },
+    },
+    required: ['items'],
+    additionalProperties: false,
+  };
+}
+
+function checklistPromptFor(tracker) {
+  return [
+    'คุณคือ QA ที่ต้องทดสอบงานที่ dev แจ้งว่าทำเสร็จแล้ว ก่อนปิดงาน',
+    `ชนิดงาน: ${tracker || 'Bug'}`,
+    '',
+    'แตกงานนี้ออกเป็นรายการทดสอบแบบ end-to-end ที่ QA เดินตามได้จริงบนหน้าจอ',
+    'แต่ละข้อต้องเป็นสิ่งที่ "ทำแล้วดูผลได้" ไม่ใช่หัวข้อกว้าง ๆ',
+    'เขียนให้ครอบคลุมทั้งเส้นทางปกติ เส้นทางที่ผู้ใช้ทำผิด และผลข้างเคียงกับส่วนอื่นที่งานนี้ไปแตะ',
+    `ตอบไม่เกิน ${CHECKLIST_MAX} ข้อ เอาเฉพาะข้อที่คุ้มค่าจะทดสอบจริง`,
+    'อย่าเดารายละเอียดที่รายงานไม่ได้บอก ถ้าไม่รู้ให้เขียนข้อที่ตรวจสอบสิ่งที่รายงานบอกไว้เท่านั้น',
+  ].join('\n');
+}
+
+// พรอมป์ห้ามใส่เลขลำดับก็จริง แต่ "ห้าม" ที่ต้องรับประกันต้องบังคับที่โค้ด (ดู prompt-asks-code-
+// guarantees) — เลขที่หลุดมาจะไปซ้อนกับคอลัมน์ # ในใบเทสจนอ่านเป็น "1. 1. login..."
+function cleanChecklistItems(list) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of (Array.isArray(list) ? list : [])) {
+    const t = String(raw == null ? '' : raw)
+      .replace(/\s+/g, ' ')
+      .replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '')
+      .trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= CHECKLIST_MAX) break;
+  }
+  return out;
+}
+
+// issue: { subject, description, tracker } — ตัวเลข/สถานะฝั่ง Redmine ไม่ต้องส่งมา
+async function draftTestChecklist(issue = {}, opts = {}) {
+  const {
+    model = DEFAULT_MODEL, apiKey, baseUrl,
+    fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS,
+  } = opts;
+  const provider = PROVIDERS[model];
+  if (!provider) return { ok: false, error: `ไม่รู้จักโมเดล ${model}` };
+  if (!apiKey || !baseUrl) return { ok: false, error: 'ยังไม่ได้ตั้งค่า LLM (ตั้งค่า → LLM)' };
+  const subject = String(issue.subject || '').trim();
+  if (!subject) return { ok: false, error: 'งานนี้ไม่มีหัวเรื่อง — สร้างใบเทสจากมันไม่ได้' };
+
+  const url = `${String(baseUrl).replace(/\/+$/, '')}/chat/completions`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetchImpl(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({
+        model,
+        max_tokens: provider.maxTokens,
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'test_checklist', schema: checklistSchema(), strict: true },
+        },
+        messages: [
+          { role: 'system', content: checklistPromptFor(issue.tracker) },
+          { role: 'user', content: `หัวเรื่อง: ${subject}\n\nรายละเอียด:\n${String(issue.description || '(ไม่มีรายละเอียด)').trim()}` },
+        ],
+      }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    return { ok: false, error: e.name === 'AbortError' ? 'LLM ไม่ตอบภายในเวลาที่กำหนด' : e.message };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!res.ok) {
+    let body = '';
+    try { body = await res.text(); } catch {}
+    return { ok: false, error: friendlyEndpointError(res.status, body) };
+  }
+  let payload;
+  try { payload = await res.json(); }
+  catch (e) { return { ok: false, error: 'คำตอบไม่ใช่ JSON: ' + e.message }; }
+
+  const choice = payload && Array.isArray(payload.choices) ? payload.choices[0] : null;
+  const message = choice && typeof choice === 'object' ? choice.message : null;
+  const content = message && typeof message.content === 'string' ? message.content : '';
+  if (!content.trim()) {
+    return { ok: false, error: 'โมเดลตอบว่างเปล่า (อาจเพราะ reasoning ใช้ budget หมด) — เพิ่มข้อเทสเองในใบแทน' };
+  }
+  let parsed;
+  try { parsed = JSON.parse(stripJsonFence(content)); }
+  catch (e) {
+    if (choice && choice.finish_reason === 'length') {
+      return { ok: false, error: `คำตอบถูกตัดกลางคันเพราะ budget ของ ${model} ไม่พอ — ลองเปลี่ยนโมเดลแล้วส่งใหม่` };
+    }
+    return { ok: false, error: 'parse JSON จากคำตอบไม่สำเร็จ: ' + e.message };
+  }
+  const items = cleanChecklistItems(parsed && parsed.items);
+  // ใบเทสที่ไม่มีข้อเลยคือใบเปล่า ซึ่งผู้ใช้เพิ่มข้อเองได้อยู่แล้ว — แต่ต้องบอกให้รู้ว่าโมเดล
+  // ไม่ได้ช่วยอะไร ไม่ใช่ปล่อยให้เข้าใจว่างานนี้ไม่มีอะไรต้องเทส
+  if (!items.length) return { ok: false, error: 'โมเดลไม่ได้เสนอข้อทดสอบกลับมาเลย — สร้างใบเปล่าแล้วเพิ่มข้อเองได้' };
+  return { ok: true, items };
+}
+
 module.exports = {
   PROVIDERS, DEFAULT_MODEL, stripJsonFence, systemPromptFor, draftIssue,
   neutralizeComplianceVerdict, friendlyEndpointError, stripEchoedFields,
+  draftTestChecklist, cleanChecklistItems, CHECKLIST_MAX,
 };

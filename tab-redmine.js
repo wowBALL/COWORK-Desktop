@@ -162,6 +162,7 @@
       row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
       const slot=document.createElement('div');
       if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id, slot));
+      if(issue.status==='Test') row.appendChild(makeSendTestBtn(issue.id, slot));
       row.appendChild(makeNoteBtn(issue.id, slot, noteHit));
       el.appendChild(row);
       el.appendChild(slot);
@@ -202,6 +203,47 @@
       });
     };
     return btn;
+  }
+  // icon button (สถานะ Test เท่านั้น): รับงานเข้า Testing Room — ให้ LLM แตกเป็นเช็กลิสต์
+  // แล้วเขียนใบเทส .md ลงเครื่อง ไม่เขียนอะไรกลับ Redmine เลย
+  // โมเดลมาจากปุ่ม 🪄 บน navrow ผ่านเปลือก ไม่ใช่ค่าที่ฝังไว้ที่นี่
+  function makeSendTestBtn(issueId, slot){
+    const btn=document.createElement('button');
+    btn.className='testBtn'; btn.textContent='🧪';
+    btn.title='เปิดใบเทส → Testing Room';
+    btn.onclick=(e)=>{
+      e.stopPropagation();
+      if(slot.dataset.kind==='qtest'){ closeAllPanels(); return; }
+      closeAllPanels();
+      btn.classList.add('pending'); btn.title='กำลังให้ LLM แตกรายการทดสอบ...';
+      api.createQtest(issueId, shell().llmModel()).then(result=>{
+        btn.classList.remove('pending'); btn.title='เปิดใบเทส → Testing Room';
+        slot.dataset.kind='qtest';
+        renderQtestPanel(slot, issueId, result, btn);
+      });
+    };
+    return btn;
+  }
+  function renderQtestPanel(slot, issueId, result, btn){
+    const panel=document.createElement('div');
+    panel.className='qtestPanel';
+    panel.onclick=e=>e.stopPropagation();
+    if(!result || !result.ok){
+      btn.classList.add('err');
+      setTimeout(()=>btn.classList.remove('err'),2000);
+      panel.innerHTML=`<div class="qt-label"><span>🧪 เปิดใบเทส · #${issueId}</span></div>
+        <div class="qt-err">${esc((result&&result.error)||'ไม่ทราบสาเหตุ')}</div>
+        <div class="qt-actions"><button class="cancel">ปิด</button></div>`;
+    } else {
+      const rows=result.items.map((t,i)=>`<li>${esc(t)}</li>`).join('');
+      panel.innerHTML=`<div class="qt-label"><span>🧪 เปิดใบเทสแล้ว · #${issueId} รอบที่ ${result.round}</span>
+          <span class="local">${esc(result.name)} · ${result.items.length} ข้อ</span></div>
+        <ol class="qt-list">${rows}</ol>
+        <div class="qt-actions"><button class="open">เปิดไฟล์</button><button class="cancel">ปิด</button></div>`;
+      panel.querySelector('.open').onclick=()=>shell().openFile(result.file);
+    }
+    panel.querySelector('.cancel').onclick=()=>clearSlot(slot);
+    slot.appendChild(panel);
   }
   function notePreview(text){ return text.length>60 ? text.slice(0,60)+'…' : text; }
   // icon button: opens/closes the private note panel for this issue in `slot`.

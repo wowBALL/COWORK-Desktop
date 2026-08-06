@@ -8,7 +8,8 @@ const { readQaResults } = require('./qatest');
 const { Grafana, APP_GROUPS } = require('./grafana');
 const { parseGlossary, planWrite } = require('./glossary');
 const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors, canonicalRiskLevel, findFieldIdByName, fieldAvailability } = require('./redmine-issue-form');
-const { draftIssue } = require('./llm');
+const { draftIssue, draftTestChecklist } = require('./llm');
+const { serializeQtest, nextQtestName } = require('./testingroom');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -65,6 +66,10 @@ let meetingsDir = '';
 // (other jobs' QA results) are a confirmed near-term need, not a maybe.
 // See docs/superpowers/specs/2026-07-27-qa-test-tab-design.md
 let qaSources = [];
+// Testing Room — โฟลเดอร์เก็บใบเทส (Qtest) ที่ปุ่ม 🧪 ในแท็บ Redmine เขียนลงไป
+// ค่าเดียวไม่ใช่ array ต่างจาก qaSources เพราะใบเทสเป็นของที่แอปนี้ "เขียน" ไม่ใช่ "อ่านจาก
+// ที่คนอื่นวางไว้" — มีปลายทางเดียวเสมอ
+let qtestDir = '';
 // Port of meeting-notes' session_service — configurable because that side can
 // change UI_PORT in its .env, and a hardcoded 8765 would silently drift apart.
 let runnerPort = 8765;
@@ -146,6 +151,10 @@ function loadAppConfig() {
   workspaceDir = saved.workspaceDir || '';
   meetingsDir = saved.meetingsDir || '';
   qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
+  // ต่างจาก path อื่นตรงที่มีค่าเริ่มต้นทั้งตอน packaged ด้วย — โฟลเดอร์นี้แอปเป็นคนเขียนเอง
+  // ปล่อยว่างไว้แล้วปุ่มจะพังตอนกด ซึ่งแย่กว่าการเขียนลงที่ที่เขียนได้แน่ ๆ แล้วบอกว่าเขียนที่ไหน
+  // (userData = %APPDATA%\cowork-desktop\ — ที่เดียวกับ config.json/notes.json)
+  qtestDir = saved.qtestDir || path.join(app.getPath('userData'), 'testingroom', 'Qtest');
   runnerPort = Number(saved.meetingRunnerPort) || 8765;
   runnerModel = saved.meetingRunnerModel || 'Qwen/Qwen3.6-35B-A3B';
   runnerProfile = saved.meetingRunnerProfile || 'dev';
@@ -163,6 +172,7 @@ function loadAppConfig() {
     if (!llmConfig.apiKey) llmConfig.apiKey = ENV.LLM_API_KEY || '';
     if (!workspaceDir) workspaceDir = ENV.WORKSPACE_DIR || path.join(__dirname, '..', 'A_Workspace');
     if (!meetingsDir) meetingsDir = ENV.MEETINGS_DIR || path.join(__dirname, '..', 'meeting-notes', 'meetings');
+    if (!saved.qtestDir) qtestDir = ENV.QTEST_DIR || path.join(__dirname, 'testingroom', 'Qtest');
     if (!qaSources.length) {
       qaSources = [{
         label: 'Zinga mobile (Appium)',
@@ -672,6 +682,66 @@ ipcMain.handle('get-issue-preview', async (_e, issueId) => {
   } catch (e) {
     return { ok: false, error: e.message };
   }
+});
+// ปุ่ม 🧪 ในแท็บ Redmine — รับงานที่สถานะ Test เข้า Testing Room
+// ดึง issue จริงมาก่อนเสมอ ไม่ใช้ค่าที่ renderer ถืออยู่ เพราะรายการอาจค้างจากรอบ refresh ก่อน
+// แล้วจะได้ใบเทสของงานที่ย้ายสถานะไปแล้ว เขียนไฟล์ในเครื่องอย่างเดียว ไม่แตะ Redmine กลับ
+ipcMain.handle('create-qtest', async (_e, issueId, model) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  let issue;
+  try {
+    const res = await fetch(`${redmineConfig.url}/issues/${issueId}.json`,
+      { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
+    if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
+    ({ issue } = await res.json());
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  if (!issue) return { ok: false, error: `ไม่พบงาน #${issueId} ใน Redmine` };
+  const statusName = (issue.status && issue.status.name) || '';
+  if (statusName !== 'Test') {
+    return { ok: false, error: `งาน #${issueId} ไม่ได้อยู่สถานะ Test แล้ว (ตอนนี้: ${statusName || 'ไม่ทราบ'}) — กด ↻ เพื่อโหลดรายการใหม่` };
+  }
+
+  const drafted = await draftTestChecklist(
+    { subject: issue.subject, description: issue.description, tracker: issue.tracker && issue.tracker.name },
+    { model: model || undefined, apiKey: llmConfig.apiKey, baseUrl: llmConfig.baseUrl },
+  );
+  if (!drafted.ok) return { ok: false, error: drafted.error };
+
+  // วันที่รับเข้าเป็นเวลาเครื่อง ไม่ใช่ UTC — ชื่อไฟล์กับคอลัมน์วันที่ต้องตรงกับวันที่ผู้ใช้เห็น
+  const now = new Date();
+  const receivedAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  try {
+    fs.mkdirSync(qtestDir, { recursive: true });
+    const { name, round } = nextQtestName(qtestDir, receivedAt, issue.id);
+    const sheet = {
+      meta: {
+        qtest: 1,
+        issue: issue.id,
+        round,
+        subject: issue.subject || '',
+        project: (issue.project && issue.project.name) || '',
+        tracker: (issue.tracker && issue.tracker.name) || '',
+        receivedAt,
+        status: 'open',
+        model: model || '',
+      },
+      items: drafted.items.map(title => ({ title, by: 'qa', result: '–', run: '', note: '' })),
+      notes: '',
+    };
+    const file = path.join(qtestDir, name);
+    fs.writeFileSync(file, serializeQtest(sheet), 'utf8');
+    return { ok: true, file, name, round, items: drafted.items };
+  } catch (e) {
+    return { ok: false, error: `เขียนใบเทสไม่สำเร็จ: ${e.message}` };
+  }
+});
+ipcMain.handle('get-qtest-dir', () => qtestDir);
+ipcMain.handle('save-qtest-dir', (_e, dir) => {
+  qtestDir = dir;
+  writeConfigMerge({ qtestDir: dir });
+  return true;
 });
 // renderer asks to close a Resolved issue (Resolved -> Closed), optionally writing a custom field first
 ipcMain.handle('close-issue', async (_e, issueId, customField) => {

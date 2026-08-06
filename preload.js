@@ -31,6 +31,10 @@ contextBridge.exposeInMainWorld('cowork', {
   getQaFailureXml: (runDir) => ipcRenderer.invoke('get-qa-failure-xml', runDir),
   getQaSources: () => ipcRenderer.invoke('get-qa-sources'),
   saveQaSources: (sources) => ipcRenderer.invoke('save-qa-sources', sources),
+  // Testing Room — สร้างใบเทส (Qtest) จากงานที่สถานะ Test เขียนไฟล์ในเครื่องอย่างเดียว
+  createQtest: (issueId, model) => ipcRenderer.invoke('create-qtest', issueId, model),
+  getQtestDir: () => ipcRenderer.invoke('get-qtest-dir'),
+  saveQtestDir: (dir) => ipcRenderer.invoke('save-qtest-dir', dir),
   getIssueFormMeta: (projectId, trackerName) => ipcRenderer.invoke('get-issue-form-meta', projectId, trackerName),
   getProjectMembers: (projectId) => ipcRenderer.invoke('get-project-members', projectId),
   draftIssueText: (rawNotes, opts) => ipcRenderer.invoke('draft-issue-text', rawNotes, opts),

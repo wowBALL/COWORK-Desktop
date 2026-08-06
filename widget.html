@@ -142,7 +142,9 @@
   /* :not(.hidden) จำเป็น — .navrow .llmpick มี specificity สูงกว่า .hidden ถ้าตั้ง display ตรง ๆ
      คลาส .hidden ที่ showTab ใส่ให้จะเอาไม่อยู่ ปุ่มจะค้างอยู่ทุกแท็บ */
   .navrow .llmpick{position:relative}
-  .navrow .llmpick:not(.hidden){display:flex}
+  .navrow .llmpick:not(.hidden){display:flex;align-items:center;gap:6px}
+  /* ชื่อโมเดลที่ใช้อยู่ — เอาแค่ชื่อ ไม่เอาวงเล็บอธิบาย trade-off (อันนั้นอยู่ในเมนูกับ title) */
+  .navrow .llmname{font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--dim);white-space:nowrap}
   /* ต้องเป็นลูกตรง (>) ไม่ใช่ descendant — เมนูอยู่ข้างในตัวห่อเดียวกัน ปุ่มในเมนูจะโดนกฎนี้ครอบ
      จนกลายเป็นสี่เหลี่ยม 26px และ specificity สูงกว่า .llmmenu button ด้วย */
   .navrow .llmpick>button{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);
@@ -274,6 +276,7 @@
       <!-- โมเดล LLM ของกลาง — ใช้ทั้งปุ่มร่าง issue และตอนส่งงานเข้า Testing Room จึงอยู่บนแถบ
            ไม่ใช่ในฟอร์มใดฟอร์มหนึ่ง โผล่เฉพาะแท็บ Redmine เหมือนปุ่ม ➕ -->
       <div id="llmPick" class="llmpick">
+        <span id="llmName" class="llmname"></span>
         <button id="llmBtn" type="button">🪄</button>
         <div id="llmMenu" class="llmmenu hidden"></div>
       </div>
@@ -695,7 +698,7 @@
         wsRefresh=document.getElementById('wsRefresh'), qaRefresh=document.getElementById('qaRefresh'),
         qaNewIssueBtn=document.getElementById('qaNewIssueBtn'),
         llmPick=document.getElementById('llmPick'), llmBtn=document.getElementById('llmBtn'),
-        llmMenu=document.getElementById('llmMenu'),
+        llmMenu=document.getElementById('llmMenu'), llmName=document.getElementById('llmName'),
         mtRefresh=document.getElementById('mtRefresh'), gfRefresh=document.getElementById('gfRefresh');
   let lastTab='rm';
   function showTab(which){
@@ -734,10 +737,11 @@
   // (ต่อไป) การส่งงานเข้า Testing Room — เก็บใน localStorage เหมือนธีม เพราะต้องอ่านได้แบบ
   // synchronous ตอนวาดปุ่มครั้งแรก ถ้าไปอ่านผ่าน IPC ปุ่มจะขึ้นชื่อโมเดลผิดแวบหนึ่งก่อน
   // id ต้องตรงกับคีย์ใน PROVIDERS ของ llm.js เป๊ะตัวอักษร ไม่งั้น draftIssue โยน error
+  // short = ชื่อที่โชว์บนแถบ (เอาแค่ชื่อ) · label = ชื่อในเมนูที่บอก trade-off ด้วย
   const LLM_MODELS=[
-    {id:'Qwen/Qwen3.6-35B-A3B', label:'Qwen (เร็ว)'},
-    {id:'GLM-5.2', label:'GLM (ช้ากว่า)'},
-    {id:'litellm/gemma4', label:'gemma4 (ช้ากว่า เขียนดีกว่า)'}
+    {id:'Qwen/Qwen3.6-35B-A3B', short:'Qwen',   label:'Qwen (เร็ว)'},
+    {id:'GLM-5.2',              short:'GLM',    label:'GLM (ช้ากว่า)'},
+    {id:'litellm/gemma4',       short:'gemma4', label:'gemma4 (ช้ากว่า เขียนดีกว่า)'}
   ];
   let llmModel=LLM_MODELS[0].id;
   try{ llmModel=localStorage.getItem('cowork.llmModel')||llmModel; }catch{}
@@ -748,7 +752,9 @@
   function setLlmModel(id){
     llmModel=id;
     try{ localStorage.setItem('cowork.llmModel',id); }catch{}
-    llmBtn.title='โมเดล LLM: '+(LLM_MODELS.find(m=>m.id===id)||LLM_MODELS[0]).label;
+    const picked=LLM_MODELS.find(m=>m.id===id)||LLM_MODELS[0];
+    llmName.textContent=picked.short;
+    llmBtn.title='โมเดล LLM: '+picked.label;
     llmMenu.innerHTML='';
     LLM_MODELS.forEach(m=>{
       const b=document.createElement('button');

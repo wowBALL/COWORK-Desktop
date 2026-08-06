@@ -122,3 +122,105 @@ test('qiIsImageDataUrlText: ข้อความปกติหรือ data U
   assert.ok(!qiIsImageDataUrlText(null));
   assert.ok(!qiIsImageDataUrlText(undefined));
 });
+
+// ===== ย่อรูปให้พอดีเพดานของ endpoint (วัด 2026-08-06) =====
+// endpoint คิดโทเคนรูปเป็น round(w/32)×round(h/32) และรวมทั้งคำขอต้องน้อยกว่า 4096
+// เกินแล้วได้ HTTP 400 "Failed to apply Qwen3VLProcessor" ทันที ไม่ใช่ผลลัพธ์แย่ลงเฉย ๆ
+const { qiImageTokens, qiFitPlan, QI_IMAGE_TOKEN_LIMIT } = require('../tab-qatest.js');
+
+const planTokens = plan => plan.reduce((a, s) => a + qiImageTokens(s.w, s.h), 0);
+
+test('qiImageTokens: ตรงกับตัวเลขที่ยิงวัดจากปลายทางจริง ไม่ใช่สูตรที่เดาเอง', () => {
+  // ค่าอ้างอิง = prompt_tokens ที่วัดได้ ลบโทเคนข้อความ (~22)
+  assert.strictEqual(qiImageTokens(1280, 800), 1000);   // วัดได้ 1022
+  assert.strictEqual(qiImageTokens(1600, 1600), 2500);  // วัดได้ 2522
+  assert.strictEqual(qiImageTokens(2398, 1096), 2550);  // วัดได้ 2572
+  assert.strictEqual(qiImageTokens(4000, 600), 2375);   // วัดได้ 2397
+  assert.strictEqual(qiImageTokens(2048, 2048), 4096);  // เส้นที่พังพอดี
+});
+
+test('qiFitPlan: รวมแล้วยังไม่เกินงบ ต้องคืนขนาดเดิมเป๊ะ ไม่ย่อฟรี ๆ', () => {
+  const sizes = [{ w: 1280, h: 800 }, { w: 1280, h: 800 }];
+  assert.deepStrictEqual(qiFitPlan(sizes), sizes);
+});
+
+test('qiFitPlan: เคสจริงที่ผู้ใช้เจอ (3 รูปรวม 7,154 โทเคน) ต้องย่อจนต่ำกว่าเพดาน', () => {
+  const plan = qiFitPlan([{ w: 2398, h: 1096 }, { w: 2530, h: 828 }, { w: 2400, h: 1100 }]);
+  assert.ok(planTokens(plan) < QI_IMAGE_TOKEN_LIMIT, `ได้ ${planTokens(plan)} โทเคน`);
+});
+
+test('qiFitPlan: รูปเดียวใหญ่มากก็ต้องย่อ ไม่ใช่ปล่อยผ่านเพราะมีใบเดียว', () => {
+  const plan = qiFitPlan([{ w: 4000, h: 3000 }]);
+  assert.ok(planTokens(plan) < QI_IMAGE_TOKEN_LIMIT, `ได้ ${planTokens(plan)} โทเคน`);
+});
+
+test('qiFitPlan: รูปเยอะ ๆ ก็ยังต้องพอดีงบ', () => {
+  const many = Array.from({ length: 8 }, () => ({ w: 1920, h: 1080 }));
+  assert.ok(planTokens(qiFitPlan(many)) < QI_IMAGE_TOKEN_LIMIT);
+});
+
+test('qiFitPlan: คงสัดส่วนภาพเดิม ไม่บิดจนตัวหนังสือในภาพเพี้ยน', () => {
+  const plan = qiFitPlan([{ w: 2400, h: 1200 }, { w: 1000, h: 2000 }]);
+  assert.ok(Math.abs(plan[0].w / plan[0].h - 2) < 0.02, `ได้ ${plan[0].w}x${plan[0].h}`);
+  assert.ok(Math.abs(plan[1].w / plan[1].h - 0.5) < 0.02, `ได้ ${plan[1].w}x${plan[1].h}`);
+});
+
+test('qiFitPlan: ย่อด้วยอัตราเดียวกันทุกใบ รูปที่ใหญ่กว่าต้องยังใหญ่กว่า', () => {
+  const plan = qiFitPlan([{ w: 3000, h: 2000 }, { w: 1500, h: 1000 }]);
+  assert.ok(plan[0].w > plan[1].w, 'ใบใหญ่ต้องไม่ถูกย่อจนเล็กกว่าใบเล็ก');
+  assert.ok(Math.abs(plan[0].w / plan[1].w - 2) < 0.05, 'อัตราส่วนระหว่างสองใบต้องคงเดิม');
+});
+
+test('qiFitPlan: ไม่ขยายรูปเล็กให้ใหญ่ขึ้นเพื่อใช้งบให้หมด — ขยายแล้วเบลอเปล่า ๆ', () => {
+  assert.deepStrictEqual(qiFitPlan([{ w: 320, h: 200 }]), [{ w: 320, h: 200 }]);
+});
+
+test('qiFitPlan: ขนาดที่คืนต้องเป็นจำนวนเต็มบวก ไม่งั้น canvas โยน error', () => {
+  for (const plan of [qiFitPlan([{ w: 4000, h: 3000 }]), qiFitPlan(Array.from({ length: 30 }, () => ({ w: 2400, h: 1200 })))]) {
+    for (const s of plan) {
+      assert.ok(Number.isInteger(s.w) && s.w > 0, `w=${s.w}`);
+      assert.ok(Number.isInteger(s.h) && s.h > 0, `h=${s.h}`);
+    }
+  }
+});
+
+test('qiFitPlan: ไม่มีรูปก็ต้องไม่พัง', () => {
+  assert.deepStrictEqual(qiFitPlan([]), []);
+});
+
+// ย่อแรงเกินไปแล้ว OCR ไม่ได้ "อ่านไม่ออก" เฉย ๆ แต่ "แต่งค่าที่อ่านไม่ออกขึ้นมาแทน" ซึ่งดูเนียน
+// จนคนตรวจไม่ทัน จึงต้องเตือน (วัด 2026-08-06 ดูตัวเลขที่ qiFitNotice)
+const { qiFitNotice, QI_SAFE_FIT_SCALE } = require('../tab-qatest.js');
+
+test('qiFitNotice: ไม่ได้ย่อเลย ต้องไม่มีคำเตือนมากวน', () => {
+  const sizes = [{ w: 1280, h: 800 }];
+  assert.strictEqual(qiFitNotice(sizes, qiFitPlan(sizes)), '');
+});
+
+test('qiFitNotice: ย่อนิดเดียว (เคสจริง 3 รูป ~0.74x) ยังอ่านออก ต้องไม่เตือน', () => {
+  const sizes = [{ w: 2398, h: 1096 }, { w: 2530, h: 828 }, { w: 2400, h: 1100 }];
+  const plan = qiFitPlan(sizes);
+  assert.ok(plan[0].w < 2398, 'เคสนี้ต้องถูกย่อจริง ไม่งั้นเทสไม่ได้พิสูจน์อะไร');
+  assert.strictEqual(qiFitNotice(sizes, plan), '');
+});
+
+test('qiFitNotice: ย่อจนต่ำกว่าเส้นที่วัดไว้ ต้องเตือนพร้อมบอกว่าทำอะไรต่อ', () => {
+  const sizes = Array.from({ length: 8 }, () => ({ w: 2398, h: 1096 }));
+  const plan = qiFitPlan(sizes);
+  const notice = qiFitNotice(sizes, plan);
+  assert.ok(notice, 'ย่อ ~0.44x ต้องเตือน');
+  assert.ok(/ครอป|ลดจำนวนรูป/.test(notice), 'ต้องบอกทางออก ไม่ใช่แจ้งว่ามีปัญหาเฉย ๆ');
+});
+
+test('qiFitNotice: เส้นแบ่งอยู่ที่อัตราที่วัดมา ไม่ใช่ตัวเลขที่ตั้งลอย ๆ', () => {
+  const one = [{ w: 2000, h: 1000 }];
+  const justAbove = [{ w: 2000, h: 1000 }].map(s => s);
+  // สร้างแผนปลอมที่อัตราคร่อมเส้นพอดี เพื่อพิสูจน์ว่าเทียบกับ QI_SAFE_FIT_SCALE จริง
+  const at = r => [{ w: Math.round(2000 * r), h: Math.round(1000 * r) }];
+  assert.strictEqual(qiFitNotice(one, at(QI_SAFE_FIT_SCALE)), '', 'ที่เส้นพอดีต้องยังไม่เตือน');
+  assert.ok(qiFitNotice(justAbove, at(QI_SAFE_FIT_SCALE - 0.05)), 'ต่ำกว่าเส้นต้องเตือน');
+});
+
+test('qiFitNotice: ไม่มีรูปต้องไม่พังและไม่เตือน', () => {
+  assert.strictEqual(qiFitNotice([], []), '');
+});

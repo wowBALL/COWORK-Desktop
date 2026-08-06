@@ -258,13 +258,37 @@ function systemPromptFor(tracker, language, images) {
 }
 
 // ข้อความมาก่อนรูปเสมอ และรูปเรียงตามลำดับเดียวกับที่บอกไว้ในพรอมป์ ("ภาพที่ 1 = ชื่อไฟล์")
-// ไม่ย่อรูป — วัดแล้วสกรีนช็อต 1280×800 กินแค่ ~1,064 prompt tokens และย่อแล้วตัวหนังสือเล็ก
-// ในภาพจะเบลอจนโมเดลเดาคำ ซึ่งแย่กว่าไม่เห็นรูปเลย
+//
+// ที่นี่ไม่ย่อรูป เพราะย่อไปแล้วตั้งแต่ renderer (qiFitPlan ใน tab-qatest.js) ซึ่งเป็นที่เดียว
+// ที่มี canvas ให้ใช้ — เดิมไม่ย่อเลยเพราะวัดว่า 1280×800 กินแค่ ~1,064 tokens และย่อแล้ว
+// ตัวหนังสือในภาพเบลอจนโมเดลเดาคำ แต่ 2026-08-06 เจอว่าสกรีนช็อตจอกว้าง (2398×1096) สามใบ
+// ชนเพดาน 4096 โทเคนรูปของ endpoint แล้วถูกปฏิเสธทั้งคำขอ — ย่อแล้วเบลอบ้าง ยังดีกว่าร่างไม่ได้เลย
+// (ดู friendlyEndpointError สำหรับตัวเลขที่วัดมา)
 function userContentWithImages(rawNotes, images) {
   return [
     { type: 'text', text: String(rawNotes || '') },
     ...images.map(im => ({ type: 'image_url', image_url: { url: im.dataUrl } })),
   ];
+}
+
+// endpoint คืน error ดิบของ vLLM ที่ยาวและอ่านไม่รู้เรื่อง — ของจริงที่ผู้ใช้เห็นคือ
+// "Failed to apply Qwen3VLProcessor on data={'text': '<|vision_start|><|image_pad|>..." ซึ่ง
+// ยาวเกิน 400 ตัวจนสาเหตุจริงถูกตัดหายไป เหลือแต่ token ดิบของโมเดลที่ไม่ได้บอกอะไรเลย
+//
+// สาเหตุที่แท้จริง (ยิงวัด 2026-08-06): โทเคนรูป "รวมทั้งคำขอ" ต้องน้อยกว่า 4096
+// โทเคนต่อรูป = round(w/32) × round(h/32) — 3,969 ผ่าน 4,096 พัง ชัดขนาดนั้น
+// ไม่เกี่ยวกับจำนวนรูป (4 ใบ 1280×800 = 4,000 ผ่าน) ไม่เกี่ยวกับขนาดไฟล์ (1.6MB ผ่าน 0.6MB พัง)
+// และข้อความไม่นับในงบนี้ (อัดจน 7,631 prompt tokens ยังผ่าน)
+//
+// ปกติ renderer ย่อรูปให้พอดีงบก่อนส่งอยู่แล้ว (qiFitPlan ใน tab-qatest.js) นี่คือตาข่ายรับ
+// เผื่อกรณีที่ย่อไม่ทัน เช่น endpoint เปลี่ยนเพดาน หรือมีทางเรียกอื่นที่ไม่ผ่าน renderer
+function friendlyEndpointError(status, body) {
+  const text = String(body || '');
+  if (/Qwen3VLProcessor|image_pad|vision_start/i.test(text)) {
+    return 'endpoint ไม่รับรูปชุดนี้ — รูปที่แนบรวมกันใหญ่เกินเพดานของโมเดล '
+      + 'ลดจำนวนรูปหรือครอปให้เล็กลงแล้วกดร่างใหม่';
+  }
+  return text.slice(0, 400) || `HTTP ${status}`;
 }
 
 async function draftIssue(rawNotes, opts = {}) {
@@ -328,9 +352,9 @@ async function draftIssue(rawNotes, opts = {}) {
   }
 
   if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try { detail = (await res.text()).slice(0, 400) || detail; } catch {}
-    return { ok: false, error: detail };
+    let body = '';
+    try { body = await res.text(); } catch {}
+    return { ok: false, error: friendlyEndpointError(res.status, body) };
   }
 
   let payload;
@@ -378,5 +402,5 @@ async function draftIssue(rawNotes, opts = {}) {
 
 module.exports = {
   PROVIDERS, DEFAULT_MODEL, stripJsonFence, systemPromptFor, draftIssue,
-  neutralizeComplianceVerdict,
+  neutralizeComplianceVerdict, friendlyEndpointError,
 };

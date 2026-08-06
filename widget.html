@@ -145,6 +145,9 @@
   /* Settings view */
   .set-status{font-size:11px;line-height:1.5;margin:-4px 0 14px;min-height:15px}
   .set-status.ok{color:var(--green)}
+  /* กล่องเดียวที่ข้อความอาจมีสองบรรทัด (ผลร่าง + คำเตือนเรื่องย่อรูป) — ที่อื่นบรรทัดเดียวเสมอ
+     จึงตั้งเฉพาะที่นี่ ไม่ไปแตะ .set-status ทั้งชุด */
+  #qiDraftStatus{white-space:pre-line}
   .set-status.err{color:var(--rose)}
   .set-actions{display:flex;gap:8px}
   .set-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;

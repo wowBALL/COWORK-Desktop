@@ -122,6 +122,99 @@
     });
   }
 
+  // ===== ย่อรูปให้พอดีเพดานของ endpoint =====
+  // ยิงวัด 2026-08-06: endpoint คิดโทเคนรูปเป็น round(w/32)×round(h/32) และ "รวมทั้งคำขอ"
+  // ต้องน้อยกว่า 4096 ไม่งั้นได้ HTTP 400 "Failed to apply Qwen3VLProcessor" ใน 0.2 วินาที
+  // — ไม่ใช่คำตอบแย่ลง แต่ร่างไม่ได้เลย เส้นแบ่งคม: 3,969 ผ่าน 100% / 4,096 พัง 100%
+  //
+  // ที่ไม่เกี่ยว (ตัดออกด้วยการวัด ไม่ใช่การเดา): จำนวนรูป (4 ใบ 1280×800 = 4,000 ผ่าน),
+  // ขนาดไฟล์ (1.6MB ผ่าน / 0.6MB พัง), สัดส่วนภาพ (4000×600 กับ 600×4000 ผ่านทั้งคู่),
+  // ความยาวพรอมป์ (อัดจน 7,631 prompt tokens ยังผ่าน — ข้อความไม่นับในงบนี้)
+  const QI_IMAGE_TOKEN_LIMIT = 4096;
+  // เผื่อขอบไว้เพราะขนาดจริงหลัง canvas ปัดเป็นจำนวนเต็ม อาจดันโทเคนขึ้นจากที่คำนวณได้เล็กน้อย
+  const QI_IMAGE_TOKEN_BUDGET = 3900;
+
+  function qiImageTokens(w, h) {
+    return Math.max(1, Math.round(w / 32)) * Math.max(1, Math.round(h / 32));
+  }
+
+  // ย่อทุกใบด้วยอัตราเดียวกัน ไม่ใช่แบ่งงบเท่า ๆ กันต่อใบ — ผู้ใช้แนบสกรีนช็อตเต็มจอคู่กับภาพ
+  // ครอปเล็ก ๆ เป็นเรื่องปกติ ถ้าแบ่งเท่ากันภาพครอปจะถูกขยาย/ภาพเต็มจอถูกบีบจนเสียน้ำหนักที่ตั้งใจ
+  function qiFitPlan(sizes, budget = QI_IMAGE_TOKEN_BUDGET) {
+    const list = (sizes || []).map(s => ({
+      w: Math.max(1, Math.round(s.w)), h: Math.max(1, Math.round(s.h)),
+    }));
+    const totalOf = arr => arr.reduce((a, s) => a + qiImageTokens(s.w, s.h), 0);
+    if (!list.length || totalOf(list) <= budget) return list;
+
+    // ย่อ 1 เท่าของด้าน = ย่อ 1 เท่ากำลังสองของโทเคน จึงเริ่มที่รากที่สองของอัตราส่วนงบ
+    const at = s => list.map(x => ({
+      w: Math.max(32, Math.round(x.w * s)), h: Math.max(32, Math.round(x.h * s)),
+    }));
+    let scale = Math.min(1, Math.sqrt(budget / totalOf(list)));
+    let out = at(scale);
+    // ค่าที่คำนวณได้เป็นค่าประมาณเพราะการปัดเศษ ไล่ลงทีละนิดจนพอดีจริง ๆ ดีกว่าเชื่อสูตรรอบเดียว
+    for (let i = 0; i < 200 && totalOf(out) > budget; i++) {
+      scale *= 0.98;
+      out = at(scale);
+    }
+    return out;
+  }
+
+  // ต่ำกว่านี้ตัวหนังสือขนาด 13px ในสกรีนช็อตเริ่มอ่านไม่ออก — และปัญหาไม่ใช่ "อ่านไม่ออกแล้วเว้นไว้"
+  // แต่เป็น "แต่งค่าที่อ่านไม่ออกขึ้นมาแทน" ซึ่งอันตรายกว่ามากเพราะดูเนียนจนไม่รู้ว่าผิด
+  //
+  // ยิงถอดความจริงกับสกรีนช็อตจำลอง 2398×1096 ที่มีตัวหนังสือไทย+อังกฤษ (2026-08-06):
+  //   1.00× และ 0.71× -> ถูกครบ 8/8 ตรงกันทุกตัวอักษร
+  //   0.65×           -> ถูกครบ 8/8
+  //   0.55×           -> เหลือ 5/8
+  //   0.45×           -> เหลือ 4/8 และเปลี่ยน customer_id 88213 เป็น 80213, ปี 2026 เป็น 2025,
+  //                      แถมแต่งบรรทัด payment_method ที่ไม่มีในภาพขึ้นมาเอง
+  const QI_SAFE_FIT_SCALE = 0.6;
+
+  function qiFitNotice(sizes, plan) {
+    if (!sizes || !sizes.length) return '';
+    const scale = Math.min(...sizes.map((s, i) => plan[i].w / s.w));
+    if (scale >= QI_SAFE_FIT_SCALE) return '';
+    return `⚠️ ย่อรูปเหลือ ${Math.round(scale * 100)}% เพื่อให้พอดีเพดานของโมเดล — `
+      + 'ตัวหนังสือเล็กในภาพอาจอ่านไม่ออกจนโมเดลเดาค่าผิดแบบดูเนียน '
+      + 'ถ้าร่างออกมารายละเอียดไม่ตรง ให้ลดจำนวนรูปหรือครอปเฉพาะส่วนที่สำคัญแล้วร่างใหม่';
+  }
+
+  function qiLoadImage(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('อ่านรูปไม่ได้'));
+      img.src = dataUrl;
+    });
+  }
+
+  // ย่อตอนกดร่าง ไม่ใช่ตอนแนบ — งบขึ้นกับ "ทั้งชุด" ถ้าย่อตอนแนบแล้วผู้ใช้แนบใบที่สี่เพิ่ม
+  // ใบที่ย่อไว้ตามงบของสามใบจะกลายเป็นใหญ่เกินทันที และย่อซ้ำจากของที่ย่อแล้วยิ่งเบลอ
+  function qiFitImagesToBudget(images) {
+    if (!images.length) return Promise.resolve({ images: [], notice: '' });
+    return Promise.all(images.map(im => qiLoadImage(im.dataUrl))).then(loaded => {
+      const sizes = loaded.map(img => ({ w: img.naturalWidth, h: img.naturalHeight }));
+      const plan = qiFitPlan(sizes);
+      const fitted = images.map((im, i) => {
+        const img = loaded[i];
+        const t = plan[i];
+        if (t.w === img.naturalWidth && t.h === img.naturalHeight) return im;
+        const canvas = document.createElement('canvas');
+        canvas.width = t.w;
+        canvas.height = t.h;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, t.w, t.h);
+        // png ไม่ใช่ jpeg เพราะภาพเป็นสกรีนช็อต — jpeg ทำให้ขอบตัวหนังสือแตกซึ่งทำร้าย OCR ตรง ๆ
+        return { filename: im.filename, dataUrl: canvas.toDataURL('image/png') };
+      });
+      return { images: fitted, notice: qiFitNotice(sizes, plan) };
+    });
+  }
+
   function qiPastedImages(e) {
     return [...((e.clipboardData && e.clipboardData.items) || [])]
       .filter(it => it.kind === 'file' && /^image\//i.test(it.type))
@@ -247,11 +340,15 @@
     status.innerHTML = 'กำลังร่าง... <button type="button" id="qiSkipDraft">ข้ามไปกรอกเองเลย</button>';
     let skipped = false;
     document.getElementById('qiSkipDraft').onclick = () => { skipped = true; btn.disabled = false; status.textContent = ''; };
-    api.draftIssueText(rawNotes, {
-      model: document.getElementById('qiModel').value,
-      language: document.getElementById('qiLanguage').value,
-      tracker: document.getElementById('qiTracker').value,
-      images,
+    let fitNotice = '';
+    qiFitImagesToBudget(images).then(fit => {
+      fitNotice = fit.notice;
+      return api.draftIssueText(rawNotes, {
+        model: document.getElementById('qiModel').value,
+        language: document.getElementById('qiLanguage').value,
+        tracker: document.getElementById('qiTracker').value,
+        images: fit.images,
+      });
     }).then(result => {
       btn.disabled = false;
       if (skipped) return;
@@ -260,10 +357,12 @@
         status.textContent = (result && result.error) || 'ร่างไม่สำเร็จ — กรอกมือแทน';
         return;
       }
-      status.className = 'set-status ok';
-      status.textContent = images.length
+      // คำเตือนเรื่องย่อรูปไม่ทำให้ร่างล้มเหลว จึงยังเป็นสถานะ ok — แต่ต้องเห็น เพราะมันบอกว่า
+      // รายละเอียดในร่างอาจถูกโมเดลเดาขึ้นมา ซึ่งเป็นจุดที่คนตรวจต้องเพ่งเป็นพิเศษ
+      status.className = fitNotice ? 'set-status' : 'set-status ok';
+      status.textContent = (images.length
         ? `ร่างสำเร็จ (ดู ${images.length} รูปประกอบ) — ตรวจแล้วแก้ต่อได้ก่อนส่ง`
-        : 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง';
+        : 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง') + (fitNotice ? '\n' + fitNotice : '');
       const d = result.draft;
       document.getElementById('qiSubject').value = d.subject || '';
       document.getElementById('qiDescription').value = d.description || '';
@@ -808,10 +907,14 @@
   global.COWORK.tabs.qatest = { key:'qa', settingsCard:'cardQa', mount, mountSettings, loadSettings, onData, onTheme };
 
   // เปิดทาง node --test แบบเดียวกับ tab-grafana.js / tab-meeting.js / tab-redmine.js
-  // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM
+  // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM — ยกเว้น qiFitImagesToBudget ที่ต้องมี Image/canvas
+  // จริงจึงเรียกจาก node --test ไม่ได้ แต่ export ไว้ให้ smoke test ใน Electron เรียกโค้ดตัวจริง
+  // ได้ แทนที่จะเขียนโค้ดเลียนแบบขึ้นมาทดสอบเอง (ซึ่งพิสูจน์แค่ว่าของเลียนแบบทำงาน)
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
       buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName, qiIsImageDataUrlText,
+      qiImageTokens, qiFitPlan, QI_IMAGE_TOKEN_LIMIT, qiFitImagesToBudget,
+      qiFitNotice, QI_SAFE_FIT_SCALE,
     };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

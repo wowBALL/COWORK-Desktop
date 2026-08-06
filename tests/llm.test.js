@@ -516,3 +516,43 @@ test('systemPromptFor: ลิสต์ระบบการเงินมีค
     assert.ok(p.toLowerCase().includes(w), `ลิสต์ต้องมีคำว่า ${w}`);
   }
 });
+
+// ===== แปล error ดิบของ endpoint ให้ผู้ใช้ทำต่อได้ (วัด 2026-08-06) =====
+const { friendlyEndpointError } = require('../llm.js');
+
+const VLLM_IMAGE_ERROR = JSON.stringify({
+  error: {
+    message: 'litellm.BadRequestError: Hosted_vllmException - {"error":{"message":"Failed to apply '
+      + "Qwen3VLProcessor on data={'text': '<|vision_start|><|image_pad|><|vision_end|>', 'images': "
+      + '[<PIL.Image.Image image mode=RGB size=2398x1096>]} with kwargs={\'return_tensors\': \'pt\'}"}}',
+  },
+});
+
+test('friendlyEndpointError: error เรื่องรูปต้องบอกว่าให้ทำอะไรต่อ ไม่ใช่พ่น <|image_pad|> ใส่หน้า', () => {
+  const msg = friendlyEndpointError(400, VLLM_IMAGE_ERROR);
+  assert.ok(!msg.includes('image_pad'), 'ต้องไม่มี token ดิบของโมเดลหลุดมาให้ผู้ใช้อ่าน');
+  assert.ok(!msg.includes('Qwen3VLProcessor'), 'ต้องไม่มีชื่อ class ภายในของ endpoint');
+  assert.ok(/รูป/.test(msg), 'ต้องบอกว่าปัญหาอยู่ที่รูป');
+});
+
+test('friendlyEndpointError: error อื่นต้องส่งข้อความเดิมต่อ ไม่กลืนจนดีบักไม่ได้', () => {
+  assert.ok(friendlyEndpointError(401, '{"error":"invalid api key"}').includes('invalid api key'));
+});
+
+test('friendlyEndpointError: body ว่างต้องเหลือรหัส HTTP ไว้ ไม่ใช่ข้อความว่าง', () => {
+  assert.strictEqual(friendlyEndpointError(502, ''), 'HTTP 502');
+});
+
+test('friendlyEndpointError: body ยาวมากยังถูกตัดเหมือนเดิม ไม่ท่วมกล่องสถานะ', () => {
+  assert.ok(friendlyEndpointError(500, 'x'.repeat(5000)).length <= 400);
+});
+
+test('draftIssue: endpoint ปฏิเสธเพราะรูป ต้องคืนข้อความที่อ่านรู้เรื่อง', async () => {
+  const fetchImpl = async () => ({ ok: false, status: 400, text: async () => VLLM_IMAGE_ERROR });
+  const r = await draftIssue('โน้ต', {
+    apiKey: 'k', baseUrl: 'https://x', images: IMG, fetchImpl,
+  });
+  assert.strictEqual(r.ok, false);
+  assert.ok(!r.error.includes('image_pad'), r.error);
+  assert.ok(/รูป/.test(r.error), r.error);
+});

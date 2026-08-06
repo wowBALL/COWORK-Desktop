@@ -234,6 +234,19 @@
     return /^\s*data:image\/[a-z0-9.+-]+;base64,/i.test(text || '');
   }
 
+  // ทีมกรอกค่าเดิมทุกใบ เติมให้เลยดีกว่าให้พิมพ์ซ้ำ — ลบทิ้งหรือแก้เป็นค่าอื่นได้ตามปกติ
+  // และ buildIssuePayload ตัด custom field ที่ค่าว่างออกอยู่แล้ว การลบทิ้งจึงได้ผลจริง
+  const QI_CUSTOM_FIELD_DEFAULTS = {
+    'Document Type': 'ASPIRE-FR-18 ISSUE TRACKING',
+  };
+
+  // Risk Level มี dropdown ตายตัวใน markup อยู่แล้ว ถ้าวาดจากที่นี่ด้วยจะได้สองช่อง
+  function qiCustomFieldsHtml(fields, defaults = QI_CUSTOM_FIELD_DEFAULTS) {
+    return (fields || []).filter(f => f.name !== 'Risk Level').map(f => `
+        <div class="row-label">${esc(f.name)}</div>
+        <textarea class="search qi-cf" data-field-id="${f.id}" rows="3">${esc(defaults[f.name] || '')}</textarea>`).join('');
+  }
+
   function qiDraftGapsHtml(list) {
     if (!list || !list.length) return '';
     return '<b>ข้อมูลที่ยังขาด — เติมก่อนส่งจะลดรอบที่ dev ถามกลับ</b><ul>'
@@ -299,10 +312,7 @@
       const hideRisk = res.riskLevelAvailable === false;
       document.getElementById('qiRiskLevelRow').classList.toggle('hidden', hideRisk);
       if (hideRisk) document.getElementById('qiRiskLevel').value = '';
-      const extra = res.customFields.filter(f => f.name !== 'Risk Level');
-      document.getElementById('qiCustomFields').innerHTML = extra.map(f => `
-        <div class="row-label">${esc(f.name)}</div>
-        <textarea class="search qi-cf" data-field-id="${f.id}" rows="3"></textarea>`).join('');
+      document.getElementById('qiCustomFields').innerHTML = qiCustomFieldsHtml(res.customFields);
     }).catch(e => {
       errEl.style.display = 'block';
       errEl.textContent = 'โหลดข้อมูลฟอร์มไม่สำเร็จ: ' + e.message;
@@ -917,7 +927,7 @@
     module.exports = {
       buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName, qiIsImageDataUrlText,
       qiImageTokens, qiFitPlan, QI_IMAGE_TOKEN_LIMIT, qiFitImagesToBudget,
-      qiFitNotice, QI_SAFE_FIT_SCALE,
+      qiFitNotice, QI_SAFE_FIT_SCALE, qiCustomFieldsHtml, QI_CUSTOM_FIELD_DEFAULTS,
     };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

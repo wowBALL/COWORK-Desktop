@@ -224,3 +224,43 @@ test('qiFitNotice: เส้นแบ่งอยู่ที่อัตรา�
 test('qiFitNotice: ไม่มีรูปต้องไม่พังและไม่เตือน', () => {
   assert.strictEqual(qiFitNotice([], []), '');
 });
+
+// ===== ค่าเริ่มต้นของ custom field (2026-08-06) =====
+// ทีมกรอก Document Type เป็นค่าเดิมทุกใบ ให้เติมให้เลย แต่ต้องลบหรือแก้ได้
+const { qiCustomFieldsHtml, QI_CUSTOM_FIELD_DEFAULTS } = require('../tab-qatest.js');
+
+test('qiCustomFieldsHtml: Document Type ถูกเติมค่าเริ่มต้นมาให้เลย', () => {
+  const html = qiCustomFieldsHtml([{ id: 12, name: 'Document Type' }]);
+  assert.ok(html.includes('ASPIRE-FR-18 ISSUE TRACKING'), html);
+  assert.ok(html.includes('data-field-id="12"'));
+});
+
+test('qiCustomFieldsHtml: field อื่นยังว่างเหมือนเดิม ไม่ได้เติมมั่ว', () => {
+  const html = qiCustomFieldsHtml([{ id: 9, name: 'Rollback Plan' }]);
+  assert.ok(/<textarea[^>]*><\/textarea>/.test(html), html);
+});
+
+test('qiCustomFieldsHtml: Risk Level ไม่ถูกวาดซ้ำ เพราะมี dropdown ตายตัวอยู่แล้ว', () => {
+  const html = qiCustomFieldsHtml([{ id: 8, name: 'Risk Level' }, { id: 9, name: 'Impact Analysis' }]);
+  assert.ok(!html.includes('Risk Level'), html);
+  assert.ok(html.includes('Impact Analysis'));
+});
+
+test('qiCustomFieldsHtml: ชื่อ field ที่มี HTML ต้องถูก escape', () => {
+  const html = qiCustomFieldsHtml([{ id: 1, name: '<img src=x onerror=alert(1)>' }]);
+  assert.ok(!html.includes('<img src=x'), html);
+});
+
+test('qiCustomFieldsHtml: ค่าเริ่มต้นต้องถูก escape ด้วย ไม่ใช่ยัดดิบลง textarea', () => {
+  const html = qiCustomFieldsHtml([{ id: 1, name: 'X' }], { X: '</textarea><script>x</script>' });
+  assert.ok(!html.includes('</textarea><script>'), html);
+});
+
+test('qiCustomFieldsHtml: ไม่มี field เลย = ว่าง ไม่พัง', () => {
+  assert.strictEqual(qiCustomFieldsHtml([]), '');
+  assert.strictEqual(qiCustomFieldsHtml(null), '');
+});
+
+test('QI_CUSTOM_FIELD_DEFAULTS: ค่าเริ่มต้นอยู่ที่เดียว แก้ที่นี่ที่เดียวจบ', () => {
+  assert.strictEqual(QI_CUSTOM_FIELD_DEFAULTS['Document Type'], 'ASPIRE-FR-18 ISSUE TRACKING');
+});

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { stripJsonFence, systemPromptFor, draftIssue, PROVIDERS, DEFAULT_MODEL } = require('../llm.js');
+const { stripJsonFence, systemPromptFor, draftIssue, PROVIDERS, DEFAULT_MODEL, neutralizeComplianceVerdict } = require('../llm.js');
 
 test('PROVIDERS: มี Qwen (ค่าเริ่มต้น) และ GLM โดย GLM มี budget กว้างกว่ามาก', () => {
   assert.ok(PROVIDERS[DEFAULT_MODEL]);
@@ -386,4 +386,133 @@ test('draftIssue: schema จำกัด suggested_risk_level ให้เป็
   await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
   const risk = cap.body.response_format.json_schema.schema.properties.suggested_risk_level;
   assert.deepStrictEqual(risk.enum, ['Low', 'Fairly Low', 'Moderate', 'High', 'Very High']);
+});
+
+// ── PCI DSS risk assessment (2026-08-06) ─────────────────────────────────────
+// เพิ่มมุมข้อมูลบัตรชำระเงินเข้าในหัวข้อ "การประเมินความเสี่ยง" ที่มีอยู่แล้ว
+// ดู docs/superpowers/specs/2026-08-06-pci-risk-assessment-design.md
+//
+// เทสชุดนี้ล็อก "มีกฎครบ" ไม่ล็อกถ้อยคำทั้งประโยค (ถ้อยคำต้องปรับได้ตามผลที่วัดจากโมเดลจริง)
+// ยกเว้นข้อห้ามอ้างเลขข้อ ที่ล็อกไว้แน่นเพราะเป็นตัวกันไม่ให้ใครมาเติมทีหลัง
+
+test('systemPromptFor: ทุก tracker ได้บล็อก PCI ไม่ใช่เฉพาะ Bug', () => {
+  for (const t of ['Bug', 'Feature', 'Epic', 'Support', 'ไม่รู้จัก']) {
+    assert.ok(systemPromptFor(t, 'th').includes('PCI DSS'), `${t} ต้องมีบล็อก PCI`);
+  }
+});
+
+test('systemPromptFor: PCI บอกนิยามขอบเขตเป็นรูปธรรม ครบทั้ง CHD และ SAD', () => {
+  const p = systemPromptFor('Bug', 'th');
+  // ข้อมูลบัตร (CHD)
+  assert.ok(p.includes('เลขบัตร'), 'ต้องระบุเลขบัตร');
+  assert.ok(p.includes('วันหมดอายุ'), 'ต้องระบุวันหมดอายุ');
+  // ข้อมูลยืนยันตัวตน (SAD) — กลุ่มนี้ห้ามเก็บเด็ดขาด หลุดหายไปคือเสียสาระของ PCI
+  assert.ok(p.includes('CVV'), 'ต้องระบุ CVV');
+  assert.ok(p.includes('PIN'), 'ต้องระบุ PIN');
+});
+
+test('systemPromptFor: PCI มีครบทั้งสามสถานะ รวม "ยืนยันไม่ได้" ที่กันโมเดลฟันธงมั่ว', () => {
+  const p = systemPromptFor('Bug', 'th');
+  assert.ok(p.includes('อยู่ในขอบเขต'), 'ต้องมีสถานะอยู่ในขอบเขต');
+  assert.ok(p.includes('ไม่อยู่ในขอบเขต'), 'ต้องมีสถานะไม่อยู่ในขอบเขต');
+  assert.ok(p.includes('ยืนยันไม่ได้จากโน้ต'), 'ต้องมีสถานะยืนยันไม่ได้');
+});
+
+test('systemPromptFor: PCI ดันระดับความเสี่ยงขึ้นได้อย่างเดียว ห้ามดึงลง', () => {
+  const p = systemPromptFor('Bug', 'th');
+  assert.ok(p.includes('สูงกว่า'), 'ต้องบอกให้เอาค่าที่สูงกว่า');
+  assert.ok(p.includes('ห้ามใช้ระดับ PCI ที่ต่ำกว่ามาลดระดับ'), 'ต้องห้ามลดระดับอย่างชัดเจน');
+});
+
+// เดิมห้ามอ้างเลขข้อเด็ดขาด แต่วัดจริง 2026-08-06 แล้วโมเดลไม่ทำตาม 8/8 (อ้าง
+// "PCI DSS Requirement 3" ทุกครั้งกับเคสเลขบัตรใน log ซึ่งเป็นข้อที่ถูกต้องด้วย)
+// พรอมป์เป็นการ "ขอ" ไม่ใช่กลไกบังคับ — เปลี่ยนเป็นให้อ้างได้แต่ต้องเขียนแบบมีเงื่อนไข
+// ส่วนคำชี้ขาด compliance ใช้ guard ระดับโค้ดแทน (neutralizeComplianceVerdict)
+test('systemPromptFor: PCI ให้อ้างข้อกำหนดได้แบบมีเงื่อนไข ไม่ใช่ห้ามเด็ดขาด', () => {
+  const p = systemPromptFor('Bug', 'th');
+  assert.ok(p.includes('แบบมีเงื่อนไข'), 'ต้องบอกให้เขียนแบบมีเงื่อนไข');
+  assert.ok(p.includes('ห้ามยืนยันว่าตรงกับข้อใดแน่นอน'), 'ต้องห้ามฟันธงว่าตรงข้อไหน');
+  assert.ok(!p.includes('ห้ามอ้างเลขข้อ'), 'กฎห้ามเด็ดขาดต้องถูกถอดออกแล้ว');
+});
+
+test('neutralizeComplianceVerdict: เปลี่ยนคำชี้ขาดเป็นกลาง แล้วแปะหมายเหตุให้ QA รู้ว่าถูกปรับ', () => {
+  const out = neutralizeComplianceVerdict('พบว่าเป็นการละเมิดข้อกำหนดโดยตรง');
+  assert.ok(!out.includes('ละเมิด'), 'คำว่าละเมิดต้องหายไป');
+  assert.ok(out.includes('กระทบ'), 'ต้องแทนด้วยคำที่เป็นกลาง');
+  assert.ok(out.includes('หมายเหตุระบบ'), 'ต้องแปะหมายเหตุให้ QA เห็นว่าระบบปรับถ้อยคำ');
+});
+
+test('neutralizeComplianceVerdict: จับทั้งฝั่งที่บอกว่าไม่ละเมิด ไม่ใช่แค่ฝั่งที่บอกว่าละเมิด', () => {
+  const out = neutralizeComplianceVerdict('ยืนยันว่าไม่มีการละเมิดมาตรฐาน');
+  assert.ok(!out.includes('ละเมิด'));
+  assert.ok(out.includes('หมายเหตุระบบ'));
+});
+
+test('neutralizeComplianceVerdict: ข้อความที่ไม่มีคำชี้ขาด ต้องไม่ถูกแตะและไม่มีหมายเหตุงอก', () => {
+  const clean = 'PCI DSS: อยู่ในขอบเขต — PAN โผล่ใน log · ระดับ Very High เพราะข้อมูลบัตรถูกเปิดเผย';
+  assert.strictEqual(neutralizeComplianceVerdict(clean), clean);
+});
+
+test('draftIssue: description ที่กลับมาผ่าน guard แล้ว ทั้ง th และ en', async () => {
+  const dirty = JSON.stringify({
+    subject_en: 's', subject_th: 'ส',
+    description_en: 'this is non-compliant with the standard',
+    description_th: 'เป็นการละเมิดข้อกำหนด',
+    suggested_risk_level: 'High', missing_info: [],
+  });
+  const fetchImpl = async () => ({
+    ok: true, json: async () => ({ choices: [{ message: { content: dirty } }] }),
+  });
+  const r = await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+  assert.ok(r.ok);
+  assert.ok(!r.draft.description_th.includes('ละเมิด'), 'ฝั่งไทยต้องถูก guard');
+  assert.ok(!/non-?compliant/i.test(r.draft.description_en), 'ฝั่งอังกฤษต้องถูก guard');
+});
+
+test('systemPromptFor: บล็อก PCI ไม่ผูกกับภาษาที่เลือก', () => {
+  for (const lang of ['th', 'en', 'both']) {
+    assert.ok(systemPromptFor('Bug', lang).includes('PCI DSS'), `language ${lang}`);
+  }
+});
+
+test('draftIssue: เพิ่ม PCI แล้ว schema ต้องไม่เปลี่ยน — ไม่มีฟิลด์ pci_* โผล่มา', async () => {
+  const cap = {};
+  await draftIssue('โน้ต', { language: 'th', apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
+  const schema = cap.body.response_format.json_schema.schema;
+  assert.deepStrictEqual(
+    [...schema.required].sort(),
+    ['description_th', 'missing_info', 'subject_th', 'suggested_risk_level'],
+  );
+  assert.ok(!JSON.stringify(schema).includes('pci'), 'PCI ต้องอยู่ในพรอมป์เท่านั้น ไม่ใช่ schema');
+});
+
+// วัดจริง 2026-08-06: พรอมป์รุ่นแรกห้ามแค่ "ฟันธงว่าละเมิด" โมเดลเลยไปฟันธงด้านตรงข้ามแทน
+// ("ยืนยันว่าไม่มีการละเมิด") ซึ่งเป็นการชี้ขาด compliance เหมือนกัน และอันตรายกว่าเพราะ
+// เป็นการให้ความมั่นใจปลอม ปิดช่องไม่ให้ผู้ตรวจสอบดูต่อ — ต้องปิดทั้งสองทิศ
+test('systemPromptFor: PCI ห้ามฟันธง compliance ทั้งสองทิศ ไม่ใช่ห้ามแค่ทางที่ว่าละเมิด', () => {
+  const p = systemPromptFor('Bug', 'th');
+  assert.ok(p.includes('ละเมิดหรือไม่ละเมิด'), 'ต้องห้ามฟันธงทั้งสองทิศอย่างชัดเจน');
+  assert.ok(p.includes('ห้ามรับรองว่าปลอดภัย'), 'ต้องห้ามออกใบรับรองความปลอดภัยด้วย');
+});
+
+// วัดจริง 2026-08-06 (6/6 รอบ): บอกว่ามีสามสถานะเฉย ๆ ไม่พอ — โมเดลเลือก "ไม่อยู่ในขอบเขต"
+// ทุกครั้งโดยให้เหตุผลว่า "โน้ตไม่ได้พูดถึงข้อมูลบัตร" ซึ่งคือการสรุปจากการไม่มีข้อมูล
+// อันเป็นสิ่งที่สถานะที่สามมีไว้กันพอดี ต้องบอกเกณฑ์เลือกให้ชัด ไม่ใช่แค่ลิสต์สถานะ
+test('systemPromptFor: PCI บอกเกณฑ์ว่าเมื่อไหร่ใช้ "ยืนยันไม่ได้" แทน "ไม่อยู่ในขอบเขต"', () => {
+  const p = systemPromptFor('Bug', 'th');
+  assert.ok(p.includes('ไม่เกี่ยวกับการเงินเลย'), 'ต้องจำกัดว่า "ไม่อยู่ในขอบเขต" ใช้ได้เมื่อไหร่');
+  assert.ok(
+    p.includes('การไม่พูดถึงไม่ใช่หลักฐานว่าไม่มี'),
+    'ต้องบอกตรง ๆ ว่าห้ามสรุปจากการที่โน้ตเงียบ',
+  );
+});
+
+// วัดจริง 2026-08-06: ลิสต์ระบบการเงินเป็นภาษาไทยล้วน ทำให้โน้ตที่เขียนชื่อหน้าจอเป็นอังกฤษ
+// ("หน้าจอ Transfer") ไม่เข้าเกณฑ์ — ได้ "ไม่อยู่ในขอบเขต" 3/3 ขณะที่ "หน้าจอโอนเงิน"
+// ได้ "ยืนยันไม่ได้" 3/3 ทั้งที่เป็นหน้าจอเดียวกัน UI ที่ทีมเทสส่วนใหญ่เป็นอังกฤษ ลิสต์จึงต้องมีทั้งสองภาษา
+test('systemPromptFor: ลิสต์ระบบการเงินมีคำอังกฤษด้วย ไม่ใช่ไทยล้วน', () => {
+  const p = systemPromptFor('Bug', 'th');
+  for (const w of ['transfer', 'payment', 'checkout', 'refund']) {
+    assert.ok(p.toLowerCase().includes(w), `ลิสต์ต้องมีคำว่า ${w}`);
+  }
 });

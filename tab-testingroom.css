@@ -70,8 +70,9 @@
   font-weight:700;color:var(--cyan);background:transparent;border:1px solid color-mix(in srgb,var(--cyan) 45%,transparent);
   border-radius:6px;padding:3px 9px;cursor:pointer;transition:.12s}
 .tr-by:hover{border-color:var(--cyan)}
-.tr-run{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);
-  border:1px solid var(--line-soft);border-radius:6px;padding:3px 7px}
+.tr-run{-webkit-app-region:no-drag;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);
+  background:transparent;border:1px solid var(--line-soft);border-radius:6px;padding:3px 7px;cursor:pointer;transition:.12s}
+.tr-run:hover{color:var(--cyan);border-color:var(--cyan)}
 /* วันที่ที่ข้อนั้นได้ผล — ไม่มีกรอบ ต่างจาก tr-run ที่เป็นเลขอ้างอิงไปหาที่อื่น */
 .tr-date{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--muted);padding:3px 2px}
 .tr-note{width:calc(100% - 20px);margin:6px 0 0 20px;font-family:inherit;font-size:11.5px;color:var(--muted);
@@ -79,6 +80,35 @@
 .tr-note:hover{border-color:var(--line-soft)}
 .tr-note:focus{border-color:var(--cyan);background:var(--bg);color:var(--ink)}
 .tr-note::placeholder{color:var(--dim);font-style:italic}
+
+/* ---- ผูกกับชุดเทสอัตโนมัติ ---- */
+.tr-tally .tr-pull-all{-webkit-app-region:no-drag;margin-left:auto;font-family:inherit;font-size:10px;font-weight:600;
+  color:var(--cyan);background:transparent;border:1px solid color-mix(in srgb,var(--cyan) 45%,transparent);
+  border-radius:6px;padding:3px 10px;cursor:pointer;transition:.12s}
+.tr-tally .tr-pull-all:hover{border-color:var(--cyan);background:color-mix(in srgb,var(--cyan) 12%,transparent)}
+.tr-automsg{font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5}
+.tr-automsg:empty{display:none}
+.tr-link{display:flex;align-items:center;gap:6px;margin:6px 0 0 20px;flex-wrap:wrap}
+/* ปุ่มผูกไฟล์กว้างได้เต็มที่แต่ต้องไม่ดันการ์ด — ชื่อไฟล์เทสยาวได้ถึง 40 ตัวอักษร */
+.tr-pick{-webkit-app-region:no-drag;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);background:transparent;
+  border:1px dashed var(--line);border-radius:6px;padding:3px 8px;cursor:pointer;transition:.12s}
+.tr-pick:hover{color:var(--cyan);border-color:var(--cyan)}
+.tr-pick.on{color:var(--cyan);border-style:solid;border-color:color-mix(in srgb,var(--cyan) 45%,transparent)}
+.tr-pull{-webkit-app-region:no-drag;font-family:inherit;font-size:9.5px;font-weight:600;color:var(--muted);
+  background:transparent;border:1px solid var(--line-soft);border-radius:6px;padding:3px 8px;cursor:pointer;transition:.12s}
+.tr-pull:hover{color:var(--cyan);border-color:var(--cyan)}
+/* เมนูเลือกไฟล์เทส — anchor คือ .tr-link ที่ตั้ง position:relative ไว้ ไม่ใช่ทั้งการ์ด
+   เพื่อให้เมนูเกาะปุ่มที่กด ไม่ใช่ลอยไปมุมการ์ด */
+.tr-link{position:relative}
+.tr-picker{position:absolute;top:26px;left:0;z-index:40;min-width:240px;max-height:260px;overflow-y:auto;padding:4px;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.tr-picker .tp-src{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);
+  font-weight:700;padding:6px 8px 3px}
+.tr-picker button{display:block;width:100%;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10px;
+  color:var(--ink);background:transparent;border:0;border-radius:5px;padding:5px 8px;cursor:pointer;white-space:nowrap}
+.tr-picker button:hover{background:var(--line-soft)}
+.tr-picker .tp-clear{font-family:inherit;color:var(--dim);margin-top:2px;border-top:1px solid var(--line-soft);border-radius:0}
 
 .tr-add{-webkit-app-region:no-drag;width:100%;font-family:inherit;font-size:11.5px;font-weight:600;color:var(--muted);
   background:transparent;border:1px dashed var(--line);border-radius:9px;padding:9px;cursor:pointer;transition:.12s}

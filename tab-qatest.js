@@ -917,7 +917,15 @@
 
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.qatest = { key:'qa', settingsCard:'cardQa', mount, mountSettings, loadSettings, onData, onTheme };
+  // openRun เปิดให้ Testing Room เรียกข้ามโมดูล — ข้อ checklist ที่ผูกกับ auto test เก็บเลข run
+  // ไว้ กดแล้วต้องพาไปดู log ของรอบนั้นได้เลย ไม่ใช่ให้ผู้ใช้ไปไล่หาเองในลิสต์
+  function openRunById(id){
+    const r = qaData && qaData.runs && qaData.runs.find(x => x.id === id);
+    if(!r) return false;
+    qaOpenRun(r);
+    return true;
+  }
+  global.COWORK.tabs.qatest = { key:'qa', settingsCard:'cardQa', mount, mountSettings, loadSettings, onData, onTheme, openRunById };
 
   // เปิดทาง node --test แบบเดียวกับ tab-grafana.js / tab-meeting.js / tab-redmine.js
   // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM — ยกเว้น qiFitImagesToBudget ที่ต้องมี Image/canvas

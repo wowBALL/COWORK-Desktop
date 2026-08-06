@@ -11,12 +11,19 @@ function parseLog(text) {
   const lines = text.replace(/\r\n/g, '\n').trim().split('\n').filter(Boolean);
   const ts = l => (/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/.exec(l) || [])[1];
   const first = ts(lines[0]), last = ts(lines[lines.length - 1]);
-  const nameLine = lines.find(l => l.includes('🚀 เริ่มทดสอบ:'));
-  const name = nameLine ? nameLine.split('🚀 เริ่มทดสอบ:')[1].trim() : null;
+  // colon เป็นทางเลือก — ฝั่งมือถือ 6 ใน 10 ไฟล์เขียนว่า "🚀 เริ่มทดสอบ dine-in order (Till)..."
+  // ไม่มี colon เดิมจึงได้ name เป็น null แล้วขึ้น "(ไม่ระบุชื่อเทส)" ทุกรอบโดยไม่มีใครสังเกต
+  // (ที่ไม่เคยเห็นเพราะผลรันที่มีอยู่บังเอิญมาจากสองไฟล์ที่มี colon ทั้งหมด)
+  const nameLine = lines.find(l => /🚀 เริ่มทดสอบ/.test(l));
+  const name = nameLine ? nameLine.replace(/^.*🚀 เริ่มทดสอบ:?\s*/, '').trim() || null : null;
+  // ชื่อไฟล์เทสที่ตัวรันเขียนบอกไว้เอง — ต่างจาก name ตรงที่เป็น id จริง เอาไป map กับข้อ
+  // checklist ใน Testing Room ได้ ล็อกเก่าที่ยังไม่มีบรรทัดนี้คืน null (ยังใช้งานได้ตามเดิม)
+  const testLine = lines.find(l => /\bTEST:\s/.test(l));
+  const testId = testLine ? testLine.replace(/^.*\bTEST:\s*/, '').trim() || null : null;
   const lastLine = lines[lines.length - 1] || '';
   const status = /RESULT:\s*PASS/.test(lastLine) ? 'PASS'
     : /RESULT:\s*FAIL/.test(lastLine) ? 'FAIL' : 'CRASH';
-  return { name, status, startedAt: first, endedAt: last, log: lines.join('\n') };
+  return { name, testId, status, startedAt: first, endedAt: last, log: lines.join('\n') };
 }
 
 // one source → array of runs, newest first

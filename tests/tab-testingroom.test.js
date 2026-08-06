@@ -68,7 +68,7 @@ test('applyAction: ไม่แก้ไอเทมเดิม', () => {
 });
 
 test('emptyItem: ข้อใหม่เริ่มที่ qa และยังไม่มีผล', () => {
-  assert.deepStrictEqual(emptyItem(), { title: '', by: 'qa', result: '–', date: '', run: '', note: '' });
+  assert.deepStrictEqual(emptyItem(), { title: '', by: 'qa', result: '–', date: '', test: '', run: '', note: '' });
 });
 
 // ---- วันที่ที่ทดสอบ (แยกรายข้อ) ----
@@ -101,4 +101,49 @@ test('doneAtFor: ใบเปล่า/ข้ามหมด = ว่าง', ()
 test('doneAtFor: ครบแต่ไม่มีวันที่เลย (ใบเก่า/แก้มือ) = ว่าง ไม่ใช่เดาวันให้', () => {
   // เดาวันที่ให้เท่ากับโกหก — ปล่อยว่างแล้วผู้ใช้เติมเองได้ ดีกว่าเห็นวันที่ที่ไม่เคยเกิดขึ้น
   assert.strictEqual(doneAtFor([it('qa', 'pass'), it('qa', 'fail')]), '');
+});
+
+// ---- ดึงผลจากชุดเทสอัตโนมัติ ----
+const { applyAutoResult, autoSummary } = require('../tab-testingroom.js');
+
+const auto = (test, extra = {}) => ({ title: 'x', by: 'auto', result: '–', date: '', test, run: '', note: '', ...extra });
+
+test('applyAutoResult: PASS เติมผล วันที่ และเลข run', () => {
+  const r = applyAutoResult(auto('a.js'), { run: '20260727173450', status: 'PASS', startedAt: '2026-07-27 17:34:50' });
+  assert.strictEqual(r.result, 'pass');
+  assert.strictEqual(r.date, '2026-07-27');   // วันที่ที่รันจริง ไม่ใช่วันที่กดดึง
+  assert.strictEqual(r.run, '20260727173450');
+});
+test('applyAutoResult: FAIL เติมเป็น fail', () => {
+  assert.strictEqual(applyAutoResult(auto('a.js'), { run: 'r1', status: 'FAIL', startedAt: '2026-07-27 17:34:50' }).result, 'fail');
+});
+test('applyAutoResult: CRASH เก็บเลข run แต่ไม่ตัดสินผล', () => {
+  // run ที่ตายกลางคันไม่ได้บอกว่าระบบผิดหรือถูก — เติมเป็น fail จะปนปัญหา BlueStacks/เน็ต
+  // เข้ากับบั๊กจริง แต่ยังเก็บเลข run ไว้ให้กดไปดู log ได้ว่าตายตรงไหน
+  const r = applyAutoResult(auto('a.js', { result: 'pass', date: '2026-08-01' }), { run: 'r9', status: 'CRASH', startedAt: '2026-08-06 09:00:00' });
+  assert.strictEqual(r.result, '–');
+  assert.strictEqual(r.date, '');
+  assert.strictEqual(r.run, 'r9');
+});
+test('applyAutoResult: ไม่มีผลรัน = ไม่แตะอะไรเลย', () => {
+  const before = auto('a.js', { result: 'pass', date: '2026-08-01', run: 'r1' });
+  assert.deepStrictEqual(applyAutoResult(before, null), before);
+});
+test('applyAutoResult: ไม่แก้ไอเทมเดิม', () => {
+  const before = auto('a.js');
+  applyAutoResult(before, { run: 'r1', status: 'PASS', startedAt: '2026-07-27 17:34:50' });
+  assert.strictEqual(before.run, '');
+});
+
+test('autoSummary: แยกจำนวนเติมได้ / รันไม่จบ / ยังไม่เคยรัน / ยังไม่ผูกไฟล์', () => {
+  const items = [
+    auto('a.js'), auto('b.js'), auto('c.js'), auto(''),
+    { title: 'y', by: 'qa', result: '–', date: '', test: '', run: '', note: '' },
+  ];
+  const res = { 'a.js': { status: 'PASS' }, 'b.js': { status: 'CRASH' } };
+  assert.deepStrictEqual(autoSummary(items, res), { filled: 1, crashed: 1, missing: 1, unlinked: 1 });
+});
+test('autoSummary: ข้อที่ข้ามอยู่ไม่ถูกนับ แม้จะผูกไฟล์ไว้', () => {
+  const items = [{ title: 'x', by: 'ข้าม', result: '–', date: '', test: 'a.js', run: '', note: '' }];
+  assert.deepStrictEqual(autoSummary(items, { 'a.js': { status: 'PASS' } }), { filled: 0, crashed: 0, missing: 0, unlinked: 0 });
 });

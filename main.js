@@ -70,6 +70,10 @@ let qaSources = [];
 // ค่าเดียวไม่ใช่ array ต่างจาก qaSources เพราะใบเทสเป็นของที่แอปนี้ "เขียน" ไม่ใช่ "อ่านจาก
 // ที่คนอื่นวางไว้" — มีปลายทางเดียวเสมอ
 let qtestDir = '';
+// โฟลเดอร์ที่ "ไฟล์เทส" อยู่ (คนละอันกับ qaSources ซึ่งเป็นโฟลเดอร์ "ผลรัน")
+// ต้องอ่านจากดิสก์ตอนใช้งานจริงทุกครั้ง ห้ามฝังรายชื่อไว้ — ผู้ใช้ยืนยันว่าชุดเทสทั้งสองฝั่ง
+// ยังเพิ่มไฟล์ใหม่เรื่อย ๆ รายชื่อที่ hardcode จะเก่าทันทีที่เขียนเทสตัวถัดไป
+let autoTestSources = [];
 // Port of meeting-notes' session_service — configurable because that side can
 // change UI_PORT in its .env, and a hardcoded 8765 would silently drift apart.
 let runnerPort = 8765;
@@ -155,6 +159,7 @@ function loadAppConfig() {
   // ปล่อยว่างไว้แล้วปุ่มจะพังตอนกด ซึ่งแย่กว่าการเขียนลงที่ที่เขียนได้แน่ ๆ แล้วบอกว่าเขียนที่ไหน
   // (userData = %APPDATA%\cowork-desktop\ — ที่เดียวกับ config.json/notes.json)
   qtestDir = saved.qtestDir || path.join(app.getPath('userData'), 'testingroom', 'Qtest');
+  autoTestSources = Array.isArray(saved.autoTestSources) ? saved.autoTestSources : [];
   runnerPort = Number(saved.meetingRunnerPort) || 8765;
   runnerModel = saved.meetingRunnerModel || 'Qwen/Qwen3.6-35B-A3B';
   runnerProfile = saved.meetingRunnerProfile || 'dev';
@@ -174,10 +179,20 @@ function loadAppConfig() {
     if (!meetingsDir) meetingsDir = ENV.MEETINGS_DIR || path.join(__dirname, '..', 'meeting-notes', 'meetings');
     if (!saved.qtestDir) qtestDir = ENV.QTEST_DIR || path.join(__dirname, 'testingroom', 'Qtest');
     if (!qaSources.length) {
-      qaSources = [{
-        label: 'Zinga mobile (Appium)',
-        path: ENV.QA_RESULTS_DIR || 'D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\results',
-      }];
+      qaSources = [
+        {
+          label: 'Zinga mobile (Appium)',
+          path: ENV.QA_RESULTS_DIR || 'D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\results',
+        },
+        // ฝั่ง desktop-web เพิ่งเขียนผลรูปแบบนี้ได้ตั้งแต่ qa-log-reporter (2026-08-06)
+        { label: 'Zinga web (Playwright)', path: ENV.QA_WEB_RESULTS_DIR || 'D:\\COWORK\\test-case\\results' },
+      ];
+    }
+    if (!autoTestSources.length) {
+      autoTestSources = [
+        { label: 'Zinga mobile (Appium)', path: 'D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\Tests' },
+        { label: 'Zinga web (Playwright)', path: 'D:\\COWORK\\test-case\\tests' },
+      ];
     }
     if (!grafanaConfig.dev.url)   grafanaConfig.dev.url   = ENV.GRAFANA_DEV_URL   || '';
     if (!grafanaConfig.dev.token) grafanaConfig.dev.token = ENV.GRAFANA_DEV_TOKEN || '';
@@ -758,6 +773,31 @@ ipcMain.handle('save-qtest', (_e, file, sheet) => {
   } catch (e) {
     return { ok: false, error: e.message };
   }
+});
+// รายชื่อไฟล์เทสอัตโนมัติที่มีอยู่จริงตอนนี้ — อ่านดิสก์ทุกครั้ง ไฟล์เทสที่เพิ่งเขียนจึงโผล่
+// ให้เลือกได้ทันทีโดยไม่ต้องแก้อะไรในแอปนี้
+ipcMain.handle('list-auto-tests', () => (autoTestSources || []).map(src => {
+  let tests = [];
+  try {
+    tests = fs.readdirSync(src.path)
+      .filter(f => /\.(spec\.)?js$/i.test(f) && !f.startsWith('_'))
+      .sort();
+  } catch {}
+  return { label: src.label || path.basename(src.path || ''), path: src.path, tests };
+}));
+// ผลรันล่าสุดของแต่ละไฟล์เทส — จับคู่ด้วย testId ที่ตัวรันเขียนไว้เอง ไม่ใช่ชื่อที่คนอ่าน
+// (runs เรียงใหม่สุดก่อนอยู่แล้ว ตัวแรกที่เจอจึงเป็นล่าสุด)
+ipcMain.handle('latest-auto-results', (_e, testIds) => {
+  const want = new Set((Array.isArray(testIds) ? testIds : []).filter(Boolean));
+  const out = {};
+  if (!want.size) return out;
+  let runs = [];
+  try { runs = readQaResults(qaSources).runs || []; } catch { return out; }
+  for (const r of runs) {
+    if (!r.testId || !want.has(r.testId) || out[r.testId]) continue;
+    out[r.testId] = { run: r.id, status: r.status, startedAt: r.startedAt || '', sourceLabel: r.sourceLabel };
+  }
+  return out;
 });
 ipcMain.handle('get-qtest-dir', () => qtestDir);
 ipcMain.handle('save-qtest-dir', (_e, dir) => {

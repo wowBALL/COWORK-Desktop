@@ -248,6 +248,7 @@
 <link rel="stylesheet" href="tab-redmine.css">
 <link rel="stylesheet" href="tab-meeting.css">
 <link rel="stylesheet" href="tab-qatest.css">
+<link rel="stylesheet" href="tab-testingroom.css">
 <link rel="stylesheet" href="tab-grafana.css">
 <link rel="stylesheet" href="tab-workspace.css">
 </head>
@@ -265,11 +266,13 @@
     </div>
     <div class="navrow">
       <div class="seg">
+        <!-- ลำดับตามเส้นทางการใช้งานจริง: รับงาน → เทส → ประชุม → ดู log → จดงาน
+             Workspace อยู่ท้ายเพราะเป็นที่จดของตัวเอง ไม่ได้อยู่ในสายงานประจำวัน -->
         <button id="navRedmine" class="on">Redmine</button>
-        <button id="navWorkspace">Workspace</button>
         <button id="navQa">QA test</button>
         <button id="navMeeting">Meeting</button>
         <button id="navGrafana">Grafana</button>
+        <button id="navWorkspace">Workspace</button>
       </div>
       <button id="wsRefresh" class="refresh hidden" title="โหลด Workspace ใหม่">↻</button>
       <button id="qaRefresh" class="refresh hidden" title="โหลดผล QA test ใหม่">↻</button>
@@ -352,6 +355,20 @@
       <!-- ===== QA test view ===== -->
       <!-- สองหน้าในตัวเอง: qaList (รายการ) ↔ qaReader (หน้าอ่านเต็ม) สลับด้วย .hidden เหมือนแท็บ Meeting -->
       <div id="qaView" class="hidden">
+        <!-- sub-tab: Testing Room (ใบเทสที่ QA กำลังทำ) ↔ ผลรัน (ผลจากชุดเทสอัตโนมัติ)
+             ไม่ใช่ nav tab ระดับบน จึงไม่บวก minor version (ดูกติกาเลขเวอร์ชัน v1.8.0) -->
+        <div class="seg subseg">
+          <button id="qaSubTr" class="on">Testing Room</button>
+          <button id="qaSubRuns">ผลรัน</button>
+        </div>
+
+        <div id="trView">
+          <h3>ใบเทส <span id="trDirHint" class="tr-dir"></span></h3>
+          <div id="trList"><div class="hint">กำลังโหลด...</div></div>
+          <div id="trSheet" class="hidden"></div>
+        </div>
+
+        <div id="qaRunsView" class="hidden">
         <h3>ภาพรวม QA test</h3>
         <div id="qaStats" class="stats"></div>
 
@@ -366,6 +383,7 @@
         <div id="qaStage">
           <div id="qaRows"><div class="hint">กำลังโหลด...</div></div>
           <div id="qaReader" class="hidden"></div>
+        </div>
         </div>
       </div>
 
@@ -624,6 +642,7 @@
 <script src="tab-redmine.js"></script>
 <script src="tab-workspace.js"></script>
 <script src="tab-qatest.js"></script>
+<script src="tab-testingroom.js"></script>
 <script src="tab-meeting.js"></script>
 <script src="tab-grafana.js"></script>
 <script>
@@ -646,7 +665,9 @@
 
   // ทะเบียนแท็บ — ลำดับมาจากที่เดียว ใช้เป็นลำดับ mount ตอน boot (ท้ายไฟล์)
   // แท็บที่ยังไม่ได้แยกเป็นโมดูลจะไม่มีชื่อในทะเบียน ลูป mount ข้ามให้เงียบ ๆ
-  const TABS=['redmine','workspace','qatest','meeting','grafana'];
+  // testingroom เป็น sub-tab ของหน้า QA test ไม่ใช่ nav tab ของตัวเอง — ลงทะเบียนด้วย key:'qa'
+  // เหมือน qatest เพื่อให้ showTab เรียก onShow ให้ทั้งคู่ตอนเปิดแท็บนั้น
+  const TABS=['redmine','qatest','testingroom','meeting','grafana','workspace'];
 
   // เปิดไฟล์ในโปรแกรมประจำเครื่อง — ทั้ง Workspace และ Meeting ใช้ จึงอยู่ที่เปลือก
   function openFile(p){ api&&api.openFile&&api.openFile(p); }

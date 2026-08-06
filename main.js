@@ -9,7 +9,7 @@ const { Grafana, APP_GROUPS } = require('./grafana');
 const { parseGlossary, planWrite } = require('./glossary');
 const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors, canonicalRiskLevel, findFieldIdByName, fieldAvailability } = require('./redmine-issue-form');
 const { draftIssue, draftTestChecklist } = require('./llm');
-const { serializeQtest, nextQtestName } = require('./testingroom');
+const { serializeQtest, nextQtestName, listQtests } = require('./testingroom');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -735,6 +735,28 @@ ipcMain.handle('create-qtest', async (_e, issueId, model) => {
     return { ok: true, file, name, round, items: drafted.items };
   } catch (e) {
     return { ok: false, error: `เขียนใบเทสไม่สำเร็จ: ${e.message}` };
+  }
+});
+// Testing Room เป็น pull-based เหมือน Grafana ไม่ใช่ push เหมือน Redmine/QA test —
+// ใบเทสเปลี่ยนเพราะผู้ใช้กดเอง (สร้างใบ/ติ๊กผล) ไม่ได้เปลี่ยนเองตามเวลา การ broadcast
+// ทุก 5 นาทีจึงไม่ช่วยอะไร แถมจะเขียนทับสิ่งที่กำลังแก้ค้างอยู่บนจอ
+ipcMain.handle('list-qtests', () => ({ dir: qtestDir, sheets: listQtests(qtestDir) }));
+// เขียนทับใบเดิมทั้งใบ (ดูเหตุผลใน testingroom.js) — จำกัดปลายทางไว้ใน qtestDir เท่านั้น
+// renderer ส่ง path อะไรมาก็ได้ในทางทฤษฎี และ handler นี้เขียนไฟล์จริง
+ipcMain.handle('save-qtest', (_e, file, sheet) => {
+  try {
+    const target = path.resolve(String(file || ''));
+    const root = path.resolve(qtestDir);
+    if (target !== root && !target.startsWith(root + path.sep)) {
+      return { ok: false, error: 'ปลายทางอยู่นอกโฟลเดอร์ใบเทส' };
+    }
+    // ไม่สร้างใบใหม่จากทางนี้ — ใบเกิดจากปุ่ม 🧪 ที่เดียว ถ้าไฟล์หายไประหว่างแก้
+    // (ผู้ใช้ลบเอง/ย้ายโฟลเดอร์) การเขียนกลับเงียบ ๆ จะทำให้ใบที่ตั้งใจลบไปแล้วฟื้นมา
+    if (!fs.existsSync(target)) return { ok: false, error: 'ไม่พบไฟล์ใบเทสนี้แล้ว — กด ↻ เพื่อโหลดใหม่' };
+    fs.writeFileSync(target, serializeQtest(sheet), 'utf8');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 });
 ipcMain.handle('get-qtest-dir', () => qtestDir);

@@ -39,6 +39,8 @@
       "tab-workspace.css",
       "tab-qatest.js",
       "tab-qatest.css",
+      "tab-testingroom.js",
+      "tab-testingroom.css",
       "tab-meeting.js",
       "tab-meeting.css",
       "tab-grafana.js",

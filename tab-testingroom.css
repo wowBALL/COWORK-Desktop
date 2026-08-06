@@ -1,0 +1,87 @@
+/* Testing Room — sub-tab ของหน้า QA test
+   ใช้ --cyan เป็นสีประจำเหมือนปุ่ม 🧪 ในแท็บ Redmine ที่เป็นต้นทางของใบเทส */
+
+/* sub-tab ใช้ .seg เดิมจาก navrow แต่เล็กลงหน่อย เพราะอยู่ในเนื้อหน้า ไม่ใช่บนแถบ */
+.subseg{margin:2px 0 4px}
+.subseg button{font-family:inherit;font-size:11px;font-weight:600;color:var(--muted);background:transparent;
+  border:1px solid var(--line);border-radius:8px;padding:5px 13px;cursor:pointer;transition:.15s}
+.subseg button:hover{color:var(--ink);border-color:var(--cyan)}
+.subseg button.on{background:var(--cyan);color:var(--on-accent);border-color:var(--cyan)}
+
+.tr-dir{font-size:9px;color:var(--dim);text-transform:none;letter-spacing:0;font-weight:500}
+
+/* ---- ลิสต์ใบเทส ---- */
+.tr-row{-webkit-app-region:no-drag;display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;
+  background:var(--panel);border:1px solid var(--line-soft);border-radius:9px;margin-bottom:5px;transition:.12s}
+.tr-row:hover{border-color:var(--cyan)}
+.tr-row.sel{border-color:var(--cyan);background:color-mix(in srgb,var(--cyan) 10%,var(--panel))}
+/* รอบเก่าของ issue เดียวกัน — เยื้องเข้าและจางลง ให้เห็นว่าเป็นงานเดียวกันที่เทสมาหลายรอบ */
+.tr-row.older{margin-left:18px;opacity:.62}
+.tr-id{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--amber);flex-shrink:0}
+.tr-subj{font-size:12.5px;color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr-prog,.tr-done,.tr-fail,.tr-round{font-size:10px;font-weight:600;flex-shrink:0;white-space:nowrap}
+.tr-prog{font-family:'JetBrains Mono',monospace;color:var(--muted)}
+.tr-done{color:var(--green)}
+.tr-fail{color:var(--rose)}
+.tr-round{color:var(--dim)}
+
+/* ---- หัวใบ ---- */
+.tr-head{background:var(--panel);border:1px solid var(--line-soft);border-left:3px solid var(--cyan);
+  border-radius:0 10px 10px 0;padding:11px 13px;margin-bottom:12px}
+.tr-head-top{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.tr-meta{font-size:10px;color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr-save{font-size:10px;font-weight:600;color:var(--dim);flex-shrink:0}
+.tr-save.err{color:var(--rose)}
+.tr-subject{font-size:13.5px;line-height:1.5;color:var(--ink)}
+.tr-sub{font-size:10px;color:var(--dim);margin-top:4px;word-break:break-all}
+.tr-tally{display:flex;gap:10px;margin-top:8px;font-size:10.5px;font-weight:600;color:var(--muted)}
+.tr-tally .ok{color:var(--green)}
+.tr-tally .no{color:var(--rose)}
+.tr-tally .sk{color:var(--dim)}
+
+/* ---- การ์ดต่อข้อ ---- */
+.tr-item{background:var(--panel);border:1px solid var(--line-soft);border-left:2px solid var(--line);
+  border-radius:0 9px 9px 0;padding:9px 11px;margin-bottom:7px;transition:.12s}
+.tr-item.pass{border-left-color:var(--green)}
+.tr-item.fail{border-left-color:var(--rose)}
+.tr-item.skip{opacity:.5}
+.tr-item-top{display:flex;align-items:center;gap:8px}
+.tr-n{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);flex-shrink:0;min-width:12px}
+/* ช่องหัวข้อไม่มีกรอบจนกว่าจะโฟกัส — ใบเทสส่วนใหญ่ถูกอ่านมากกว่าถูกแก้ กรอบทุกช่องทำให้อ่านยาก */
+.tr-title{flex:1;min-width:0;font-family:inherit;font-size:12.5px;line-height:1.5;color:var(--ink);
+  background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 6px;outline:none}
+.tr-title:hover{border-color:var(--line-soft)}
+.tr-title:focus{border-color:var(--cyan);background:var(--bg)}
+.tr-item.skip .tr-title{text-decoration:line-through}
+.tr-del{-webkit-app-region:no-drag;flex-shrink:0;width:20px;height:20px;border-radius:6px;border:1px solid transparent;
+  background:transparent;color:var(--dim);cursor:pointer;font-size:10px;transition:.12s}
+.tr-del:hover{color:var(--rose);border-color:var(--rose)}
+.tr-item-actions{display:flex;align-items:center;gap:5px;margin:7px 0 0 20px;flex-wrap:wrap}
+.tr-act{-webkit-app-region:no-drag;font-family:inherit;font-size:10.5px;font-weight:600;color:var(--muted);
+  background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:4px 13px;cursor:pointer;transition:.12s}
+.tr-act:hover{color:var(--ink)}
+.tr-act.pass:hover{border-color:var(--green)}
+.tr-act.fail:hover{border-color:var(--rose)}
+.tr-act.pass.on{background:var(--green);color:var(--on-accent);border-color:var(--green)}
+.tr-act.fail.on{background:var(--rose);color:var(--on-accent);border-color:var(--rose)}
+.tr-act.skip.on{background:var(--dim);color:var(--on-accent);border-color:var(--dim)}
+.tr-by{-webkit-app-region:no-drag;margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;
+  font-weight:700;color:var(--cyan);background:transparent;border:1px solid color-mix(in srgb,var(--cyan) 45%,transparent);
+  border-radius:6px;padding:3px 9px;cursor:pointer;transition:.12s}
+.tr-by:hover{border-color:var(--cyan)}
+.tr-run{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);
+  border:1px solid var(--line-soft);border-radius:6px;padding:3px 7px}
+.tr-note{width:calc(100% - 20px);margin:6px 0 0 20px;font-family:inherit;font-size:11.5px;color:var(--muted);
+  background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 6px;outline:none}
+.tr-note:hover{border-color:var(--line-soft)}
+.tr-note:focus{border-color:var(--cyan);background:var(--bg);color:var(--ink)}
+.tr-note::placeholder{color:var(--dim);font-style:italic}
+
+.tr-add{-webkit-app-region:no-drag;width:100%;font-family:inherit;font-size:11.5px;font-weight:600;color:var(--muted);
+  background:transparent;border:1px dashed var(--line);border-radius:9px;padding:9px;cursor:pointer;transition:.12s}
+.tr-add:hover{color:var(--cyan);border-color:var(--cyan)}
+.tr-notes{width:100%;min-height:70px;resize:vertical;font-family:inherit;font-size:12px;line-height:1.6;
+  color:var(--ink);background:var(--panel);border:1px solid var(--line-soft);border-radius:9px;
+  padding:8px 10px;outline:none}
+.tr-notes:focus{border-color:var(--cyan)}
+.tr-notes::placeholder{color:var(--dim);font-style:italic}

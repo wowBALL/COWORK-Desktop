@@ -556,3 +556,54 @@ test('draftIssue: endpoint ปฏิเสธเพราะรูป ต้อ�
   assert.ok(!r.error.includes('image_pad'), r.error);
   assert.ok(/รูป/.test(r.error), r.error);
 });
+
+// ===== หัวข้อประเมินความเสี่ยงต้องมีสองส่วน ไม่ใช่เหลือแต่ PCI (2026-08-06) =====
+// PCI เข้ามาเป็น block ยาว 15 บรรทัดที่กำหนดฟอร์แมตเป๊ะ ส่วนกฎผลกระทบเดิมมีประโยคเดียว
+// น้ำหนักจึงเทไปทาง PCI จนการประเมินผลกระทบเหลือบาง ๆ หรือถูกเขียนด้วยภาษา PCI ทั้งย่อหน้า
+for (const tracker of ['Bug', 'Feature', 'Epic', 'Support', 'ไม่รู้จัก']) {
+  test(`systemPromptFor(${tracker}): สั่งลำดับชัดว่าผลกระทบมาก่อน PCI ปิดท้าย`, () => {
+    const p = systemPromptFor(tracker, 'th', []);
+    assert.ok(/ไม่แทนที่หรือย่อการประเมินผลกระทบ/.test(p), 'ต้องบอกว่า PCI เป็นส่วนเพิ่ม ไม่ใช่ส่วนแทน');
+    assert.ok(/บรรทัดสุดท้ายของหัวข้อ/.test(p), 'ต้องระบุว่า PCI อยู่บรรทัดสุดท้าย');
+  });
+}
+
+// กฎลำดับพูดที่เดียวพอ — ตอนที่ย้ำทั้งใน systemPromptFor และ pciRulesFor โมเดลเริ่มลอกโครง
+// พรอมป์ออกมาเป็นหัวข้อในคำตอบ (missing_info กับป้าย PCI ซ้ำสองชั้นโผล่ใน description 2/6)
+test('systemPromptFor: กฎเรื่องลำดับต้องไม่ถูกย้ำซ้ำสองที่', () => {
+  const p = systemPromptFor('Bug', 'th', []);
+  const hits = p.match(/ไม่แทนที่หรือย่อการประเมินผลกระทบ|ผลกระทบตามเกณฑ์ปกติมาก่อนเสมอ/g) || [];
+  assert.strictEqual(hits.length, 1, `ย้ำ ${hits.length} ครั้ง — ควรมีที่เดียว`);
+});
+
+test('systemPromptFor: กฎผลกระทบต้องมาก่อนบล็อก PCI ในตัวพรอมป์เอง', () => {
+  const p = systemPromptFor('Bug', 'th', []);
+  assert.ok(p.indexOf('กระทบใครบ้างและกว้างแค่ไหน') < p.indexOf('PCI DSS'), 'ลำดับในพรอมป์ต้องสะท้อนลำดับที่ต้องการในคำตอบ');
+});
+
+test('systemPromptFor: ยังบอกสิ่งที่ต้องตอบในส่วนผลกระทบครบตามเดิม', () => {
+  const p = systemPromptFor('Bug', 'th', []);
+  for (const must of ['กระทบใครบ้าง', 'ทางแก้ชั่วคราว', 'เกิดทุกครั้งหรือบางครั้ง']) {
+    assert.ok(p.includes(must), `ขาด "${must}"`);
+  }
+});
+
+test('systemPromptFor: ห้ามเขียนส่วนผลกระทบด้วยภาษา PCI — สองส่วนต้องแยกกันจริง', () => {
+  const p = systemPromptFor('Bug', 'th', []);
+  assert.ok(/ห้ามอธิบายผลกระทบด้วยเหตุผลด้านข้อมูลบัตร/.test(p));
+});
+
+test('systemPromptFor: กฎลำดับต้องอยู่กับกฎ PCI ไม่ใช่ผูกกับ tracker ใด tracker หนึ่ง', () => {
+  // ย้ายที่ผิดแล้ว tracker ที่ Redmine เพิ่มมาทีหลังจะไม่ได้กฎนี้ — บั๊กคลาส "แก้ไม่ครบ"
+  const known = systemPromptFor('Bug', 'th', []);
+  const unknown = systemPromptFor('Trackerใหม่ที่ยังไม่มีในโค้ด', 'th', []);
+  for (const rule of ['ไม่แทนที่หรือย่อการประเมินผลกระทบ', 'ห้ามอธิบายผลกระทบด้วยเหตุผลด้านข้อมูลบัตร', 'กระทบใครบ้างและกว้างแค่ไหน']) {
+    assert.ok(unknown.includes(rule), `tracker ที่ไม่รู้จักต้องได้กฎ "${rule}" ด้วย`);
+    assert.strictEqual(known.includes(rule), unknown.includes(rule), rule);
+  }
+});
+
+test('systemPromptFor: ส่วนผลกระทบต้องปิดท้ายด้วยชื่อระดับเป็นคำ ไม่ใช่บอกผลกระทบแล้วจบลอย ๆ', () => {
+  const p = systemPromptFor('Bug', 'th', []);
+  assert.ok(/ประโยคสุดท้ายของส่วนผลกระทบต้องระบุชื่อระดับ/.test(p));
+});

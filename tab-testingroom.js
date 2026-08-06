@@ -31,27 +31,54 @@
   }
   // กดปุ่มผล — คืนไอเทมใหม่ ไม่แก้ของเดิม
   // กดซ้ำปุ่มที่เลือกอยู่ = ถอนกลับ เพราะกดพลาดแล้วต้องแก้ได้โดยไม่ต้องไปเปิดไฟล์เอง
-  function applyAction(item, action) {
+  // วันที่ผูกกับ "ข้อนี้ได้ผลเมื่อไหร่" จึงประทับ/ล้างไปพร้อมผลเสมอ ข้อที่ไม่มีผลต้องไม่มี
+  // วันที่ค้าง ไม่งั้นกวาดตาดูแล้วเหมือนเทสไปแล้ว
+  function applyAction(today, item, action) {
     const it = Object.assign({}, item);
     if (action === 'ข้าม') {
       if (it.by === 'ข้าม') { it.by = 'qa'; return it; }
-      // ข้ามแล้วผล/เลข run ของเดิมไม่มีความหมายอีก ล้างทิ้งไม่ให้ค้างเป็นข้อมูลลวง
-      it.by = 'ข้าม'; it.result = '–'; it.run = ''; return it;
+      // ข้ามแล้วผล/วันที่/เลข run ของเดิมไม่มีความหมายอีก ล้างทิ้งไม่ให้ค้างเป็นข้อมูลลวง
+      it.by = 'ข้าม'; it.result = '–'; it.date = ''; it.run = ''; return it;
     }
     if (it.by === 'ข้าม') it.by = 'qa';   // ให้ผลกับข้อที่ข้ามอยู่ = เลิกข้ามไปในตัว
     it.result = it.result === action ? '–' : action;
+    it.date = it.result === '–' ? '' : today;
     return it;
   }
-  function emptyItem() { return { title: '', by: 'qa', result: '–', run: '', note: '' }; }
+  function emptyItem() { return { title: '', by: 'qa', result: '–', date: '', run: '', note: '' }; }
+
+  // วันที่ที่ "ใบนี้เทสเสร็จ" = วันที่ของข้อที่เทสหลังสุด ไม่ใช่วันที่กดบันทึกครั้งล่าสุด
+  // (ใบเดียวมักเทสข้ามหลายวัน) — ถ้าครบแต่ไม่มีวันที่เลย (ใบเก่า/แก้มือ) คืนว่าง ไม่เดาวันให้
+  function doneAtFor(items) {
+    if (!sheetDone(items)) return '';
+    return (Array.isArray(items) ? items : [])
+      .filter(i => i && i.by !== 'ข้าม')
+      .map(i => String(i.date || ''))
+      .filter(Boolean)
+      .sort()                       // YYYY-MM-DD เรียงเป็นตัวอักษรได้ตรงกับเรียงตามเวลา
+      .pop() || '';
+  }
 
   if (typeof window === 'undefined') {
-    module.exports = { progressOf, sheetDone, applyAction, emptyItem };
+    module.exports = { progressOf, sheetDone, applyAction, emptyItem, doneAtFor };
     return;
   }
 
   const { esc } = global.COWORK.util;
   const shell = () => global.COWORK.shell;
   let api = null;
+
+  // วันที่เครื่อง ไม่ใช่ UTC — ต้องตรงกับวันที่ผู้ใช้เห็นบนนาฬิกาตอนกดบันทึกผล
+  // รูปแบบเดียวกับ receivedAt ที่ main.js เขียนตอนสร้างใบ
+  function todayStr() {
+    const n = new Date(), p = x => String(x).padStart(2, '0');
+    return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
+  }
+  // 2026-08-06 → 06/08 สำหรับที่แคบ ๆ อย่างลิสต์กับการ์ด (ปีไม่ช่วยอะไรในบริบทนั้น)
+  function shortDate(d) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || ''));
+    return m ? `${m[3]}/${m[2]}` : String(d || '');
+  }
 
   let sheets = [];        // ใบทั้งหมด ใหม่สุดก่อน
   let dir = '';
@@ -82,8 +109,9 @@
     saveState = 'saving'; paintSaveState();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      // สถานะใบคำนวณจากข้อจริงเสมอ ไม่ให้ผู้ใช้กดปิดใบเองแล้วขัดกับผลข้างใน
+      // สถานะกับวันที่เทสเสร็จคำนวณจากข้อจริงเสมอ ไม่ให้ผู้ใช้กดปิดใบเองแล้วขัดกับผลข้างใน
       sheet.meta.status = sheetDone(sheet.items) ? 'done' : 'open';
+      sheet.meta.doneAt = doneAtFor(sheet.items);
       api.saveQtest(sheet.path, { meta: sheet.meta, items: sheet.items, notes: sheet.notes })
         .then(r => {
           saveState = (r && r.ok) ? 'saved' : ((r && r.error) || 'บันทึกไม่สำเร็จ');
@@ -121,8 +149,9 @@
     }
     el.innerHTML = groups.map(g => g.rows.map((s, i) => {
       const p = progressOf(s.items);
-      const done = sheetDone(s.items);
-      const stat = done ? `<span class="tr-done">เสร็จ</span>`
+      const at = doneAtFor(s.items);
+      // เห็นวันที่เทสเสร็จตั้งแต่หน้าลิสต์ ไม่ต้องเปิดใบทีละใบเพื่อหาว่าอันไหนเสร็จเมื่อไหร่
+      const stat = sheetDone(s.items) ? `<span class="tr-done">เสร็จ${at ? ' ' + esc(shortDate(at)) : ''}</span>`
         : `<span class="tr-prog">${p.pass + p.fail}/${p.active}</span>`;
       const fail = p.fail ? `<span class="tr-fail">fail ${p.fail}</span>` : '';
       return `<div class="tr-row${i ? ' older' : ''}${s.path === openPath ? ' sel' : ''}" data-p="${esc(s.path)}">
@@ -146,7 +175,7 @@
     const sheet = current();
     if (!sheet) { el.classList.add('hidden'); list.classList.remove('hidden'); el.innerHTML = ''; return; }
     el.classList.remove('hidden'); list.classList.add('hidden');
-    const m = sheet.meta, p = progressOf(sheet.items);
+    const m = sheet.meta, p = progressOf(sheet.items), at = doneAtFor(sheet.items);
     el.innerHTML = `
       <button class="mt-back" id="trBack">← ใบเทสทั้งหมด</button>
       <div class="tr-head">
@@ -156,7 +185,7 @@
           <span class="tr-save" id="trSaveState"></span>
         </div>
         <div class="tr-subject">${esc(m.subject || '(ไม่มีหัวเรื่อง)')}</div>
-        <div class="tr-sub">รับเข้า ${esc(m.receivedAt || '–')} · ${esc(sheet.file)}${m.model ? ' · ' + esc(m.model) : ''}</div>
+        <div class="tr-sub">รับเข้า ${esc(m.receivedAt || '–')}<span id="trDoneAt">${doneAtHtml(at)}</span> · ${esc(sheet.file)}${m.model ? ' · ' + esc(m.model) : ''}</div>
         <div class="tr-tally">
           <span class="ok">pass ${p.pass}</span><span class="no">fail ${p.fail}</span>
           <span>ค้าง ${p.todo}</span><span class="sk">ข้าม ${p.skipped}</span>
@@ -193,6 +222,9 @@
       // เลข run โผล่เฉพาะข้อที่ตั้งเป็น auto — เฟส 3 จะเป็นตัวโยงกลับไปหา log ในแท็บผลรัน
       const runTag = it.by === 'auto' && it.run
         ? `<span class="tr-run" title="เลขโฟลเดอร์ผลรัน">${esc(it.run)}</span>` : '';
+      // วันที่โผล่เฉพาะข้อที่มีผลแล้ว — ข้อที่ยังไม่เทสต้องไม่มีอะไรให้เข้าใจผิดว่าเทสแล้ว
+      const dateTag = it.date
+        ? `<span class="tr-date" title="ทดสอบเมื่อ ${esc(it.date)}">${esc(shortDate(it.date))}</span>` : '';
       return `<div class="tr-item ${state}">
         <div class="tr-item-top">
           <span class="tr-n">${i + 1}</span>
@@ -200,7 +232,7 @@
           <button class="tr-del" data-i="${i}" title="ลบข้อนี้">✕</button>
         </div>
         <div class="tr-item-actions">
-          ${btns}${runTag}
+          ${btns}${dateTag}${runTag}
           <button class="tr-by" data-i="${i}" title="สลับ ทดสอบเอง ↔ ใช้ผลจากชุดเทสอัตโนมัติ">${esc(it.by === 'ข้าม' ? 'qa' : it.by)}</button>
         </div>
         <input class="tr-note" data-i="${i}" value="${esc(it.note)}" placeholder="หมายเหตุ…">
@@ -210,7 +242,7 @@
 
     el.querySelectorAll('.tr-act').forEach(b => b.onclick = () => {
       const i = Number(b.dataset.i);
-      sheet.items[i] = applyAction(sheet.items[i], b.dataset.a);
+      sheet.items[i] = applyAction(todayStr(), sheet.items[i], b.dataset.a);
       renderItems(sheet); repaintTally(sheet); queueSave();
     });
     el.querySelectorAll('.tr-by').forEach(b => b.onclick = () => {
@@ -233,13 +265,17 @@
       sheet.items[Number(inp.dataset.i)].note = inp.value; queueSave();
     });
   }
+  function doneAtHtml(at) { return at ? ` · <b class="tr-doneat">เทสเสร็จ ${esc(at)}</b>` : ''; }
   // อัปเดตแถบสรุปโดยไม่วาดทั้งใบใหม่ — วาดใหม่จะทำให้ข้อความที่พิมพ์ค้างในช่องหมายเหตุเสีย focus
+  // ต้องอัปเดต "เทสเสร็จ" ด้วย ไม่ใช่แค่ตัวเลข: ติ๊กข้อสุดท้ายแล้วบรรทัดนั้นต้องโผล่ทันที
   function repaintTally(sheet) {
     const el = document.querySelector('#trSheet .tr-tally');
     if (!el) return;
     const p = progressOf(sheet.items);
     el.innerHTML = `<span class="ok">pass ${p.pass}</span><span class="no">fail ${p.fail}</span>`
       + `<span>ค้าง ${p.todo}</span><span class="sk">ข้าม ${p.skipped}</span>`;
+    const at = document.getElementById('trDoneAt');
+    if (at) at.innerHTML = doneAtHtml(doneAtFor(sheet.items));
   }
 
   // ---- sub-tab ----

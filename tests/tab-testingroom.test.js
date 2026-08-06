@@ -4,9 +4,10 @@
 // ใบเปล่าต้องไม่ขึ้นว่าเสร็จ · กดปุ่มผลซ้ำต้องถอนกลับได้
 const test = require('node:test');
 const assert = require('node:assert');
-const { progressOf, sheetDone, applyAction, emptyItem } = require('../tab-testingroom.js');
+const { progressOf, sheetDone, applyAction, emptyItem, doneAtFor } = require('../tab-testingroom.js');
 
-const it = (by, result) => ({ title: 'x', by, result, run: '', note: '' });
+const TODAY = '2026-08-06';
+const it = (by, result, date = '') => ({ title: 'x', by, result, date, run: '', note: '' });
 
 test('progressOf: นับ pass/fail/ค้าง/ข้าม แยกกัน', () => {
   assert.deepStrictEqual(
@@ -39,33 +40,65 @@ test('sheetDone: มี fail ก็ถือว่าเทสครบแล้
 });
 
 test('applyAction: กดผลใส่ข้อที่ยังไม่เทส', () => {
-  assert.strictEqual(applyAction(it('qa', '–'), 'pass').result, 'pass');
+  assert.strictEqual(applyAction(TODAY, it('qa', '–'), 'pass').result, 'pass');
 });
 test('applyAction: กดซ้ำปุ่มเดิม = ถอนกลับเป็นยังไม่เทส', () => {
-  assert.strictEqual(applyAction(it('qa', 'pass'), 'pass').result, '–');
+  assert.strictEqual(applyAction(TODAY, it('qa', 'pass'), 'pass').result, '–');
 });
 test('applyAction: กดอีกปุ่ม = เปลี่ยนผล ไม่ใช่ถอน', () => {
-  assert.strictEqual(applyAction(it('qa', 'pass'), 'fail').result, 'fail');
+  assert.strictEqual(applyAction(TODAY, it('qa', 'pass'), 'fail').result, 'fail');
 });
-test('applyAction: กดข้าม ล้างผลและเลข run ทิ้ง', () => {
-  const before = { title: 'x', by: 'auto', result: 'pass', run: '20260727173450', note: 'n' };
-  const after = applyAction(before, 'ข้าม');
-  assert.deepStrictEqual(after, { title: 'x', by: 'ข้าม', result: '–', run: '', note: 'n' });
+test('applyAction: กดข้าม ล้างผล/วันที่/เลข run ทิ้ง', () => {
+  const before = { title: 'x', by: 'auto', result: 'pass', date: '2026-08-01', run: '20260727173450', note: 'n' };
+  const after = applyAction(TODAY, before, 'ข้าม');
+  assert.deepStrictEqual(after, { title: 'x', by: 'ข้าม', result: '–', date: '', run: '', note: 'n' });
 });
 test('applyAction: กดข้ามซ้ำ = เลิกข้าม กลับมาเป็น qa', () => {
-  assert.strictEqual(applyAction(it('ข้าม', '–'), 'ข้าม').by, 'qa');
+  assert.strictEqual(applyAction(TODAY, it('ข้าม', '–'), 'ข้าม').by, 'qa');
 });
 test('applyAction: ให้ผลกับข้อที่ข้ามอยู่ = เลิกข้ามไปในตัว', () => {
-  const after = applyAction(it('ข้าม', '–'), 'pass');
+  const after = applyAction(TODAY, it('ข้าม', '–'), 'pass');
   assert.strictEqual(after.by, 'qa');
   assert.strictEqual(after.result, 'pass');
 });
 test('applyAction: ไม่แก้ไอเทมเดิม', () => {
   const before = it('qa', '–');
-  applyAction(before, 'fail');
+  applyAction(TODAY, before, 'fail');
   assert.strictEqual(before.result, '–');
 });
 
 test('emptyItem: ข้อใหม่เริ่มที่ qa และยังไม่มีผล', () => {
-  assert.deepStrictEqual(emptyItem(), { title: '', by: 'qa', result: '–', run: '', note: '' });
+  assert.deepStrictEqual(emptyItem(), { title: '', by: 'qa', result: '–', date: '', run: '', note: '' });
+});
+
+// ---- วันที่ที่ทดสอบ (แยกรายข้อ) ----
+
+test('applyAction: ให้ผล = ประทับวันที่ของข้อนั้น', () => {
+  assert.strictEqual(applyAction(TODAY, it('qa', '–'), 'pass').date, TODAY);
+  assert.strictEqual(applyAction(TODAY, it('qa', '–'), 'fail').date, TODAY);
+});
+test('applyAction: เปลี่ยนผล = ประทับวันที่ใหม่ทับ', () => {
+  // เทสซ้ำแล้วผลเปลี่ยน วันที่ต้องเป็นวันที่เทสรอบล่าสุด ไม่ใช่วันที่บันทึกครั้งแรก
+  assert.strictEqual(applyAction(TODAY, it('qa', 'fail', '2026-08-01'), 'pass').date, TODAY);
+});
+test('applyAction: ถอนผล = ล้างวันที่ทิ้ง', () => {
+  // ข้อที่ยังไม่ได้เทสต้องไม่มีวันที่ค้าง ไม่งั้นดูเผิน ๆ เหมือนเทสไปแล้ว
+  assert.strictEqual(applyAction(TODAY, it('qa', 'pass', '2026-08-01'), 'pass').date, '');
+});
+
+test('doneAtFor: ใบที่เทสครบ = วันที่ของข้อที่เทสหลังสุด', () => {
+  assert.strictEqual(doneAtFor([
+    it('qa', 'pass', '2026-08-01'), it('auto', 'fail', '2026-08-06'), it('ข้าม', '–'),
+  ]), '2026-08-06');
+});
+test('doneAtFor: ใบที่ยังเทสไม่ครบ = ว่าง', () => {
+  assert.strictEqual(doneAtFor([it('qa', 'pass', '2026-08-01'), it('qa', '–')]), '');
+});
+test('doneAtFor: ใบเปล่า/ข้ามหมด = ว่าง', () => {
+  assert.strictEqual(doneAtFor([]), '');
+  assert.strictEqual(doneAtFor([it('ข้าม', '–')]), '');
+});
+test('doneAtFor: ครบแต่ไม่มีวันที่เลย (ใบเก่า/แก้มือ) = ว่าง ไม่ใช่เดาวันให้', () => {
+  // เดาวันที่ให้เท่ากับโกหก — ปล่อยว่างแล้วผู้ใช้เติมเองได้ ดีกว่าเห็นวันที่ที่ไม่เคยเกิดขึ้น
+  assert.strictEqual(doneAtFor([it('qa', 'pass'), it('qa', 'fail')]), '');
 });

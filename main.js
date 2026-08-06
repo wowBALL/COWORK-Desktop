@@ -727,7 +727,7 @@ ipcMain.handle('create-qtest', async (_e, issueId, model) => {
         status: 'open',
         model: model || '',
       },
-      items: drafted.items.map(title => ({ title, by: 'qa', result: '–', run: '', note: '' })),
+      items: drafted.items.map(title => ({ title, by: 'qa', result: '–', date: '', run: '', note: '' })),
       notes: '',
     };
     const file = path.join(qtestDir, name);

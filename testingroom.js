@@ -14,7 +14,11 @@ const path = require('path');
 
 const BY = ['qa', 'auto', 'ข้าม'];
 const RESULT = ['–', 'pass', 'fail'];
-const COLUMNS = ['#', 'สิ่งที่ต้องทดสอบ', 'ทำโดย', 'ผล', 'run', 'หมายเหตุ'];
+// "วันที่" = วันที่ข้อนั้นได้ผล แยกรายข้อ ไม่ใช่วันเดียวทั้งใบ — ใบหนึ่งมักเทสข้ามหลายวัน
+// เพิ่มเข้ามาทีหลัง จึงอ่านตำแหน่งคอลัมน์จากแถวหัวตาราง ไม่ใช่นับตำแหน่งตายตัว
+// (ใบเก่าที่มี 6 คอลัมน์ต้องอ่านได้ครบทุกแถวเหมือนเดิม ดูเทส "ใบเก่าที่ยังไม่มีคอลัมน์วันที่")
+const COLUMNS = ['#', 'สิ่งที่ต้องทดสอบ', 'ทำโดย', 'ผล', 'วันที่', 'run', 'หมายเหตุ'];
+const LEGACY_COLUMNS = ['#', 'สิ่งที่ต้องทดสอบ', 'ทำโดย', 'ผล', 'run', 'หมายเหตุ'];
 const NOTES_HEADING = '## บันทึกเพิ่มเติม';
 
 // ---- frontmatter ----
@@ -55,6 +59,11 @@ function splitRow(line) {
   out.push(cur);
   return out.slice(1, -1); // ทิ้งช่องว่างหน้า | แรกและหลัง | สุดท้าย
 }
+function byPosition(names) {
+  const map = {};
+  names.forEach((c, i) => { map[c] = i; });
+  return map;
+}
 function oneOf(list, v, fallback) {
   const s = String(v == null ? '' : v).trim();
   return list.includes(s) ? s : fallback;
@@ -76,6 +85,7 @@ function serializeQtest(sheet) {
       escCell(it.title),
       oneOf(BY, it.by, 'qa'),
       oneOf(RESULT, it.result, '–'),
+      escCell(it.date),
       escCell(it.run),
       escCell(it.note),
     ];
@@ -98,27 +108,40 @@ function parseQtest(text) {
     if (m) meta[m[1]] = loadValue(m[2]);
   }
   const body = src.slice(fm[0].length);
+  // สแกนหาตารางเฉพาะส่วนก่อน "บันทึกเพิ่มเติม" — โน้ตเป็นข้อความอิสระ ใครแปะตาราง markdown
+  // ลงไปได้ ถ้าสแกนทั้งไฟล์ตารางในโน้ตจะกลายเป็นข้อทดสอบ
+  const notesAt = body.indexOf(NOTES_HEADING);
+  const table = notesAt === -1 ? body : body.slice(0, notesAt);
+  const notes = notesAt === -1 ? '' : body.slice(notesAt + NOTES_HEADING.length).trim();
+
   const items = [];
+  let cols = null;   // ชื่อคอลัมน์ → ตำแหน่ง มาจากแถวหัวตารางจริงในไฟล์
   let n = 0;
-  for (const line of body.split('\n')) {
+  for (const line of table.split('\n')) {
     const t = line.trim();
     if (!t.startsWith('|') || !t.endsWith('|')) continue;
     const cells = splitRow(t).map(c => c.trim());
-    if (cells.length < COLUMNS.length) continue;
-    if (cells[0] === COLUMNS[0]) continue;                 // แถวหัวตาราง
+    if (cells[0] === COLUMNS[0]) {                         // แถวหัวตาราง
+      cols = {};
+      cells.forEach((c, i) => { if (c) cols[c] = i; });
+      continue;
+    }
     if (/^:?-{3,}:?$/.test(cells[0])) continue;            // แถวคั่น
+    // ไม่มีหัวตาราง (ถูกลบทิ้ง/เขียนมือ) — เดาจากจำนวนช่องแทนที่จะทิ้งข้อมูลทั้งใบ
+    const layout = cols || byPosition(cells.length === LEGACY_COLUMNS.length ? LEGACY_COLUMNS : COLUMNS);
+    const at = name => (layout[name] == null ? '' : unescCell(cells[layout[name]]));
+    if (cells.length < 2) continue;
     n += 1;
     items.push({
       n,
-      title: unescCell(cells[1]),
-      by: oneOf(BY, cells[2], 'qa'),
-      result: oneOf(RESULT, cells[3], '–'),
-      run: unescCell(cells[4]),
-      note: unescCell(cells[5]),
+      title: at('สิ่งที่ต้องทดสอบ'),
+      by: oneOf(BY, at('ทำโดย'), 'qa'),
+      result: oneOf(RESULT, at('ผล'), '–'),
+      date: at('วันที่'),
+      run: at('run'),
+      note: at('หมายเหตุ'),
     });
   }
-  const at = body.indexOf(NOTES_HEADING);
-  const notes = at === -1 ? '' : body.slice(at + NOTES_HEADING.length).trim();
   return { meta, items, notes };
 }
 

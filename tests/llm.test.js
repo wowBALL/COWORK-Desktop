@@ -578,12 +578,12 @@ test('systemPromptFor: กฎเรื่องลำดับต้องไม
 
 test('systemPromptFor: กฎผลกระทบต้องมาก่อนบล็อก PCI ในตัวพรอมป์เอง', () => {
   const p = systemPromptFor('Bug', 'th', []);
-  assert.ok(p.indexOf('กระทบใครบ้างและกว้างแค่ไหน') < p.indexOf('PCI DSS'), 'ลำดับในพรอมป์ต้องสะท้อนลำดับที่ต้องการในคำตอบ');
+  assert.ok(p.indexOf('ผลกระทบต่อระบบ') < p.indexOf('PCI DSS'), 'ลำดับในพรอมป์ต้องสะท้อนลำดับที่ต้องการในคำตอบ');
 });
 
 test('systemPromptFor: ยังบอกสิ่งที่ต้องตอบในส่วนผลกระทบครบตามเดิม', () => {
   const p = systemPromptFor('Bug', 'th', []);
-  for (const must of ['กระทบใครบ้าง', 'ทางแก้ชั่วคราว', 'เกิดทุกครั้งหรือบางครั้ง']) {
+  for (const must of ['ผลกระทบต่อระบบ', 'ผลกระทบต่อผู้ใช้', 'ลามไปกระทบส่วนอื่น', 'ทางแก้ชั่วคราว', 'เกิดทุกครั้งหรือบางครั้ง']) {
     assert.ok(p.includes(must), `ขาด "${must}"`);
   }
 });
@@ -597,7 +597,7 @@ test('systemPromptFor: กฎลำดับต้องอยู่กับก
   // ย้ายที่ผิดแล้ว tracker ที่ Redmine เพิ่มมาทีหลังจะไม่ได้กฎนี้ — บั๊กคลาส "แก้ไม่ครบ"
   const known = systemPromptFor('Bug', 'th', []);
   const unknown = systemPromptFor('Trackerใหม่ที่ยังไม่มีในโค้ด', 'th', []);
-  for (const rule of ['ไม่แทนที่หรือย่อการประเมินผลกระทบ', 'ห้ามอธิบายผลกระทบด้วยเหตุผลด้านข้อมูลบัตร', 'กระทบใครบ้างและกว้างแค่ไหน']) {
+  for (const rule of ['ไม่แทนที่หรือย่อการประเมินผลกระทบ', 'ห้ามอธิบายผลกระทบด้วยเหตุผลด้านข้อมูลบัตร', 'ผลกระทบต่อระบบ']) {
     assert.ok(unknown.includes(rule), `tracker ที่ไม่รู้จักต้องได้กฎ "${rule}" ด้วย`);
     assert.strictEqual(known.includes(rule), unknown.includes(rule), rule);
   }
@@ -605,5 +605,100 @@ test('systemPromptFor: กฎลำดับต้องอยู่กับก
 
 test('systemPromptFor: ส่วนผลกระทบต้องปิดท้ายด้วยชื่อระดับเป็นคำ ไม่ใช่บอกผลกระทบแล้วจบลอย ๆ', () => {
   const p = systemPromptFor('Bug', 'th', []);
-  assert.ok(/ประโยคสุดท้ายของส่วนผลกระทบต้องระบุชื่อระดับ/.test(p));
+  assert.ok(/ประโยคสุดท้ายของหัวข้อต้องระบุชื่อระดับ/.test(p));
+});
+
+// ===== เลือกได้ว่างานนี้ต้องประเมิน PCI DSS ไหม (2026-08-06) =====
+// ค่าเริ่มต้นคือประเมิน — งานที่ทีมนี้ทดสอบส่วนใหญ่อยู่ในระบบร้านอาหาร/ชำระเงิน
+// การเผลอไม่ประเมินอันตรายกว่าการประเมินเกินจำเป็น และคนติ๊กออกคือการตัดสินใจของคน
+test('systemPromptFor: ไม่ติ๊ก PCI = ไม่มีบล็อก PCI ในพรอมป์เลยสักคำ', () => {
+  const p = systemPromptFor('Bug', 'th', [], { pci: false });
+  assert.ok(!/PCI/i.test(p), 'ต้องไม่เหลือร่องรอย PCI');
+  assert.ok(!/CVV|PIN block|track data/i.test(p), 'ต้องไม่เหลือนิยามขอบเขตด้วย');
+});
+
+test('systemPromptFor: ค่าเริ่มต้นคือประเมิน PCI — ไม่ส่ง option มาต้องเหมือนติ๊กไว้', () => {
+  assert.strictEqual(systemPromptFor('Bug', 'th', []), systemPromptFor('Bug', 'th', [], { pci: true }));
+  assert.ok(systemPromptFor('Bug', 'th', []).includes('PCI DSS'));
+});
+
+test('systemPromptFor: ปิด PCI แล้วกฎผลกระทบสองส่วนต้องยังอยู่ครบ', () => {
+  const p = systemPromptFor('Bug', 'th', [], { pci: false });
+  assert.ok(p.includes('ผลกระทบต่อระบบ'), 'ส่วนระบบต้องอยู่');
+  assert.ok(p.includes('ผลกระทบต่อผู้ใช้'), 'ส่วนผู้ใช้ต้องอยู่');
+  assert.ok(/ประโยคสุดท้ายของหัวข้อต้องระบุชื่อระดับ/.test(p), 'ประโยคสรุประดับต้องอยู่');
+});
+
+test('systemPromptFor: ข้อห้ามเรื่องภาษาบัตรอยู่ในบล็อก PCI — ปิดแล้วต้องหายไปด้วย ไม่ค้างเป็นกฎลอย', () => {
+  assert.ok(systemPromptFor('Bug', 'th', [], { pci: true }).includes('ห้ามอธิบายผลกระทบด้วยเหตุผลด้านข้อมูลบัตร'));
+  assert.ok(!systemPromptFor('Bug', 'th', [], { pci: false }).includes('ห้ามอธิบายผลกระทบด้วยเหตุผลด้านข้อมูลบัตร'));
+});
+
+for (const tracker of ['Bug', 'Feature', 'Epic', 'Support', 'ไม่รู้จัก']) {
+  test(`systemPromptFor(${tracker}): แยกผลกระทบเป็นสองส่วน ระบบ กับ ผู้ใช้`, () => {
+    const p = systemPromptFor(tracker, 'th', []);
+    assert.ok(p.indexOf('ผลกระทบต่อระบบ') < p.indexOf('ผลกระทบต่อผู้ใช้'), 'ระบบต้องมาก่อนผู้ใช้');
+    assert.ok(p.indexOf('ผลกระทบต่อผู้ใช้') < p.indexOf('PCI DSS'), 'ทั้งสองส่วนต้องมาก่อน PCI');
+  });
+}
+
+test('draftIssue: pci:false ทะลุถึง system prompt ที่ส่งออกไปจริง', async () => {
+  const cap = {};
+  await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', pci: false, fetchImpl: okFetch(cap) });
+  assert.ok(!/PCI/i.test(cap.body.messages[0].content));
+});
+
+test('draftIssue: ไม่ส่ง pci มา = ยังประเมิน PCI เหมือนเดิม (ของเก่าที่เรียกอยู่ต้องไม่เปลี่ยนพฤติกรรม)', async () => {
+  const cap = {};
+  await draftIssue('โน้ต', { apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
+  assert.ok(cap.body.messages[0].content.includes('PCI DSS'));
+});
+
+// ===== โมเดลลอกชื่อฟิลด์ของ schema มาต่อท้าย description (2026-08-06) =====
+// วัดได้ 3/3 เมื่อปิดการประเมิน PCI: ปิดท้าย description ด้วยบรรทัด "missing_info: []"
+// ซึ่งเป็นชื่อฟิลด์ใน JSON ไม่ใช่เนื้อหาที่คนต้องอ่าน — เคยลองแก้ด้วยพรอมป์แล้วเอาไม่อยู่
+// ทั้งสองรอบ (ดู pciRulesFor) จึงกันที่โค้ดแทน
+const { stripEchoedFields } = require('../llm.js');
+
+test('stripEchoedFields: ตัดบรรทัดชื่อฟิลด์ที่ต่อท้าย ไม่แตะเนื้อหาข้างบน', () => {
+  const out = stripEchoedFields('อาการ: กดไม่ติด\n\nการประเมินความเสี่ยง: ระดับ Low\n\nmissing_info: []');
+  assert.strictEqual(out, 'อาการ: กดไม่ติด\n\nการประเมินความเสี่ยง: ระดับ Low');
+});
+
+test('stripEchoedFields: ตัดได้แม้เขียนเป็นหัวข้อตัวหนาพร้อมลิสต์ใต้มัน', () => {
+  const out = stripEchoedFields('เนื้อหา\n\n**missing_info:**\n- route ไหน\n- browser อะไร');
+  assert.strictEqual(out, 'เนื้อหา');
+});
+
+test('stripEchoedFields: ตัดชื่อฟิลด์อื่นของ schema ที่ถูกลอกมาด้วย', () => {
+  for (const f of ['suggested_risk_level', 'subject_th', 'description_en']) {
+    assert.strictEqual(stripEchoedFields(`เนื้อหา\n\n${f}: อะไรก็ตาม`), 'เนื้อหา', f);
+  }
+});
+
+test('stripEchoedFields: ข้อความปกติต้องไม่ถูกแตะ', () => {
+  const th = 'อาการ: กดไม่ติด\n\nการประเมินความเสี่ยง:\nผลกระทบต่อระบบ: ...\nผลกระทบต่อผู้ใช้: ...';
+  assert.strictEqual(stripEchoedFields(th), th);
+});
+
+test('stripEchoedFields: ชื่อฟิลด์ที่อยู่กลางเนื้อหาต้องไม่ถูกตัด — ตัดเฉพาะที่ต่อท้าย', () => {
+  const th = 'สิ่งที่ยังขาดให้ใส่ใน missing_info แทน\n\nการประเมินความเสี่ยง: ระดับ Low';
+  assert.strictEqual(stripEchoedFields(th), th);
+});
+
+test('stripEchoedFields: ค่าที่ไม่ใช่สตริงต้องไม่พัง', () => {
+  assert.strictEqual(stripEchoedFields(null), '');
+  assert.strictEqual(stripEchoedFields(undefined), '');
+});
+
+test('draftIssue: ชื่อฟิลด์ที่ถูกลอกมาต่อท้ายถูกตัดออกก่อนถึงฟอร์ม ทั้ง th และ en', async () => {
+  const content = JSON.stringify({
+    subject_th: 'a', description_th: 'เนื้อ th\n\nmissing_info: []',
+    subject_en: 'b', description_en: 'body en\n\nmissing_info: []',
+    suggested_risk_level: 'Low', missing_info: [],
+  });
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content } }] }) });
+  const r = await draftIssue('โน้ต', { language: 'both', apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+  assert.strictEqual(r.draft.description_th, 'เนื้อ th');
+  assert.strictEqual(r.draft.description_en, 'body en');
 });

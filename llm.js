@@ -176,7 +176,9 @@ function pciRulesFor() {
     // ทำให้ภาษาไทยที่ออกมาแตก สระ/วรรณยุกต์หายทั้งคำตอบ วัดได้ 0/3 ทันทีที่ใส่เข้าไป
     // ข้อห้ามเรื่องขอบเขตของสองส่วนย้ายไปอยู่กับกฎผลกระทบใน systemPromptFor แทน
     'ในหัวข้อ "การประเมินความเสี่ยง" ให้ต่อท้ายเป็นบรรทัดสุดท้ายของหัวข้อเสมอ แม้เคสจะไม่เกี่ยวกับบัตรเลย ' +
-    'โดยไม่แทนที่หรือย่อการประเมินผลกระทบที่อยู่ก่อนหน้า และเลือกหนึ่งในสามรูปแบบนี้:\n' +
+    'โดยไม่แทนที่หรือย่อการประเมินผลกระทบที่อยู่ก่อนหน้า ' +
+    'ห้ามอธิบายผลกระทบด้วยเหตุผลด้านข้อมูลบัตร เรื่องบัตรพูดในบรรทัด PCI เท่านั้น ' +
+    'และเลือกหนึ่งในสามรูปแบบนี้:\n' +
     '"PCI DSS: อยู่ในขอบเขต — <ข้อมูลชนิดไหนที่เกี่ยวข้อง> · ระดับ <Low|Fairly Low|Moderate|High|Very High> เพราะ <เหตุผล>"\n' +
     '"PCI DSS: ไม่อยู่ในขอบเขต — <เหตุผลสั้น ๆ ว่าทำไม>"\n' +
     '"PCI DSS: ยืนยันไม่ได้จากโน้ต — <สิ่งที่ต้องรู้เพิ่ม>" ใช้เมื่อโน้ตให้ข้อมูลไม่พอจะตัดสิน ' +
@@ -217,6 +219,24 @@ const VERDICT_REPLACEMENTS = [
 // กลับเข้ามาใหม่ (เทส "คำว่าละเมิดต้องหายไป" จับได้ตอนเขียนรอบแรก)
 const VERDICT_NOTICE = '\n\n_หมายเหตุระบบ: ปรับถ้อยคำที่ชี้ขาดสถานะ compliance ให้เป็นกลางแล้ว — การชี้ขาดเป็นงานของผู้ตรวจสอบ_';
 
+// โมเดลลอกชื่อฟิลด์ของ schema มาต่อท้าย description เป็นบรรทัดสุดท้าย เช่น "missing_info: []"
+// ซึ่งเป็นโครงของ JSON ไม่ใช่เนื้อหาที่คนต้องอ่าน (วัดได้ 3/3 ตอนปิดการประเมิน PCI)
+//
+// กันที่โค้ดไม่ใช่ที่พรอมป์ เพราะรอบนี้เป็นครั้งที่สามแล้วที่การขอในพรอมป์เอาไม่อยู่ — และการ
+// เติมข้อความเข้าไปอีกก็เคยทำให้เกิดอาการนี้ขึ้นมาเองด้วยซ้ำ
+//
+// ตัดเฉพาะที่ "ต่อท้าย" เท่านั้น เพราะพรอมป์เองพูดถึง missing_info ในเนื้อหาได้ตามปกติ
+// (เช่น "สิ่งที่ยังขาดให้ใส่ใน missing_info แทน") ถ้าตัดทุกที่ที่เจอจะกินเนื้อหาจริงไปด้วย
+const SCHEMA_FIELD_NAMES = ['subject_th', 'subject_en', 'description_th', 'description_en',
+  'suggested_risk_level', 'missing_info'];
+const ECHOED_FIELD_TAIL = new RegExp(
+  `\\n\\s*\\**(?:${SCHEMA_FIELD_NAMES.join('|')})\\**\\s*:[\\s\\S]*$`,
+);
+
+function stripEchoedFields(text) {
+  return String(text == null ? '' : text).replace(ECHOED_FIELD_TAIL, '').trimEnd();
+}
+
 function neutralizeComplianceVerdict(text) {
   let out = String(text == null ? '' : text);
   let changed = false;
@@ -235,9 +255,10 @@ function languageRulesFor(language) {
     'ห้ามปนภาษากันเด็ดขาด และห้ามขาดฟิลด์ใดฟิลด์หนึ่งไปแม้จะทำให้คำตอบยาว — ต้องตอบให้ครบทั้ง subject_th, subject_en, description_th, description_en เสมอ';
 }
 
-function systemPromptFor(tracker, language, images) {
+function systemPromptFor(tracker, language, images, opts = {}) {
   const imgs = Array.isArray(images) ? images : [];
   const p = profileFor(tracker);
+  const withPci = opts.pci !== false;
   // ชั้น 1 บทบาท + หลักการร่วม, ชั้น 2 โครง + หลักเฉพาะของ tracker, ชั้น 3 คำถามที่ควรถาม
   // ทั้งสามชั้นไม่ผูกกับโมเดล — Qwen/GLM/gemma4 ได้พรอมป์ชุดเดียวกันเป๊ะ (tests/llm.test.js)
   return `คุณคือ${p.role} ที่ทำงานแบบทีม agile เรียบเรียง issue จากโน้ตดิบให้ dev อ่านแล้วลงมือได้ทันที ` +
@@ -249,21 +270,26 @@ function systemPromptFor(tracker, language, images) {
     `หลักเฉพาะของงานประเภทนี้: ${p.principle}\n` +
     'ในค่า description ให้เว้นบรรทัดว่าง (สองอักขระ \\n\\n) คั่นระหว่างหัวข้อย่อยแต่ละหัวข้อ และคั่นระหว่างป้ายหัวข้อ ' +
     '(เช่น **อาการ:**) กับเนื้อหาของมันเสมอ ห้ามใช้ \\n เดี่ยว เพราะระบบปลายทางจะไม่ขึ้นบรรทัดใหม่ให้ ทำให้ข้อความติดกันอ่านไม่ออก\n' +
-    'หัวข้อ "การประเมินความเสี่ยง" ให้เริ่มด้วยการประเมินผลกระทบตามเกณฑ์ปกติก่อนเสมอ ' +
-    'เขียนสั้น ๆ แต่ต้องตอบให้ครบว่า กระทบใครบ้างและกว้างแค่ไหน (ผู้ใช้ทุกคน เฉพาะบางสาขา หรือเฉพาะเคสเดียว) ' +
-    'เกิดทุกครั้งหรือบางครั้ง มีทางแก้ชั่วคราวให้ผู้ใช้ทำไปก่อนได้ไหม และกระทบเงินหรือข้อมูลอย่างไร ' +
-    'ประโยคสุดท้ายของส่วนผลกระทบต้องระบุชื่อระดับเป็นคำ (เช่น "จึงประเมินเป็นระดับ Moderate เพราะ...") ' +
-    'ให้ตรงกับค่า suggested_risk_level ที่ตอบ ไม่ใช่บอกผลกระทบแล้วจบลอย ๆ และไม่ใช่แค่พิมพ์ระดับซ้ำเฉย ๆ โดยไม่มีเหตุผล ' +
-    // เคยเขียนยาวกว่านี้อีกสองประโยค (ย้ำลำดับ + ห้ามมีแต่บรรทัด PCI) แล้ววัดเจอว่าโมเดล
-    // เริ่มลอกโครงพรอมป์ออกมาเป็นหัวข้อในคำตอบ — "missing_info" กับป้าย PCI ซ้ำสองชั้นโผล่
-    // ใน description 2/6 ตัวอย่าง ตัดเหลือประโยคเดียวแล้วสะอาด 6/6 (ดีกว่าก่อนแก้ซึ่งมี
-    // อักษรจีนปน 2/6 ด้วยซ้ำ) เรื่องลำดับปล่อยให้ pciRulesFor พูดที่เดียวพอ ไม่ต้องย้ำสองที่
-    'ห้ามอธิบายผลกระทบด้วยเหตุผลด้านข้อมูลบัตร เรื่องบัตรพูดในบรรทัด PCI เท่านั้น\n' +
+    // แยกสองมุมเพราะมันตอบคนละคำถามและคนละคนใช้ — ผลกระทบต่อระบบคือสิ่งที่ dev ใช้ตัดสินว่า
+    // ต้องรีบแค่ไหนและพังลามไปไหนได้ ส่วนผลกระทบต่อผู้ใช้คือสิ่งที่ PO/QA ใช้จัดลำดับกับสื่อสาร
+    // ตอนเขียนรวมเป็นย่อหน้าเดียว วัดแล้วได้แต่มุมผู้ใช้ ส่วนมุมระบบหายไปเกือบทุกครั้ง
+    //
+    // ห้ามเขียนคำสั่งเป็น 'ให้เขียน "<คำ>"' — วัดแล้วโมเดลพิมพ์คำในเครื่องหมายคำพูดออกมาตรง ๆ
+    // และห้ามย้ำกฎเดียวกันสองที่ เพราะมันเริ่มลอกโครงพรอมป์ออกมาเป็นหัวข้อในคำตอบ
+    'หัวข้อ "การประเมินความเสี่ยง" ให้แยกเป็นสองส่วนตามนี้ก่อนเสมอ\n' +
+    'ผลกระทบต่อระบบ: อะไรทำงานผิดหรือหยุด ข้อมูลเสียหายหรือไม่ตรงไหม ลามไปกระทบส่วนอื่นที่ต่อกันไหม ' +
+    'และเกิดทุกครั้งหรือบางครั้ง\n' +
+    'ผลกระทบต่อผู้ใช้: ใครเจอปัญหานี้และกว้างแค่ไหน (ผู้ใช้ทุกคน เฉพาะบางสาขา หรือเฉพาะเคสเดียว) ' +
+    'งานเขาสะดุดอย่างไร และมีทางแก้ชั่วคราวให้ทำไปก่อนได้ไหม\n' +
+    'ประโยคสุดท้ายของหัวข้อต้องระบุชื่อระดับเป็นคำ (เช่น จึงประเมินเป็นระดับ Moderate เพราะ...) ' +
+    'ให้ตรงกับค่า suggested_risk_level ที่ตอบ ไม่ใช่บอกผลกระทบแล้วจบลอย ๆ และไม่ใช่แค่พิมพ์ระดับซ้ำเฉย ๆ โดยไม่มีเหตุผล\n' +
     `missing_info คือรายการสิ่งที่ dev น่าจะต้องถามกลับเพราะโน้ตยังไม่ได้บอก สำหรับงานประเภทนี้มักได้แก่: ${p.gaps} ` +
     'เขียนเป็นภาษาไทยเสมอไม่ว่าจะเลือกภาษาใดก็ตาม ห้ามเดาเติมข้อมูลพวกนี้ลงใน description เอง ' +
     'ถ้าโน้ตให้ข้อมูลครบแล้วให้ตอบเป็น []\n' +
     `${languageRulesFor(language)}` +
-    pciRulesFor() +
+    // ผู้ใช้ติ๊กออกได้เมื่องานนั้นไม่เกี่ยวกับการชำระเงินเลย — ค่าเริ่มต้นคือประเมิน เพราะการเผลอ
+    // ข้ามอันตรายกว่าการประเมินเกินจำเป็น และการติ๊กออกเป็นการตัดสินใจของคน ไม่ใช่ของโมเดล
+    (withPci ? pciRulesFor() : '') +
     (imgs.length ? imageRulesFor(imgs) : '') + '\n' +
     `ตอบเป็น JSON ล้วนเท่านั้น ห้ามมี markdown fence ห้ามมีข้อความอื่นนอกเหนือ JSON รูปแบบนี้เป๊ะ: ${schemaFieldsFor(language)}`;
 }
@@ -304,7 +330,7 @@ function friendlyEndpointError(status, body) {
 
 async function draftIssue(rawNotes, opts = {}) {
   const {
-    model = DEFAULT_MODEL, language = 'both', tracker = 'Bug', images = [],
+    model = DEFAULT_MODEL, language = 'both', tracker = 'Bug', images = [], pci = true,
     apiKey, baseUrl, fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS,
   } = opts;
   const provider = PROVIDERS[model];
@@ -349,7 +375,7 @@ async function draftIssue(rawNotes, opts = {}) {
           json_schema: { name: 'issue_draft', schema: responseSchemaFor(language), strict: true },
         },
         messages: [
-          { role: 'system', content: systemPromptFor(tracker, language, imgs) },
+          { role: 'system', content: systemPromptFor(tracker, language, imgs, { pci }) },
           // ไม่มีรูป = ส่ง content เป็น string เหมือนเดิมเป๊ะ ไม่เปลี่ยนรูปคำขอของเคสที่ใช้อยู่ทุกวัน
           { role: 'user', content: imgs.length ? userContentWithImages(rawNotes, imgs) : String(rawNotes || '') },
         ],
@@ -403,15 +429,17 @@ async function draftIssue(rawNotes, opts = {}) {
   const missingInfo = (Array.isArray(parsed.missing_info) ? parsed.missing_info : [])
     .map(s => String(s == null ? '' : s).trim())
     .filter(Boolean);
-  // guard คำชี้ขาด compliance ที่พรอมป์ห้ามไม่อยู่ — ทำที่นี่ที่เดียว ปลายทางไม่ต้องรู้เรื่อง
+  // guard สิ่งที่พรอมป์ห้ามแล้วเอาไม่อยู่ — ทำที่นี่ที่เดียว ปลายทางไม่ต้องรู้เรื่อง
+  // ตัดชื่อฟิลด์ที่ถูกลอกมาก่อน แล้วค่อยปรับถ้อยคำ เพื่อไม่ให้หมายเหตุของ neutralize
+  // ไปอยู่เหนือขยะที่กำลังจะถูกตัดทิ้ง
   const guarded = {};
   for (const k of ['description_th', 'description_en']) {
-    if (typeof parsed[k] === 'string') guarded[k] = neutralizeComplianceVerdict(parsed[k]);
+    if (typeof parsed[k] === 'string') guarded[k] = neutralizeComplianceVerdict(stripEchoedFields(parsed[k]));
   }
   return { ok: true, draft: { ...parsed, ...guarded, missing_info: missingInfo } };
 }
 
 module.exports = {
   PROVIDERS, DEFAULT_MODEL, stripJsonFence, systemPromptFor, draftIssue,
-  neutralizeComplianceVerdict, friendlyEndpointError,
+  neutralizeComplianceVerdict, friendlyEndpointError, stripEchoedFields,
 };

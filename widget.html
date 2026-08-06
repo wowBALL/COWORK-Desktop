@@ -148,6 +148,10 @@
   /* กล่องเดียวที่ข้อความอาจมีสองบรรทัด (ผลร่าง + คำเตือนเรื่องย่อรูป) — ที่อื่นบรรทัดเดียวเสมอ
      จึงตั้งเฉพาะที่นี่ ไม่ไปแตะ .set-status ทั้งชุด */
   #qiDraftStatus{white-space:pre-line}
+  /* อยู่แถวเดียวกับ dropdown โมเดล/ภาษา และปุ่มร่าง จึงต้อง inline และจัดกึ่งกลางแนวตั้งให้ตรงกัน */
+  #qiPciLabel{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);
+    margin:0 8px 0 2px;cursor:pointer;user-select:none;vertical-align:middle}
+  #qiPci{margin:0;cursor:pointer}
   .set-status.err{color:var(--rose)}
   .set-actions{display:flex;gap:8px}
   .set-actions button{-webkit-app-region:no-drag;font-family:inherit;font-size:11.5px;font-weight:600;
@@ -371,6 +375,10 @@
           <option value="th">TH เท่านั้น</option>
           <option value="en">EN เท่านั้น</option>
         </select>
+        <!-- ติ๊กออกได้เมื่องานนั้นไม่เกี่ยวกับการชำระเงินเลย ค่าเริ่มต้นคือติ๊กไว้ (ดู pciRulesFor ใน llm.js) -->
+        <label id="qiPciLabel" title="ติ๊กออกได้ถ้างานนี้ไม่เกี่ยวกับการชำระเงินเลย — ติ๊กไว้ตัวร่างจะบอกด้วยว่าเข้าข่าย PCI DSS ไหมและระดับใด">
+          <input type="checkbox" id="qiPci" checked> ประเมิน PCI DSS
+        </label>
         <button type="button" id="qiDraftBtn" class="set-cancel">🪄 ให้ LLM ช่วยร่าง</button>
         <div id="qiDraftStatus" class="set-status"></div>
         <!-- สิ่งที่ dev น่าจะถามกลับ — อยู่ในฟอร์มให้เติมก่อนส่งเท่านั้น ไม่เข้า description

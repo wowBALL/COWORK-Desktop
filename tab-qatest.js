@@ -348,6 +348,7 @@
         language: document.getElementById('qiLanguage').value,
         tracker: document.getElementById('qiTracker').value,
         images: fit.images,
+        pci: document.getElementById('qiPci').checked,
       });
     }).then(result => {
       btn.disabled = false;

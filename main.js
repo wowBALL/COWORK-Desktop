@@ -748,7 +748,7 @@ ipcMain.handle('draft-issue-text', async (_e, rawNotes, opts) => {
   const description = composeDescription(opts.language || 'both', d.description_th || '', d.description_en || '');
   const subject = d.subject_en || d.subject_th || '';
   const suggested_risk_level = canonicalRiskLevel(d.suggested_risk_level);
-  return { ok: true, draft: { ...d, subject, description, suggested_risk_level } };
+  return { ok: true, draft: { ...d, subject, description, suggested_risk_level }, warnings: result.warnings || [] };
 });
 ipcMain.handle('upload-issue-attachment', async (_e, fileBuffer, filename) => {
   if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };

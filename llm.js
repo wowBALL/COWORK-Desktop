@@ -117,7 +117,15 @@ function responseSchemaFor(language) {
   const properties = {};
   for (const f of fieldsFor(language)) properties[f] = { type: 'string' };
   properties.suggested_risk_level = { type: 'string', enum: RISK_LEVELS };
-  properties.missing_info = { type: 'array', items: { type: 'string' } };
+  // description ใน schema ไม่ใช่ของประดับ — decoder เห็นมันตอนสร้างฟิลด์นี้พอดี ต่างจากข้อความ
+  // ในพรอมป์ที่อยู่ห่างออกไปและถูกกฎภาษาของทั้งคำตอบกลบ วัดจริงตอนเลือก EN แล้วบอกในพรอมป์
+  // อย่างเดียว missing_info ออกมาเป็นอังกฤษ 4/8 ทั้งที่สั่งไว้ชัด จึงบอกซ้ำที่ทั้งระดับ array
+  // และระดับ item เพราะโมเดลสร้างทีละ item ไม่ได้มองทั้งก้อน
+  properties.missing_info = {
+    type: 'array',
+    description: 'คำถามที่ต้องถามกลับ เขียนเป็นภาษาไทยเสมอ ไม่ว่าฟิลด์อื่นจะเป็นภาษาใดก็ตาม',
+    items: { type: 'string', description: 'คำถามหนึ่งข้อ เป็นภาษาไทย' },
+  };
   return {
     type: 'object',
     properties,
@@ -250,7 +258,13 @@ function neutralizeComplianceVerdict(text) {
 
 function languageRulesFor(language) {
   if (language === 'th') return 'เขียนเนื้อหาทั้งหมดเป็นภาษาไทยล้วน';
-  if (language === 'en') return 'เขียนเนื้อหาทั้งหมดเป็นภาษาอังกฤษล้วน ห้ามปนภาษาไทยแม้แต่คำเดียว';
+  // เดิมเขียนว่า "ห้ามปนภาษาไทยแม้แต่คำเดียว" ซึ่งครอบคลุมทั้งคำตอบ เลยไปชนกับกฎที่สั่งว่า
+  // missing_info ต้องเป็นไทยเสมอ — วัดจริงแล้วกฎภาษาชนะ missing_info ออกมาเป็นอังกฤษ 6/14
+  // จำกัดขอบเขตให้ชัดว่าคุมเฉพาะ subject/description แล้วยกเว้น missing_info ตรง ๆ
+  if (language === 'en') {
+    return 'เขียน subject กับ description เป็นภาษาอังกฤษล้วน ห้ามปนภาษาไทยในสองฟิลด์นี้แม้แต่คำเดียว ' +
+      'ยกเว้น missing_info ที่ต้องเป็นภาษาไทยเสมอ เพราะคนที่อ่านและถามกลับคือทีมไทย';
+  }
   return 'ฟิลด์ที่ลงท้ายด้วย _th ต้องเขียนเนื้อหาเป็นภาษาไทยล้วน ฟิลด์ที่ลงท้ายด้วย _en ต้องเขียนเนื้อหาเป็นภาษาอังกฤษล้วน ' +
     'ห้ามปนภาษากันเด็ดขาด และห้ามขาดฟิลด์ใดฟิลด์หนึ่งไปแม้จะทำให้คำตอบยาว — ต้องตอบให้ครบทั้ง subject_th, subject_en, description_th, description_en เสมอ';
 }
@@ -285,7 +299,10 @@ function systemPromptFor(tracker, language, images, opts = {}) {
     'ให้ตรงกับค่า suggested_risk_level ที่ตอบ ไม่ใช่บอกผลกระทบแล้วจบลอย ๆ และไม่ใช่แค่พิมพ์ระดับซ้ำเฉย ๆ โดยไม่มีเหตุผล\n' +
     `missing_info คือรายการสิ่งที่ dev น่าจะต้องถามกลับเพราะโน้ตยังไม่ได้บอก สำหรับงานประเภทนี้มักได้แก่: ${p.gaps} ` +
     'เขียนเป็นภาษาไทยเสมอไม่ว่าจะเลือกภาษาใดก็ตาม ห้ามเดาเติมข้อมูลพวกนี้ลงใน description เอง ' +
-    'ถ้าโน้ตให้ข้อมูลครบแล้วให้ตอบเป็น []\n' +
+    // เดิมปิดท้ายแค่ "ถ้าโน้ตให้ข้อมูลครบแล้วให้ตอบเป็น []" ซึ่งเป็นทางออกที่ง่ายเกินไป
+    // วัดจริงแล้วตอบว่าง 11/15 ตอนเลือกภาษาไทย ทั้งที่โน้ตเป็นบรรทัดเดียว
+    'โน้ตดิบมักสั้นและขาดหลายอย่าง ให้ไล่ดูทีละข้อว่าโน้ตตอบไว้แล้วหรือยัง ข้อที่ยังไม่ตอบให้เขียนเป็นคำถามกลับ ' +
+    'ตอบเป็น [] ได้เฉพาะเมื่อโน้ตตอบครบทุกข้อแล้วจริง ๆ เท่านั้น\n' +
     `${languageRulesFor(language)}` +
     // ผู้ใช้ติ๊กออกได้เมื่องานนั้นไม่เกี่ยวกับการชำระเงินเลย — ค่าเริ่มต้นคือประเมิน เพราะการเผลอ
     // ข้ามอันตรายกว่าการประเมินเกินจำเป็น และการติ๊กออกเป็นการตัดสินใจของคน ไม่ใช่ของโมเดล
@@ -436,7 +453,16 @@ async function draftIssue(rawNotes, opts = {}) {
   for (const k of ['description_th', 'description_en']) {
     if (typeof parsed[k] === 'string') guarded[k] = neutralizeComplianceVerdict(stripEchoedFields(parsed[k]));
   }
-  return { ok: true, draft: { ...parsed, ...guarded, missing_info: missingInfo } };
+  // ฟิลด์ที่ขอไปแล้วกลับมาว่างคือความล้มเหลวที่มองไม่เห็น — ร่างดูปกติทุกอย่าง แค่ขาดไปครึ่งหนึ่ง
+  // ผู้ใช้รายงานอาการนี้ตอนเลือก EN+TH แต่ยิงวัด 48 ตัวอย่างแล้วทำซ้ำไม่ได้เลย ซ่อมตรง ๆ จึงไม่ได้
+  // ทำได้แค่ทำให้ตอนมันเกิดอีก ผู้ใช้เห็นทันทีแทนที่จะไม่รู้ตัว
+  const warnings = [];
+  for (const [field, label] of [['description_en', 'EN'], ['description_th', 'TH']]) {
+    if (fieldsFor(language).includes(field) && !String(parsed[field] || '').trim()) {
+      warnings.push(`⚠️ โมเดลไม่ได้เขียนฝั่ง ${label} กลับมา — กดร่างใหม่อีกครั้ง หรือเลือกภาษาเดียวแล้วร่างทีละภาษา`);
+    }
+  }
+  return { ok: true, draft: { ...parsed, ...guarded, missing_info: missingInfo }, warnings };
 }
 
 module.exports = {

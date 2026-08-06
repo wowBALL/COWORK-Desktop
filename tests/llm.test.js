@@ -702,3 +702,84 @@ test('draftIssue: ชื่อฟิลด์ที่ถูกลอกมา�
   assert.strictEqual(r.draft.description_th, 'เนื้อ th');
   assert.strictEqual(r.draft.description_en, 'body en');
 });
+
+// ===== กฎภาษาขัดกับกฎ missing_info (2026-08-06) =====
+// languageRulesFor('en') เดิมสั่ง "ห้ามปนภาษาไทยแม้แต่คำเดียว" ซึ่งครอบคลุมทั้งคำตอบ
+// ชนกับกฎที่สั่งว่า missing_info ต้องเป็นไทยเสมอ — วัดจริงแล้วกฎภาษาชนะ 6/14
+test('systemPromptFor: กฎภาษาอังกฤษต้องยกเว้น missing_info ไม่ใช่ห้ามไทยทั้งคำตอบ', () => {
+  const p = systemPromptFor('Bug', 'en', []);
+  assert.ok(!/ห้ามปนภาษาไทยแม้แต่คำเดียว/.test(p), 'ข้อห้ามแบบครอบคลุมทั้งคำตอบต้องไม่มีแล้ว');
+  assert.ok(/missing_info/.test(p.slice(p.indexOf('ภาษาอังกฤษ'))), 'กฎภาษาต้องพูดถึง missing_info ตรง ๆ');
+});
+
+for (const language of ['th', 'en', 'both']) {
+  test(`systemPromptFor(${language}): missing_info ต้องถูกสั่งให้เป็นไทยเสมอ`, () => {
+    assert.ok(/missing_info[\s\S]*เขียนเป็นภาษาไทยเสมอ/.test(systemPromptFor('Bug', language, [])));
+  });
+}
+
+test('systemPromptFor: en ยังบังคับให้ subject/description เป็นอังกฤษอยู่ ไม่ได้ปล่อยหลุด', () => {
+  const p = systemPromptFor('Bug', 'en', []);
+  assert.ok(/subject.*description.*ภาษาอังกฤษ|ภาษาอังกฤษ.*subject.*description/s.test(p));
+});
+
+// โน้ตดิบบรรทัดเดียวแทบไม่มีทางตอบครบทุกข้อ แต่พรอมป์เดิมเปิดทางให้ตอบ [] ง่ายเกินไป
+// วัดจริง: missing_info ว่าง 11/15 เมื่อเลือกภาษาไทย
+test('systemPromptFor: การตอบ missing_info เป็น [] ต้องมีเงื่อนไขชัด ไม่ใช่ทางออกง่าย ๆ', () => {
+  const p = systemPromptFor('Bug', 'th', []);
+  assert.ok(/ตอบเป็น \[\] ได้เฉพาะเมื่อ/.test(p), 'ต้องจำกัดว่าเมื่อไหร่ถึงตอบว่างได้');
+  assert.ok(/โน้ตดิบมักสั้น/.test(p), 'ต้องบอกสมมติฐานตั้งต้นว่าโน้ตมักไม่ครบ');
+});
+
+// พรอมป์บอกว่า missing_info ต้องเป็นไทยแล้วยังหลุดเป็นอังกฤษเมื่อเลือก EN — ย้ายมาบอกใน
+// json_schema ด้วย เพราะ schema เป็นช่องทางที่บังคับรูปคำตอบได้แรงกว่าข้อความในพรอมป์
+// (บทเรียนเดียวกับตอนเปลี่ยน json_object -> json_schema)
+test('draftIssue: schema ระบุภาษาของ missing_info ไว้ในตัว schema เอง ไม่ใช่แค่ในพรอมป์', async () => {
+  for (const language of ['th', 'en', 'both']) {
+    const cap = {};
+    await draftIssue('โน้ต', { language, apiKey: 'k', baseUrl: 'https://x', fetchImpl: okFetch(cap) });
+    const mi = cap.body.response_format.json_schema.schema.properties.missing_info;
+    assert.ok(mi.description, `language=${language} ต้องมี description`);
+    assert.ok(/ไทย/.test(mi.description), `language=${language} ต้องระบุว่าเป็นภาษาไทย`);
+    assert.ok(/ไทย/.test(mi.items.description || ''), `language=${language} ต้องระบุที่ระดับ item ด้วย`);
+  }
+});
+
+// ===== ฟิลด์ภาษาที่ขอไปแล้วไม่ได้กลับมา ต้องไม่เงียบ (2026-08-06) =====
+// ผู้ใช้รายงานว่าเลือก EN+TH แล้วได้แต่ไทย — ยิงวัด 48 ตัวอย่างแล้วทำซ้ำไม่ได้เลย (0/48)
+// เมื่อทำซ้ำไม่ได้ก็ซ่อมตรง ๆ ไม่ได้ สิ่งที่ทำได้คือทำให้ตอนมันเกิดอีกครั้ง ผู้ใช้เห็นทันที
+// แทนที่จะได้ร่างที่ดูปกติแต่ขาดไปครึ่งหนึ่งโดยไม่มีสัญญาณอะไรเลย
+test('draftIssue: both แล้วขาดฝั่ง en ต้องเตือน ไม่ใช่คืนร่างครึ่งเดียวเงียบ ๆ', async () => {
+  const content = JSON.stringify({
+    subject_th: 'ก', description_th: 'เนื้อไทย', subject_en: '', description_en: '',
+    suggested_risk_level: 'Low', missing_info: [],
+  });
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content } }] }) });
+  const r = await draftIssue('โน้ต', { language: 'both', apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+  assert.strictEqual(r.ok, true, 'ยังต้องคืนร่างที่ได้มา ไม่ใช่ทิ้งทั้งใบ');
+  assert.ok(Array.isArray(r.warnings) && r.warnings.length, 'ต้องมีคำเตือน');
+  assert.ok(/EN|อังกฤษ/.test(r.warnings[0]), r.warnings[0]);
+});
+
+test('draftIssue: ครบทั้งสองภาษา ต้องไม่มีคำเตือนงอกมากวน', async () => {
+  // ต้องใช้ payload ที่มีครบทั้งสองฝั่งจริง — OK_JSON มีแต่ฝั่งไทย ซึ่งควรเตือนอยู่แล้ว
+  const content = JSON.stringify({
+    subject_th: 'ก', description_th: 'ไทย', subject_en: 'a', description_en: 'english',
+    suggested_risk_level: 'Low', missing_info: [],
+  });
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content } }] }) });
+  const r = await draftIssue('โน้ต', { language: 'both', apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+  assert.deepStrictEqual(r.warnings, []);
+});
+
+test('draftIssue: th/en เดี่ยว ต้องไม่เตือนเรื่องภาษาที่ไม่ได้ขอ', async () => {
+  for (const language of ['th', 'en']) {
+    const content = JSON.stringify({
+      subject_th: 'ก', description_th: 'ไทย', subject_en: 'a', description_en: 'en',
+      suggested_risk_level: 'Low', missing_info: [],
+    });
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content } }] }) });
+    const r = await draftIssue('โน้ต', { language, apiKey: 'k', baseUrl: 'https://x', fetchImpl });
+    assert.deepStrictEqual(r.warnings, [], language);
+  }
+});

@@ -360,10 +360,12 @@
       }
       // คำเตือนเรื่องย่อรูปไม่ทำให้ร่างล้มเหลว จึงยังเป็นสถานะ ok — แต่ต้องเห็น เพราะมันบอกว่า
       // รายละเอียดในร่างอาจถูกโมเดลเดาขึ้นมา ซึ่งเป็นจุดที่คนตรวจต้องเพ่งเป็นพิเศษ
-      status.className = fitNotice ? 'set-status' : 'set-status ok';
+      // คำเตือนจากฝั่ง LLM (เช่น ขาดฝั่งภาษาที่ขอไป) ต่อท้ายแบบเดียวกับคำเตือนเรื่องย่อรูป
+      const notices = [fitNotice, ...(result.warnings || [])].filter(Boolean);
+      status.className = notices.length ? 'set-status' : 'set-status ok';
       status.textContent = (images.length
         ? `ร่างสำเร็จ (ดู ${images.length} รูปประกอบ) — ตรวจแล้วแก้ต่อได้ก่อนส่ง`
-        : 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง') + (fitNotice ? '\n' + fitNotice : '');
+        : 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง') + (notices.length ? '\n' + notices.join('\n') : '');
       const d = result.draft;
       document.getElementById('qiSubject').value = d.subject || '';
       document.getElementById('qiDescription').value = d.description || '';

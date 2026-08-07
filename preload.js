@@ -43,7 +43,8 @@ contextBridge.exposeInMainWorld('cowork', {
   saveQtest: (file, sheet) => ipcRenderer.invoke('save-qtest', file, sheet),
   // ปุ่ม ✅/❌ — ขอผลสรุปมาให้ QA ตรวจก่อน แล้วค่อยสั่งเขียนกลับ Redmine เป็นคนละคำสั่ง
   getFinishPreview: (issueId, outcome) => ipcRenderer.invoke('get-finish-preview', issueId, outcome),
-  finishTest: (issueId, outcome, value, fieldId) => ipcRenderer.invoke('finish-test', issueId, outcome, value, fieldId),
+  // extra = { notes, uploads } โน้ต + รูปที่ QA แนบในแผง (ไม่บังคับ) ไปพร้อมกันในคำขอเดียว
+  finishTest: (issueId, outcome, value, fieldId, extra) => ipcRenderer.invoke('finish-test', issueId, outcome, value, fieldId, extra),
   // สั่งรันชุดเทสจากในแอป — ส่งไปแค่ [{system, test}] คำสั่งจริงประกอบที่ main
   startTestRun: (items) => ipcRenderer.invoke('start-test-run', items),
   cancelTestRun: (mode) => ipcRenderer.invoke('cancel-test-run', mode),

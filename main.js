@@ -20,6 +20,10 @@ const { planRun } = require('./testrun');
 // ตัวเดียวกันทั้งฝั่งเมนูและฝั่งที่ตั้ง setInterval จริง มีสองชุดเมื่อไหร่ก็มีวันที่เมนูให้เลือก
 // ค่าที่ main ปฏิเสธเงียบ ๆ (util.js สองตัวนี้ไม่แตะ document จึง require จาก main ได้)
 const { normalizeRefreshMinutes } = require('./util.js');
+// เหตุผลเดียวกันอีกครั้ง: ตัวประกอบ payload ของปุ่มสรุปผลเทสอยู่กับแผงที่ QA เห็น
+// (finishtest.js ตัดฝั่ง DOM ทิ้งเองเมื่อ window เป็น undefined) กฎ "คีย์ที่ว่างต้องไม่ส่ง"
+// จึงมีที่เดียวและถูกเทสด้วย node --test ได้ ไม่ต้องยิงขึ้น Redmine จริงเพื่อพิสูจน์
+const { buildIssueUpdate } = require('./finishtest.js');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -1087,14 +1091,17 @@ ipcMain.handle('get-finish-preview', async (_e, issueId, outcome) => {
 });
 // เขียนจริง — ย้ายสถานะพร้อมเขียน Test Results ในคำขอเดียว ล้มก็ล้มทั้งคู่
 // (งานที่ย้ายไป Resolved แล้วแต่ผลไม่ถูกบันทึกคือกรณีที่แย่ที่สุด: ไม่มีใครรู้ว่าเทสอะไรไปบ้าง)
-ipcMain.handle('finish-test', async (_e, issueId, outcome, value, fieldId) => {
+// extra = { notes, uploads } — โน้ตที่ QA พิมพ์เองกับรูปที่วางไว้ในแผง (ไม่บังคับทั้งคู่)
+// เดินทางไปพร้อมกับการย้ายสถานะในคำขอเดียว Redmine จึงบันทึกเป็น journal entry อันเดียว
+// ที่มีทั้ง field diff, โน้ต และไฟล์แนบ — เหมือนที่หน้าเว็บของมันทำเวลาคนกรอกเอง
+ipcMain.handle('finish-test', async (_e, issueId, outcome, value, fieldId, extra) => {
   if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
   const target = outcome === 'success' ? 'Resolved' : 'In Progress';
   try {
     const statusId = await getStatusId(target);
     if (!statusId) return { ok: false, error: `ไม่พบสถานะ "${target}" ใน Redmine` };
-    const issuePayload = { status_id: statusId };
-    if (fieldId) issuePayload.custom_fields = [{ id: fieldId, value: String(value == null ? '' : value) }];
+    const issuePayload = buildIssueUpdate({ statusId, fieldId, value,
+      notes: extra && extra.notes, uploads: extra && extra.uploads });
     const res = await fetch(`${redmineConfig.url}/issues/${issueId}.json`, {
       method: 'PUT',
       headers: { 'X-Redmine-API-Key': redmineConfig.apiKey, 'Content-Type': 'application/json' },

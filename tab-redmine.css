@@ -148,6 +148,25 @@
 .testPreview.finish .tp-edit{min-height:200px}
 .testPreview.finish .tp-actions button.confirm.ok{background:var(--green);border-color:var(--green)}
 .testPreview.finish .tp-actions button.confirm.danger{background:var(--rose);border-color:var(--rose)}
+/* โน้ตที่ส่งขึ้นเป็น journal ของ Redmine — คนละช่องกับ Test Results ข้างบนโดยตั้งใจ
+   เตี้ยกว่าเพราะเป็นข้อความที่คนพิมพ์เอง ไม่ใช่ผลสะสมทุกรอบที่ระบบร่างให้ */
+.testPreview .tp-note{width:100%;min-height:64px;resize:vertical;font-family:inherit;font-size:12px;
+  line-height:1.5;color:var(--ink);background:var(--panel);border:1px solid var(--line-soft);
+  border-radius:7px;padding:8px 10px;outline:none}
+.testPreview .tp-note:focus{border-color:var(--accent)}
+.testPreview .tp-note::placeholder{color:var(--dim);font-style:italic}
+/* แถบรูปย่อ — ว่างแล้วต้องไม่กินที่ (:empty) ไม่งั้นแผงมีช่องโหว่ตลอดเวลาที่ไม่มีรูป */
+.testPreview .tp-shots{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.testPreview .tp-shots:empty{display:none}
+.testPreview .tp-shot{position:relative;width:44px;height:44px;border-radius:7px;overflow:hidden;
+  border:1px solid var(--line);background:var(--panel)}
+.testPreview .tp-shot img{width:100%;height:100%;object-fit:cover;display:block}
+.testPreview .tp-shot-drop{-webkit-app-region:no-drag;position:absolute;top:1px;right:1px;
+  width:15px;height:15px;line-height:1;border-radius:50%;border:1px solid var(--line);
+  background:var(--panel-2);color:var(--muted);font-size:10px;cursor:pointer;padding:0}
+.testPreview .tp-shot-drop:hover{color:var(--ink);border-color:var(--rose)}
+.testPreview .tp-shots-err{font-size:11.5px;color:var(--rose);margin-top:6px;display:none}
+.testPreview .tp-shots-err.on{display:block}
 /* ปุ่ม ✅/❌ ท้ายแถวงานสถานะ Test — ทรงเดียวกับ .closeBtn/.testBtn ที่อยู่ข้างกัน */
 .finishBtn{-webkit-app-region:no-drag;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);
   background:var(--panel);color:var(--dim);font-size:11px;line-height:1;cursor:pointer;flex:none;

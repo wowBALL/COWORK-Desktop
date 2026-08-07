@@ -8,7 +8,7 @@ const { readQaResults } = require('./qatest');
 const { Grafana, APP_GROUPS } = require('./grafana');
 const { parseGlossary, planWrite } = require('./glossary');
 const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors, canonicalRiskLevel, findFieldIdByName, fieldAvailability } = require('./redmine-issue-form');
-const { draftIssue, draftTestChecklist } = require('./llm');
+const { draftIssue, draftTestChecklist, historyForChecklist } = require('./llm');
 const { serializeQtest, nextQtestName, listQtests,
   formatTestResults, mergeTestResults, latestQtestFor } = require('./testingroom');
 // ตั้งใจ require ไฟล์ฝั่ง renderer: tab-testingroom.js แยกส่วนฟังก์ชันบริสุทธิ์ออกมา export
@@ -715,7 +715,9 @@ ipcMain.handle('create-qtest', async (_e, issueId, model) => {
   if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
   let issue;
   try {
-    const res = await fetch(`${redmineConfig.url}/issues/${issueId}.json`,
+    // include=journals — comment ที่ dev เขียนบอกว่าแก้อะไรไปจริง มักละเอียดกว่ารายละเอียด
+    // ตอนเปิดงาน และเป็นที่เดียวที่บอกเงื่อนไขที่งอกระหว่างทาง (ผู้ใช้ขอ 2026-08-07)
+    const res = await fetch(`${redmineConfig.url}/issues/${issueId}.json?include=journals`,
       { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
     if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
     ({ issue } = await res.json());
@@ -728,11 +730,20 @@ ipcMain.handle('create-qtest', async (_e, issueId, model) => {
     return { ok: false, error: `งาน #${issueId} ไม่ได้อยู่สถานะ Test แล้ว (ตอนนี้: ${statusName || 'ไม่ทราบ'}) — กด ↻ เพื่อโหลดรายการใหม่` };
   }
 
+  const history = historyForChecklist(issue.journals);
   const drafted = await draftTestChecklist(
-    { subject: issue.subject, description: issue.description, tracker: issue.tracker && issue.tracker.name },
+    {
+      subject: issue.subject,
+      description: issue.description,
+      tracker: issue.tracker && issue.tracker.name,
+      history,
+    },
     { model: model || undefined, apiKey: llmConfig.apiKey, baseUrl: llmConfig.baseUrl },
   );
   if (!drafted.ok) return { ok: false, error: drafted.error };
+  // นับ comment ที่แนบไปจริง ไม่ใช่จำนวน journal ทั้งหมด — ใบเทสต้องบอกได้ว่าเช็กลิสต์นี้
+  // ร่างจากข้อมูลเท่าไหร่ ไม่งั้นเปิดใบย้อนหลังแล้วแยกไม่ออกว่าโมเดลเห็น comment หรือไม่
+  const historyCount = history ? history.split('\n\n').filter(s => /^\[\d{4}-/.test(s)).length : 0;
 
   // วันที่รับเข้าเป็นเวลาเครื่อง ไม่ใช่ UTC — ชื่อไฟล์กับคอลัมน์วันที่ต้องตรงกับวันที่ผู้ใช้เห็น
   const receivedAt = todayStr();
@@ -750,13 +761,14 @@ ipcMain.handle('create-qtest', async (_e, issueId, model) => {
         receivedAt,
         status: 'open',
         model: model || '',
+        comments: historyCount,
       },
       items: drafted.items.map(title => ({ title, by: 'qa', result: '–', date: '', run: '', note: '' })),
       notes: '',
     };
     const file = path.join(qtestDir, name);
     fs.writeFileSync(file, serializeQtest(sheet), 'utf8');
-    return { ok: true, file, name, round, items: drafted.items };
+    return { ok: true, file, name, round, items: drafted.items, comments: historyCount };
   } catch (e) {
     return { ok: false, error: `เขียนใบเทสไม่สำเร็จ: ${e.message}` };
   }

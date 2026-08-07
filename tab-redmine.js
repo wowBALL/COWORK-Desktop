@@ -263,8 +263,11 @@
         <div class="qt-actions"><button class="cancel">ปิด</button></div>`;
     } else {
       const rows=result.items.map((t,i)=>`<li>${esc(t)}</li>`).join('');
+      // บอกว่าอ่าน comment ไปกี่อัน — เช็กลิสต์ที่ร่างจากงานที่ไม่มี comment เลยกับงานที่มี
+      // สิบอันคุณภาพต่างกันมาก ต้องเห็นได้ทันทีว่าโมเดลมีข้อมูลแค่ไหน
+      const read=result.comments ? ` · อ่าน comment ${result.comments} อัน` : ' · งานนี้ไม่มี comment';
       panel.innerHTML=`<div class="qt-label"><span>🧪 เปิดใบเทสแล้ว · #${issueId} รอบที่ ${result.round}</span>
-          <span class="local">${esc(result.name)} · ${result.items.length} ข้อ</span></div>
+          <span class="local">${esc(result.name)} · ${result.items.length} ข้อ${read}</span></div>
         <ol class="qt-list">${rows}</ol>
         <div class="qt-actions"><button class="open">เปิดไฟล์</button><button class="cancel">ปิด</button></div>`;
       panel.querySelector('.open').onclick=()=>shell().openFile(result.file);

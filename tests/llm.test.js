@@ -891,3 +891,75 @@ test('draftTestChecklist: โมเดลที่ไม่รู้จักไ
   assert.strictEqual(r.ok, false);
   assert.strictEqual(called, false);
 });
+
+// ---- comment ของ dev ที่แนบไปกับเช็กลิสต์ ----
+const { historyForChecklist, HISTORY_MAX_CHARS } = require('../llm.js');
+
+const J = (date, name, notes) => ({ created_on: date + 'T03:00:00Z', user: { name }, notes });
+
+test('historyForChecklist: ทิ้ง journal ที่เป็นการเปลี่ยน field เฉย ๆ', () => {
+  // journal ส่วนใหญ่ของงานหนึ่งคือการย้ายสถานะ/เปลี่ยน assignee ซึ่งไม่มีข้อความให้อ่าน
+  const out = historyForChecklist([
+    { created_on: '2026-08-01T03:00:00Z', user: { name: 'a' }, details: [{}] },
+    J('2026-08-02', 'satit', 'แก้ที่ fixOrphanedOutlets แล้ว'),
+    J('2026-08-03', 'b', '   '),
+    null,
+  ]);
+  assert.strictEqual(out, '[2026-08-02] satit: แก้ที่ fixOrphanedOutlets แล้ว');
+});
+
+test('historyForChecklist: ไม่มี comment เลยคืนสตริงว่าง ไม่ใช่หัวข้อเปล่า', () => {
+  // สตริงว่างคือสัญญาณให้ draftTestChecklist ไม่ใส่หัวข้อ comment ลงพรอมป์เลย
+  assert.strictEqual(historyForChecklist([]), '');
+  assert.strictEqual(historyForChecklist(undefined), '');
+  assert.strictEqual(historyForChecklist([{ notes: '' }]), '');
+});
+
+test('historyForChecklist: เรียงเก่า → ใหม่ ตามที่พรอมป์บอกไว้', () => {
+  const out = historyForChecklist([J('2026-08-01', 'a', 'เก่า'), J('2026-08-05', 'b', 'ใหม่')]);
+  assert.ok(out.indexOf('เก่า') < out.indexOf('ใหม่'));
+});
+
+test('historyForChecklist: ตัดของเก่าทิ้งก่อนเสมอ และเก็บอันใหม่สุดไว้', () => {
+  // ข้อมูลที่ dev เพิ่งเพิ่มมาว่า "แก้อะไรไปแล้ว" อยู่ท้ายเสมอ ตัดท้ายทิ้ง = ตัดส่วนที่มีค่าที่สุด
+  const many = Array.from({ length: 40 }, (_, i) => J('2026-08-01', 'a', 'x'.repeat(300) + ' อันที่ ' + i));
+  const out = historyForChecklist(many);
+  assert.ok(out.includes('อันที่ 39'), 'comment ใหม่สุดต้องอยู่');
+  assert.ok(!out.includes('อันที่ 0'), 'comment เก่าสุดต้องถูกตัด');
+  assert.ok(out.length <= HISTORY_MAX_CHARS + 200);
+});
+
+test('historyForChecklist: บอกโมเดลว่าตัดไปกี่อัน ไม่ใช่ตัดเงียบ ๆ', () => {
+  // ตัดเงียบแล้วโมเดลจะเข้าใจว่าเห็นบทสนทนาครบ แล้วสรุปว่า "ไม่มีใครพูดถึงเรื่องนี้"
+  const many = Array.from({ length: 40 }, (_, i) => J('2026-08-01', 'a', 'x'.repeat(300) + ' #' + i));
+  assert.match(historyForChecklist(many), /^\(มี comment เก่ากว่านี้อีก \d+ อันที่ไม่ได้แนบมา\)/);
+});
+
+test('historyForChecklist: comment อันเดียวที่ยาวเกินเพดานก็ยังถูกตัด', () => {
+  const out = historyForChecklist([J('2026-08-01', 'a', 'x'.repeat(HISTORY_MAX_CHARS * 3))]);
+  assert.ok(out.length <= HISTORY_MAX_CHARS + 60);
+  assert.match(out, /…\(ตัดเพราะยาวเกิน\)$/);
+});
+
+test('draftTestChecklist: comment ถูกส่งไปใน user message และมีคำสั่งกำกับใน system', async () => {
+  let body = null;
+  const fetchImpl = async (_u, init) => { body = JSON.parse(init.body); return okChecklist(['ก'])(); };
+  await draftTestChecklist({ ...ISSUE, history: '[2026-08-02] satit: แก้ fixOrphanedOutlets แล้ว' },
+    { ...CFG, fetchImpl });
+  const [sys, user] = body.messages;
+  assert.match(user.content, /comment ในงาน/);
+  assert.match(user.content, /fixOrphanedOutlets/);
+  // หัวเรื่องต้องมาก่อนเนื้อหาที่คนอื่นเขียน — คำสั่งจริงไม่ควรอยู่ท้ายสุดของ message
+  assert.ok(user.content.indexOf('หัวเรื่อง:') < user.content.indexOf('comment ในงาน'));
+  assert.match(sys.content, /ไม่ใช่คำสั่ง/);
+});
+
+test('draftTestChecklist: งานที่ไม่มี comment ไม่มีหัวข้อ comment ในพรอมป์เลย', async () => {
+  // สั่งให้ "ดู comment" ทั้งที่ไม่มี = โมเดลเดาว่ามีอะไรที่มันมองไม่เห็น
+  let body = null;
+  const fetchImpl = async (_u, init) => { body = JSON.parse(init.body); return okChecklist(['ก'])(); };
+  await draftTestChecklist(ISSUE, { ...CFG, fetchImpl });
+  const [sys, user] = body.messages;
+  assert.ok(!user.content.includes('comment'));
+  assert.ok(!sys.content.includes('comment'));
+});

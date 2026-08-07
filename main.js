@@ -165,6 +165,25 @@ function loadAppConfig() {
   // (userData = %APPDATA%\cowork-desktop\ — ที่เดียวกับ config.json/notes.json)
   qtestDir = saved.qtestDir || path.join(app.getPath('userData'), 'testingroom', 'Qtest');
   autoTestSources = Array.isArray(saved.autoTestSources) ? saved.autoTestSources : [];
+  // ค่าเริ่มต้นของโฟลเดอร์ฝั่ง QA อยู่นอกบล็อก !app.isPackaged ตั้งแต่ 2026-08-07 — เดิมอยู่ข้างใน
+  // ตัวติดตั้งจึงได้ autoTestSources เป็น [] แล้วเมนูเลือกไฟล์เทสว่างเปล่า โดยไม่มีทางตั้งค่า
+  // ในแอปเลย = ฟีเจอร์ auto ทั้งก้อนตายเฉพาะในตัวที่ผู้ใช้ใช้จริง แต่เขียวหมดตอนรันจากซอร์ส
+  //
+  // path ตายตัวชี้เครื่องเครื่องเดียว — ยอมรับแล้ว (ผู้ใช้ยืนยัน 2026-08-07 ว่าใช้คนเดียว)
+  // และย้ายโฟลเดอร์เมื่อไหร่ก็แก้ได้ในการ์ดตั้งค่า ไม่ต้องแก้โค้ด
+  if (!qaSources.length) {
+    qaSources = [
+      { label: 'Zinga mobile (Appium)', path: ENV.QA_RESULTS_DIR || 'D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\results' },
+      // ฝั่ง desktop-web เพิ่งเขียนผลรูปแบบนี้ได้ตั้งแต่ qa-log-reporter (2026-08-06)
+      { label: 'Zinga web (Playwright)', path: ENV.QA_WEB_RESULTS_DIR || 'D:\\COWORK\\test-case\\results' },
+    ];
+  }
+  if (!autoTestSources.length) {
+    autoTestSources = [
+      { label: 'Zinga mobile (Appium)', path: 'D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\Tests' },
+      { label: 'Zinga web (Playwright)', path: 'D:\\COWORK\\test-case\\tests' },
+    ];
+  }
   runnerPort = Number(saved.meetingRunnerPort) || 8765;
   runnerModel = saved.meetingRunnerModel || 'Qwen/Qwen3.6-35B-A3B';
   runnerProfile = saved.meetingRunnerProfile || 'dev';
@@ -183,22 +202,6 @@ function loadAppConfig() {
     if (!workspaceDir) workspaceDir = ENV.WORKSPACE_DIR || path.join(__dirname, '..', 'A_Workspace');
     if (!meetingsDir) meetingsDir = ENV.MEETINGS_DIR || path.join(__dirname, '..', 'meeting-notes', 'meetings');
     if (!saved.qtestDir) qtestDir = ENV.QTEST_DIR || path.join(__dirname, 'testingroom', 'Qtest');
-    if (!qaSources.length) {
-      qaSources = [
-        {
-          label: 'Zinga mobile (Appium)',
-          path: ENV.QA_RESULTS_DIR || 'D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\results',
-        },
-        // ฝั่ง desktop-web เพิ่งเขียนผลรูปแบบนี้ได้ตั้งแต่ qa-log-reporter (2026-08-06)
-        { label: 'Zinga web (Playwright)', path: ENV.QA_WEB_RESULTS_DIR || 'D:\\COWORK\\test-case\\results' },
-      ];
-    }
-    if (!autoTestSources.length) {
-      autoTestSources = [
-        { label: 'Zinga mobile (Appium)', path: 'D:\\COWORK\\Test-case-mobile\\appium-bluestacks\\Tests' },
-        { label: 'Zinga web (Playwright)', path: 'D:\\COWORK\\test-case\\tests' },
-      ];
-    }
     if (!grafanaConfig.dev.url)   grafanaConfig.dev.url   = ENV.GRAFANA_DEV_URL   || '';
     if (!grafanaConfig.dev.token) grafanaConfig.dev.token = ENV.GRAFANA_DEV_TOKEN || '';
     if (!grafanaConfig.prod.url)   grafanaConfig.prod.url   = ENV.GRAFANA_PROD_URL   || '';
@@ -819,6 +822,13 @@ ipcMain.handle('latest-auto-results', (_e, testIds) => {
     out[r.testId] = { run: r.id, status: r.status, startedAt: r.startedAt || '', sourceLabel: r.sourceLabel };
   }
   return out;
+});
+// โฟลเดอร์ "ไฟล์เทส" (คนละอันกับ qaSources ซึ่งเป็นโฟลเดอร์ "ผลรัน") — เพิ่งมี UI 2026-08-07
+ipcMain.handle('get-auto-test-sources', () => autoTestSources);
+ipcMain.handle('save-auto-test-sources', (_e, sources) => {
+  autoTestSources = (sources || []).filter(s => s && s.path);
+  writeConfigMerge({ autoTestSources });
+  return true;
 });
 ipcMain.handle('get-qtest-dir', () => qtestDir);
 ipcMain.handle('save-qtest-dir', (_e, dir) => {

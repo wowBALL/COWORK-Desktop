@@ -639,7 +639,75 @@
   }
   function onShow() { if (activeSub() === 'tr') refresh(); }
 
+  // ===== การ์ดตั้งค่า =====
+  // แยกจากการ์ด QA test เพราะเป็นคนละความหมายกันจริง ๆ: การ์ดนั้นคือโฟลเดอร์ "ผลรัน"
+  // ที่แอปอ่านอย่างเดียว การ์ดนี้คือโฟลเดอร์ "ไฟล์เทส" กับที่ที่แอปเขียนใบเทสลงไป
+  // เคยสับสนกันมาแล้วเพราะทั้งคู่เป็นลิสต์ label+path หน้าตาเหมือนกันเป๊ะ
+  let setTrRowsEl, setTrAdd, setTrDir, setTrStatus, setTrSave;
+  let trRows = [{ label: '', path: '' }];
+  function renderSetTrRows() {
+    setTrRowsEl.innerHTML = trRows.map((r, i) => `
+      <div class="qa-src-row" data-i="${i}">
+        <input class="search qa-src-label" type="text" placeholder="ชื่อระบบ" value="${esc(r.label)}" autocomplete="off">
+        <input class="search" type="text" placeholder="เช่น D:\\COWORK\\test-case\\tests" value="${esc(r.path)}" autocomplete="off">
+        <button type="button" class="qa-src-rm" title="ลบโฟลเดอร์นี้">✕</button>
+      </div>`).join('');
+    setTrRowsEl.querySelectorAll('.qa-src-row').forEach(row => {
+      const i = Number(row.dataset.i);
+      const [labelInput, pathInput] = row.querySelectorAll('input');
+      labelInput.oninput = () => { trRows[i].label = labelInput.value; };
+      pathInput.oninput = () => { trRows[i].path = pathInput.value; };
+      row.querySelector('.qa-src-rm').onclick = () => {
+        trRows.splice(i, 1);
+        if (!trRows.length) trRows = [{ label: '', path: '' }];
+        renderSetTrRows();
+      };
+    });
+  }
+  function mountSettings() {
+    setTrRowsEl = document.getElementById('setTrTestRows');
+    setTrAdd = document.getElementById('setTrTestAdd');
+    setTrDir = document.getElementById('setTrDir');
+    setTrStatus = document.getElementById('setTrStatus');
+    setTrSave = document.getElementById('setTrSave');
+    setTrAdd.onclick = () => { trRows.push({ label: '', path: '' }); renderSetTrRows(); };
+    setTrSave.onclick = () => {
+      const sources = trRows.map(r => ({ label: r.label.trim(), path: r.path.trim() })).filter(r => r.path);
+      const dir = setTrDir.value.trim();
+      setTrSave.disabled = true;
+      // บันทึกทั้งสองอย่างแล้วค่อยบอกว่าเสร็จ — บอกว่า "บันทึกแล้ว" ตอนที่อีกอันยังไม่ลง
+      // แล้วผู้ใช้ปิดหน้าต่างพอดี จะเสียค่าที่เพิ่งกรอกไปโดยเห็นข้อความว่าสำเร็จ
+      const api = shell().api;
+      Promise.all([
+        api.saveAutoTestSources(sources),
+        dir ? api.saveQtestDir(dir) : Promise.resolve(),
+      ]).then(() => {
+        setTrSave.disabled = false;
+        setTrStatus.className = 'set-status ok';
+        setTrStatus.textContent = 'บันทึกแล้ว';
+        // รายชื่อไฟล์เทสถูก cache ไว้ทั้ง session (loadAutoTests) — ไม่ล้างแล้วเปลี่ยนโฟลเดอร์
+        // เสร็จ เมนู ⛓ จะยังโชว์ของเก่าจนกว่าจะปิดแอป
+        autoTests = null;
+      });
+    };
+  }
+  function loadSettings() {
+    if (!setTrStatus) return;
+    setTrStatus.textContent = ''; setTrStatus.className = 'set-status';
+    const api = shell().api;
+    if (api && api.getAutoTestSources) {
+      api.getAutoTestSources().then(sources => {
+        trRows = (sources && sources.length ? sources : [{ label: '', path: '' }])
+          .map(s => ({ label: s.label || '', path: s.path || '' }));
+        renderSetTrRows();
+      });
+    }
+    if (api && api.getQtestDir) api.getQtestDir().then(d => { setTrDir.value = d || ''; });
+  }
+
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.testingroom = { key: 'qa', mount, onShow };
+  global.COWORK.tabs.testingroom = {
+    key: 'qa', settingsCard: 'cardTestingRoom', mount, onShow, mountSettings, loadSettings,
+  };
 })(typeof window !== 'undefined' ? window : globalThis);

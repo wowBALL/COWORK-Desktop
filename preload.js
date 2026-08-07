@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('cowork', {
   // ปุ่ม ✅/❌ — ขอผลสรุปมาให้ QA ตรวจก่อน แล้วค่อยสั่งเขียนกลับ Redmine เป็นคนละคำสั่ง
   getFinishPreview: (issueId, outcome) => ipcRenderer.invoke('get-finish-preview', issueId, outcome),
   finishTest: (issueId, outcome, value, fieldId) => ipcRenderer.invoke('finish-test', issueId, outcome, value, fieldId),
+  getAutoTestSources: () => ipcRenderer.invoke('get-auto-test-sources'),
+  saveAutoTestSources: (sources) => ipcRenderer.invoke('save-auto-test-sources', sources),
   getQtestDir: () => ipcRenderer.invoke('get-qtest-dir'),
   saveQtestDir: (dir) => ipcRenderer.invoke('save-qtest-dir', dir),
   getIssueFormMeta: (projectId, trackerName) => ipcRenderer.invoke('get-issue-form-meta', projectId, trackerName),

@@ -893,7 +893,10 @@
     api && api.onQaTests && api.onQaTests(onData);
     // ดักฟัง broadcast เดียวกับที่แท็บ Redmine ใช้ (tasks-update) เพื่อรู้จักรายชื่อโปรเจกต์จริง —
     // ipcRenderer.on รับ listener ได้หลายตัว จึงไม่ชนกับ onTasks ของ tab-redmine.js
-    shell().api.onTasks(payload => {
+    //
+    // ต้อง guard เหมือนบรรทัดบน: ลูป TABS.forEach ที่ boot โมดูลใน widget.html ไม่มี try/catch
+    // โยนที่นี่ = แท็บที่เหลือหลังตัวนี้ในทะเบียนไม่ถูก mount เลยทั้งชุด (tab-mount-guards.test.js)
+    api && api.onTasks && api.onTasks(payload => {
       if (!payload) return;
       if (payload.error || !payload.groups) return;
       payload.groups.forEach(g => g.issues.forEach(i => {

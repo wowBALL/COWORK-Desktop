@@ -18,10 +18,15 @@
     const list = Array.isArray(items) ? items : [];
     const active = list.filter(i => i && i.by !== 'ข้าม');
     const pass = active.filter(i => i.result === 'pass').length;
-    const fail = active.filter(i => i.result === 'fail').length;
+    const fails = active.filter(i => i.result === 'fail');
+    // fail สามกอง: สคริปเทสเองพัง (ไม่ใช่บั๊กของระบบ) · บั๊กจริง · ยังไม่มีใครเข้าไปตรวจ
+    // กองสุดท้ายอันตรายที่สุดเพราะหน้าตาเหมือน fail ธรรมดา แต่ยังไม่มีใครรู้ว่ามันคืออะไร
+    const scriptFail = fails.filter(i => i.cause === 'สคริป').length;
+    const unjudgedFail = fails.filter(i => i.by === 'auto' && !i.cause).length;
     return {
       total: list.length, skipped: list.length - active.length,
-      active: active.length, pass, fail, todo: active.length - pass - fail,
+      active: active.length, pass, fail: fails.length, scriptFail, unjudgedFail,
+      todo: active.length - pass - fails.length,
     };
   }
   // ใบเปล่า (ข้ามหมด/ไม่มีข้อ) ไม่ใช่ใบที่เสร็จ — ไม่งั้นใบที่เพิ่งสร้างแล้วยังไม่มีข้อจะขึ้นว่าเสร็จ
@@ -38,14 +43,26 @@
     if (action === 'ข้าม') {
       if (it.by === 'ข้าม') { it.by = 'qa'; return it; }
       // ข้ามแล้วผล/วันที่/เลข run ของเดิมไม่มีความหมายอีก ล้างทิ้งไม่ให้ค้างเป็นข้อมูลลวง
-      it.by = 'ข้าม'; it.result = '–'; it.date = ''; it.run = ''; return it;
+      it.by = 'ข้าม'; it.result = '–'; it.cause = ''; it.date = ''; it.run = ''; return it;
     }
     if (it.by === 'ข้าม') it.by = 'qa';   // ให้ผลกับข้อที่ข้ามอยู่ = เลิกข้ามไปในตัว
     it.result = it.result === action ? '–' : action;
     it.date = it.result === '–' ? '' : today;
+    // สาเหตุเป็นคำตัดสินเกี่ยวกับ fail ครั้งนั้น พอผลเปลี่ยนเป็นอย่างอื่นมันก็ไม่มีความหมายแล้ว
+    if (it.result !== 'fail') it.cause = '';
     return it;
   }
-  function emptyItem() { return { title: '', by: 'qa', result: '–', date: '', test: '', run: '', note: '' }; }
+  // กดปุ่มสาเหตุ — กดซ้ำปุ่มเดิม = ถอนคำตัดสินกลับไปเป็น "ยังไม่ได้ตรวจ"
+  // ใช้ได้เฉพาะข้อที่ผลเป็น fail เท่านั้น สาเหตุที่ค้างอยู่บนข้อที่ผ่านแล้วคือข้อมูลลวง
+  function applyCause(item, cause) {
+    const it = Object.assign({}, item);
+    if (it.result !== 'fail') return it;
+    it.cause = it.cause === cause ? '' : cause;
+    return it;
+  }
+  function emptyItem() {
+    return { title: '', by: 'qa', result: '–', cause: '', date: '', system: '', test: '', run: '', note: '' };
+  }
 
   // เติมผลจากรอบรันอัตโนมัติล่าสุดของไฟล์เทสที่ข้อนี้ผูกไว้
   // res = { run, status:'PASS'|'FAIL'|'CRASH', startedAt } หรือ null ถ้าไฟล์นั้นยังไม่เคยรัน
@@ -56,6 +73,9 @@
     if (!res) return item;                       // ยังไม่เคยรัน = ไม่มีอะไรให้เติม อย่าไปล้างของเดิม
     const it = Object.assign({}, item);
     it.run = res.run || '';
+    // ผลรอบใหม่มาแล้ว คำตัดสินของ QA เป็นของรอบเก่า ต้องล้าง ไม่ใช่ยกมาใช้ต่อ —
+    // ไม่งั้นข้อที่เคยตรวจว่า "สคริปพัง" จะยังติดป้ายนั้นทั้งที่รอบใหม่ fail ด้วยเหตุอื่น
+    it.cause = '';
     if (res.status === 'PASS' || res.status === 'FAIL') {
       it.result = res.status === 'PASS' ? 'pass' : 'fail';
       it.date = String(res.startedAt || '').slice(0, 10);
@@ -96,8 +116,58 @@
       .pop() || '';
   }
 
+  // ---- ลำดับการรันของใบนี้ ----
+  // ใบเทสเป็นใบสั่งรันอยู่แล้ว (ตัดสินใจ 2026-08-07): ข้อที่ตั้ง auto และผูกไฟล์ไว้ เรียงตาม
+  // ลำดับ # คือชุดกับลำดับครบทั้งสองอย่าง ไม่ต้องมีไฟล์ที่สองที่ต้องคอยซิงก์ให้ตรงกัน
+
+  // แหล่งที่ไฟล์นี้อยู่จริง — ใบเก่าเก็บแค่ชื่อไฟล์ ต้องค้นให้เอง
+  // และไฟล์ชื่อซ้ำกันในสองแหล่งต้องบอกว่ากำกวม ไม่ใช่หยิบอันแรกที่เจอมาเดา
+  function findSource(sources, item) {
+    const list = Array.isArray(sources) ? sources : [];
+    if (item.system) {
+      const byLabel = list.find(s => s.label === item.system);
+      return byLabel ? { src: byLabel }
+        : { src: null, warn: `ไม่รู้จักระบบ "${item.system}" แล้ว — อาจถูกเปลี่ยนชื่อหรือลบไปจากตั้งค่า` };
+    }
+    const hits = list.filter(s => (s.tests || []).includes(item.test));
+    if (hits.length === 1) return { src: hits[0], filled: true };
+    if (hits.length > 1) return { src: null, warn: 'ไฟล์ชื่อนี้มีอยู่ในหลายระบบ — กดเลือกไฟล์ใหม่เพื่อระบุว่าใช้ตัวไหน' };
+    return { src: null, warn: 'หาไฟล์นี้ในโฟลเดอร์ที่ตั้งค่าไว้ไม่เจอแล้ว' };
+  }
+  // คำสั่งที่ต้องไปรันเอง — .spec.js คือชุด Playwright สั่งตรงได้เลย
+  // ที่เหลือคือชุดมือถือซึ่งต้องผ่าน run-test.bat: มันเป็นเมนูตัวเลข ไม่รับชื่อไฟล์เป็น argument
+  // จึงสั่งจากข้างนอกไม่ได้ ต้องบอกตรง ๆ ว่าให้ไปกดเอง ไม่ใช่แต่งคำสั่งปลอมให้ก๊อป
+  function commandFor(item, src) {
+    if (!src) return { cwd: '', cmd: '', manual: '' };
+    return /\.spec\.js$/i.test(item.test)
+      ? { cwd: src.path || '', cmd: `npx playwright test ${item.test}`, manual: '' }
+      : { cwd: src.path || '', cmd: '', manual: 'เปิด run-test.bat ในโฟลเดอร์นี้แล้วเลือกไฟล์นี้จากเมนู' };
+  }
+  // only = ไอเทมเดียวที่กด ▶ รัน รายข้อ — ยังต้องส่ง items ทั้งใบเข้ามา เพราะเลขข้อที่โชว์
+  // ต้องเป็นตำแหน่งจริงในใบ (ข้อ 3 ต้องขึ้นว่า "3.") ไม่ใช่นับใหม่จาก 1 ในลิสต์ที่กรองแล้ว
+  function runPlan(items, sources, only) {
+    const steps = [], skipped = [];
+    (Array.isArray(items) ? items : []).forEach((it, i) => {
+      const n = i + 1;
+      if (only && it !== only) return;
+      // ข้ามข้อที่ไม่ใช่ auto หรือยังไม่ผูกไฟล์ แต่ต้องรายงานว่าข้ามข้อไหนบ้าง —
+      // ชุดที่หายไปเงียบ ๆ ทำให้เข้าใจว่ารันครบแล้วทั้งที่ยังเหลือข้อที่ลืมผูกไฟล์
+      if (!it || it.by !== 'auto' || !it.test) { if (!only) skipped.push(n); return; }
+      const found = findSource(sources, it);
+      steps.push(Object.assign({
+        n, title: it.title || '', test: it.test,
+        system: it.system || (found.src && found.src.label) || '',
+        filled: !!found.filled, warn: found.warn || '',
+      }, commandFor(it, found.src)));
+    });
+    return { steps, skipped };
+  }
+
   if (typeof window === 'undefined') {
-    module.exports = { progressOf, sheetDone, applyAction, emptyItem, doneAtFor, applyAutoResult, autoSummary };
+    module.exports = {
+      progressOf, sheetDone, applyAction, applyCause, emptyItem, doneAtFor,
+      applyAutoResult, autoSummary, runPlan,
+    };
     return;
   }
 
@@ -205,6 +275,82 @@
       queueSave();
     });
   }
+  // ---- ลำดับการรัน ----
+  // เฟสนี้ยังไม่สั่งรันเอง — แผงบอกว่า "ถ้ารันชุดนี้จะรันอะไร ตามลำดับไหน ด้วยคำสั่งอะไร"
+  // แล้ว QA เอาคำสั่งไปรันเอง · รันจริงจากในแอปคือเฟสถัดไป ต่อบนแผงนี้ได้ไม่ต้องรื้อ
+  function openRunPlan(sheet, only) {
+    const host = document.getElementById('trRun');
+    if (!host) return;
+    host.innerHTML = '<div class="testPreview">กำลังอ่านรายชื่อไฟล์เทส…</div>';
+    loadAutoTests().then(sources => {
+      const plan = runPlan(sheet.items, sources, only);
+      // ผูกไฟล์ไว้แล้วแต่ยังไม่มีระบบ (ใบเก่า) และค้นเจอแหล่งเดียว = เติมให้เลย ไม่ต้องให้กดใหม่
+      let filled = 0;
+      plan.steps.forEach(s => {
+        if (!s.filled) return;
+        const it = sheet.items.find(x => x.test === s.test && !x.system);
+        if (it) { it.system = s.system; filled += 1; }
+      });
+      if (filled) { renderItems(sheet); queueSave(); }
+      return api.latestAutoResults([...new Set(plan.steps.map(s => s.test))])
+        .then(res => paintRunPlan(host, plan, res || {}, only, filled));
+    });
+  }
+  function lastRunText(res) {
+    if (!res) return 'ยังไม่เคยรัน';
+    return `รอบล่าสุด ${res.status} ${shortDate(String(res.startedAt || '').slice(0, 10))} · run ${res.run}`;
+  }
+  function paintRunPlan(host, plan, results, only, filled) {
+    if (!plan.steps.length) {
+      host.innerHTML = `<div class="testPreview finish">
+        <div class="tp-head"><span class="tp-title">▶ ลำดับการรัน</span></div>
+        <div class="tp-warn">${only ? 'ข้อนี้ยังไม่ได้ผูกไฟล์เทส' : 'ใบนี้ยังไม่มีข้อไหนตั้งเป็น auto และผูกไฟล์เทสไว้'}</div>
+        <div class="tp-actions"><button class="cancel">ปิด</button></div></div>`;
+      host.querySelector('.cancel').onclick = () => { host.innerHTML = ''; };
+      return;
+    }
+    const bySys = {};
+    plan.steps.forEach(s => { bySys[s.system || '?'] = (bySys[s.system || '?'] || 0) + 1; });
+    const rows = plan.steps.map(s => {
+      const last = results[s.test];
+      const cls = !last ? 'none' : last.status === 'PASS' ? 'ok' : last.status === 'FAIL' ? 'no' : 'warn';
+      const how = s.warn ? `<div class="rp-warn">⚠ ${esc(s.warn)}</div>`
+        : s.cmd ? `<div class="rp-cmd"><code>${esc(s.cmd)}</code><span class="rp-cwd">ใน ${esc(s.cwd)}</span></div>`
+          : `<div class="rp-cmd"><span class="rp-manual">${esc(s.manual)}</span><span class="rp-cwd">${esc(s.cwd)}</span></div>`;
+      return `<div class="rp-step">
+        <div class="rp-line"><span class="rp-n">${s.n}.</span>
+          <b class="rp-sys">${esc(s.system || 'ไม่รู้ระบบ')}</b>
+          <span class="rp-test">${esc(s.test)}</span>
+          <span class="rp-last ${cls}">${esc(lastRunText(last))}</span></div>
+        ${how}</div>`;
+    }).join('');
+    const sysLine = Object.entries(bySys).map(([k, v]) => `${k} ${v}`).join(' · ');
+    host.innerHTML = `<div class="testPreview finish run">
+      <div class="tp-head"><span class="tp-title">▶ ลำดับการรัน · ${plan.steps.length} ไฟล์</span></div>
+      <div class="tp-sum">${esc(sysLine)} · รันทีละตัวตามลำดับ ห้ามขนาน (ทุกไฟล์แชร์ table/till เดียวกัน)</div>
+      ${filled ? `<div class="tp-sum">เติมชื่อระบบให้ ${filled} ข้อที่ผูกไฟล์ไว้ตั้งแต่ก่อนมีคอลัมน์นี้</div>` : ''}
+      <div class="rp-list">${rows}</div>
+      ${plan.skipped.length ? `<div class="tp-sum">ข้ามข้อ ${plan.skipped.join(', ')} (ไม่ใช่ auto หรือยังไม่ผูกไฟล์)</div>` : ''}
+      <div class="tp-warn">⚠ รันชุดนี้ = สั่งออเดอร์จริงบน dev ${plan.steps.length} ครั้ง</div>
+      <div class="tp-actions">
+        <button class="copy">คัดลอกคำสั่งทั้งชุด</button>
+        <button class="cancel">ปิด</button>
+      </div></div>`;
+    host.querySelector('.cancel').onclick = () => { host.innerHTML = ''; };
+    const copyBtn = host.querySelector('.copy');
+    copyBtn.onclick = () => {
+      // เขียนเป็นสคริปต์ที่ก๊อปไปวางใน terminal ได้ทั้งก้อน ไฟล์ที่สั่งตรงไม่ได้เป็นคอมเมนต์
+      // ไม่ใช่หายไปเฉย ๆ — ไม่งั้นก๊อปไปรันแล้วนึกว่าครบทั้งที่ขาดฝั่งมือถือไป
+      const text = plan.steps.map(s => s.cmd
+        ? `cd "${s.cwd}"\n${s.cmd}`
+        : `# ${s.n}. ${s.test} — ${s.warn || s.manual} (${s.cwd})`).join('\n\n');
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.textContent = 'คัดลอกแล้ว';
+        setTimeout(() => { copyBtn.textContent = 'คัดลอกคำสั่งทั้งชุด'; }, 1500);
+      });
+    };
+  }
+
   // ---- จบงาน: สรุปผลกลับ Redmine ----
   // แผงกับการเขียนจริงอยู่ใน finishtest.js ตัวเดียวกับปุ่ม ✅/❌ ในแท็บ Redmine
   //
@@ -235,13 +381,17 @@
       const box = document.createElement('div');
       box.className = 'tr-picker';
       box.onclick = e => e.stopPropagation();
+      // เมนูจัดกลุ่มตามระบบอยู่แล้ว การเลือกไฟล์จึงเป็นการเลือกตัวรันไปในตัว — เก็บ label
+      // ติดไปกับไฟล์เลย (ตัดสินใจ 2026-08-07 แบบ B) ถ้าแยกเป็นสองปุ่มจะตั้ง "Playwright"
+      // คู่กับไฟล์ของมือถือได้ ซึ่งเป็นคู่ที่รันไม่ได้จริงและไม่มีอะไรฟ้อง
       const groups = sources.filter(s => s.tests && s.tests.length).map(s =>
         `<div class="tp-src">${esc(s.label)}</div>` +
-        s.tests.map(t => `<button type="button" data-t="${esc(t)}">${esc(t)}</button>`).join('')).join('');
+        s.tests.map(t => `<button type="button" data-t="${esc(t)}" data-s="${esc(s.label)}">${esc(t)}</button>`).join('')).join('');
       box.innerHTML = (groups || `<div class="tp-src">ไม่พบไฟล์เทสในโฟลเดอร์ที่ตั้งค่าไว้</div>`)
-        + `<button type="button" class="tp-clear" data-t="">— ไม่ผูกไฟล์เทส —</button>`;
+        + `<button type="button" class="tp-clear" data-t="" data-s="">— ไม่ผูกไฟล์เทส —</button>`;
       box.querySelectorAll('button').forEach(b => b.onclick = () => {
         sheet.items[idx].test = b.dataset.t;
+        sheet.items[idx].system = b.dataset.s || '';
         // ผูกไฟล์เทส = ข้อนี้ตั้งใจให้เครื่องรัน ปรับ ทำโดย ให้ตรงไปเลย ผู้ใช้จะได้ไม่ต้องกดสองที
         if (b.dataset.t && sheet.items[idx].by !== 'auto') sheet.items[idx].by = 'auto';
         box.remove(); renderItems(sheet); queueSave();
@@ -312,18 +462,21 @@
         <div class="tr-sub">รับเข้า ${esc(m.receivedAt || '–')}<span id="trDoneAt">${doneAtHtml(at)}</span> · ${esc(sheet.file)}${m.model ? ' · ' + esc(m.model) : ''}</div>
         <div class="tr-tally">
           <span class="tr-counts">${tallyHtml(p)}</span>
+          <button type="button" class="tr-runall" id="trRunAll">▶ Run all</button>
           <button type="button" class="tr-pull-all" id="trPullAll">⤓ ดึงผล auto ทั้งใบ</button>
           <button type="button" class="tr-finish ok" id="trFinishOk">✅ จบงาน · ผ่าน</button>
           <button type="button" class="tr-finish no" id="trFinishNo">❌ จบงาน · ไม่ผ่าน</button>
         </div>
         <div class="tr-automsg" id="trAutoMsg">${esc(autoMsg)}</div>
       </div>
+      <div id="trRun"></div>
       <div id="trFinish"></div>
       <div id="trItems"></div>
       <button class="tr-add" id="trAdd">+ เพิ่มข้อทดสอบ</button>
       <div class="row-label" style="margin-top:14px">บันทึกเพิ่มเติม</div>
       <textarea id="trNotes" class="tr-notes" placeholder="จดอะไรก็ได้เกี่ยวกับการเทสรอบนี้…">${esc(sheet.notes || '')}</textarea>`;
     document.getElementById('trBack').onclick = () => { openPath = null; autoMsg = ''; render(); };
+    document.getElementById('trRunAll').onclick = () => openRunPlan(sheet, null);
     document.getElementById('trPullAll').onclick = () => pullAuto(sheet, null);
     document.getElementById('trFinishOk').onclick = () => openFinish(sheet, 'success');
     document.getElementById('trFinishNo').onclick = () => openFinish(sheet, 'fail');
@@ -356,19 +509,32 @@
       // วันที่โผล่เฉพาะข้อที่มีผลแล้ว — ข้อที่ยังไม่เทสต้องไม่มีอะไรให้เข้าใจผิดว่าเทสแล้ว
       const dateTag = it.date
         ? `<span class="tr-date" title="ทดสอบเมื่อ ${esc(it.date)}">${esc(shortDate(it.date))}</span>` : '';
-      return `<div class="tr-item ${state}">
+      // ป้ายระบบข้าง auto — กวาดตาดูทั้งใบแล้วรู้ทันทีว่าข้อไหนรันด้วยอะไร ไม่ต้องอ่านชื่อไฟล์
+      const sysTag = it.by === 'auto' && it.system
+        ? `<span class="tr-sys" title="รันด้วย ${esc(it.system)}">${esc(it.system)}</span>` : '';
+      // ปุ่มสาเหตุโผล่เฉพาะข้อ auto ที่ fail — ข้อที่ QA ทดสอบเองแล้วไม่ผ่านไม่มีคำถามว่า
+      // "สคริปพังหรือระบบพัง" อยู่แล้ว ส่วนข้อที่ผ่านแล้วไม่มีอะไรให้ตรวจ
+      const causeRow = (it.by === 'auto' && it.result === 'fail') ? `<div class="tr-cause">
+        <span class="tr-cause-q">ตรวจแล้วเป็นที่</span>
+        <button type="button" class="tr-cz app${it.cause === 'แอป' ? ' on' : ''}" data-i="${i}" data-c="แอป">บั๊กระบบ</button>
+        <button type="button" class="tr-cz script${it.cause === 'สคริป' ? ' on' : ''}" data-i="${i}" data-c="สคริป">สคริปเทส</button>
+        ${it.cause ? '' : '<span class="tr-cause-todo">ยังไม่ได้ตรวจ</span>'}
+      </div>` : '';
+      return `<div class="tr-item ${state}${it.cause === 'สคริป' ? ' script' : ''}">
         <div class="tr-item-top">
           <span class="tr-n">${i + 1}</span>
           <input class="tr-title" data-i="${i}" value="${esc(it.title)}" placeholder="สิ่งที่ต้องทดสอบ…">
           <button class="tr-del" data-i="${i}" title="ลบข้อนี้">✕</button>
         </div>
         <div class="tr-item-actions">
-          ${btns}${dateTag}${runTag}
+          ${btns}${dateTag}${runTag}${sysTag}
           <button class="tr-by" data-i="${i}" title="สลับ ทดสอบเอง ↔ ใช้ผลจากชุดเทสอัตโนมัติ">${esc(it.by === 'ข้าม' ? 'qa' : it.by)}</button>
         </div>
+        ${causeRow}
         ${it.by === 'auto' ? `<div class="tr-link">
-          <button type="button" class="tr-pick${it.test ? ' on' : ''}" data-i="${i}">${it.test ? '⛓ ' + esc(it.test) : '⛓ ยังไม่ได้ผูกไฟล์เทส'}</button>
-          ${it.test ? `<button type="button" class="tr-pull" data-i="${i}">⤓ ดึงผลล่าสุด</button>` : ''}
+          <button type="button" class="tr-pick${it.test ? ' on' : ''}" data-i="${i}">${it.test ? '⛓ ' + (it.system ? '<b>' + esc(it.system) + '</b> · ' : '') + esc(it.test) : '⛓ ยังไม่ได้ผูกไฟล์เทส'}</button>
+          ${it.test ? `<button type="button" class="tr-run1" data-i="${i}">▶ รัน</button>
+          <button type="button" class="tr-pull" data-i="${i}">⤓ ดึงผลล่าสุด</button>` : ''}
         </div>` : ''}
         <input class="tr-note" data-i="${i}" value="${esc(it.note)}" placeholder="หมายเหตุ…">
       </div>`;
@@ -392,6 +558,12 @@
       e.stopPropagation();
       openTestPicker(b, sheet, Number(b.dataset.i));
     });
+    el.querySelectorAll('.tr-cz').forEach(b => b.onclick = () => {
+      const i = Number(b.dataset.i);
+      sheet.items[i] = applyCause(sheet.items[i], b.dataset.c);
+      renderItems(sheet); repaintTally(sheet); queueSave();
+    });
+    el.querySelectorAll('.tr-run1').forEach(b => b.onclick = () => openRunPlan(sheet, sheet.items[Number(b.dataset.i)]));
     el.querySelectorAll('.tr-pull').forEach(b => b.onclick = () => pullAuto(sheet, sheet.items[Number(b.dataset.i)]));
     el.querySelectorAll('.tr-run').forEach(b => b.onclick = () => {
       const run = sheet.items[Number(b.dataset.i)].run;
@@ -416,8 +588,12 @@
     });
   }
   function doneAtHtml(at) { return at ? ` · <b class="tr-doneat">เทสเสร็จ ${esc(at)}</b>` : ''; }
+  // fail ที่ตรวจแล้วว่าเป็นสคริปเทสเองพัง ต้องแยกให้เห็นตั้งแต่แถบสรุป ไม่งั้นใบที่ระบบไม่มีบั๊กเลย
+  // จะดูเหมือนมีบั๊ก · fail ที่ยังไม่มีใครตรวจก็ต้องทวงตรงนี้ เพราะมันคือคิวงานที่ค้างอยู่จริง
   function tallyHtml(p) {
     return `<span class="ok">pass ${p.pass}</span><span class="no">fail ${p.fail}</span>`
+      + (p.scriptFail ? `<span class="sc">สคริปพัง ${p.scriptFail}</span>` : '')
+      + (p.unjudgedFail ? `<span class="uj">รอตรวจ ${p.unjudgedFail}</span>` : '')
       + `<span>ค้าง ${p.todo}</span><span class="sk">ข้าม ${p.skipped}</span>`;
   }
   // อัปเดตแถบสรุปโดยไม่วาดทั้งใบใหม่ — วาดใหม่จะทำให้ข้อความที่พิมพ์ค้างในช่องหมายเหตุเสีย focus

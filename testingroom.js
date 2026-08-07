@@ -14,12 +14,16 @@ const path = require('path');
 
 const BY = ['qa', 'auto', 'ข้าม'];
 const RESULT = ['–', 'pass', 'fail'];
+// "สาเหตุ" = ผลการตรวจของ QA ว่าข้อที่ auto fail เป็นบั๊กของระบบจริง หรือสคริปเทสเองพัง
+// ค่าว่าง = ยังไม่ได้เข้าไปตรวจ — ต่างจาก "ไม่มีปัญหา" ต้องแยกออกจากกันให้ได้
+const CAUSE = ['', 'แอป', 'สคริป'];
 // "วันที่" = วันที่ข้อนั้นได้ผล แยกรายข้อ ไม่ใช่วันเดียวทั้งใบ — ใบหนึ่งมักเทสข้ามหลายวัน
 // เพิ่มเข้ามาทีหลัง จึงอ่านตำแหน่งคอลัมน์จากแถวหัวตาราง ไม่ใช่นับตำแหน่งตายตัว
 // (ใบเก่าที่มี 6 คอลัมน์ต้องอ่านได้ครบทุกแถวเหมือนเดิม ดูเทส "ใบเก่าที่ยังไม่มีคอลัมน์วันที่")
 // "เทส" = ชื่อไฟล์เทสอัตโนมัติที่ข้อนี้ผูกไว้ (ตรงกับ TEST: ใน test-log.txt ของรอบรัน)
-// เป็นการตั้งค่า ไม่ใช่ผล จึงไม่ถูกล้างตอนถอนผล/กดข้าม
-const COLUMNS = ['#', 'สิ่งที่ต้องทดสอบ', 'ทำโดย', 'ผล', 'วันที่', 'เทส', 'run', 'หมายเหตุ'];
+// "ระบบ" = label ของแหล่งที่ไฟล์นั้นอยู่ — ชื่อไฟล์อย่างเดียวบอกไม่ได้ว่าต้องรันด้วยอะไร
+// และสองแหล่งมีไฟล์ชื่อซ้ำกันได้ · ทั้งคู่เป็นการตั้งค่า ไม่ใช่ผล จึงไม่ถูกล้างตอนถอนผล/กดข้าม
+const COLUMNS = ['#', 'สิ่งที่ต้องทดสอบ', 'ทำโดย', 'ผล', 'สาเหตุ', 'วันที่', 'ระบบ', 'เทส', 'run', 'หมายเหตุ'];
 const LEGACY_COLUMNS = ['#', 'สิ่งที่ต้องทดสอบ', 'ทำโดย', 'ผล', 'run', 'หมายเหตุ'];
 const NOTES_HEADING = '## บันทึกเพิ่มเติม';
 
@@ -87,7 +91,9 @@ function serializeQtest(sheet) {
       escCell(it.title),
       oneOf(BY, it.by, 'qa'),
       oneOf(RESULT, it.result, '–'),
+      oneOf(CAUSE, it.cause, ''),
       escCell(it.date),
+      escCell(it.system),
       escCell(it.test),
       escCell(it.run),
       escCell(it.note),
@@ -140,7 +146,9 @@ function parseQtest(text) {
       title: at('สิ่งที่ต้องทดสอบ'),
       by: oneOf(BY, at('ทำโดย'), 'qa'),
       result: oneOf(RESULT, at('ผล'), '–'),
+      cause: oneOf(CAUSE, at('สาเหตุ'), ''),
       date: at('วันที่'),
+      system: at('ระบบ'),
       test: at('เทส'),
       run: at('run'),
       note: at('หมายเหตุ'),
@@ -160,16 +168,21 @@ const OUTCOMES = {
 };
 // ป้ายของข้อหนึ่ง — "ข้าม" มาก่อนผล เพราะข้อที่ข้ามไม่ได้ถูกทดสอบ ผลที่ค้างอยู่ (ถ้ามี)
 // ไม่มีความหมายแล้ว ส่วนข้อที่ยังไม่ติ๊กต้องพูดออกมาตรง ๆ ไม่ใช่หายไปเฉย ๆ จากสรุป
+// ป้ายผลที่ dev จะเห็นใน Redmine — ข้อที่ fail เพราะสคริปเทสเองพังต้องไม่ถูกอ่านว่าระบบพัง
+// ไม่งั้น dev จะไปไล่หาบั๊กที่ไม่มีอยู่ · fail ที่ QA ยังไม่ได้ตรวจก็ต้องไม่ถูกเหมาว่าเป็นบั๊กเช่นกัน
+const CAUSE_LABEL = { 'แอป': '[FAIL·บั๊กระบบ]', 'สคริป': '[FAIL·สคริปเทสเอง]' };
 function itemLabel(it) {
   if (!it || it.by === 'ข้าม') return '[ข้าม]';
   if (it.result === 'pass') return '[PASS]';
-  if (it.result === 'fail') return '[FAIL]';
+  if (it.result === 'fail') return CAUSE_LABEL[it.cause] || '[FAIL]';
   return '[ยังไม่ทดสอบ]';
 }
 function itemLine(it, i) {
   const bits = [];
   if (it.date) bits.push(it.date);
-  if (it.by === 'auto') bits.push(it.run ? `auto · run ${it.run}` : 'auto');
+  if (it.by === 'auto') {
+    bits.push(['auto', it.system, it.run ? 'run ' + it.run : ''].filter(Boolean).join(' · '));
+  }
   const tail = bits.length ? ` — ${bits.join(' · ')}` : '';
   const head = `${i + 1}. ${itemLabel(it)} ${it.title || '(ไม่มีหัวข้อ)'}${tail}`;
   // หมายเหตุคือที่ที่ QA เขียนว่าพังยังไง — ส่วนที่มีค่าที่สุดของใบ ต้องติดไปด้วยเสมอ
@@ -183,7 +196,10 @@ function formatTestResults(sheet, tally, outcome, today) {
   const items = (sheet && Array.isArray(sheet.items)) ? sheet.items : [];
   const t = tally || { pass: 0, fail: 0, skipped: 0, todo: 0, total: items.length };
   const o = OUTCOMES[outcome] || OUTCOMES.fail;
-  const counts = [`ผ่าน ${t.pass}`, `ไม่ผ่าน ${t.fail}`, `ข้าม ${t.skipped}`];
+  // แยก "ไม่ผ่านเพราะสคริปเทสเอง" ออกมาตั้งแต่บรรทัดสรุป — คนอ่านผ่าน ๆ เห็นแค่ตัวเลขบรรทัดนี้
+  const counts = [`ผ่าน ${t.pass}`,
+    `ไม่ผ่าน ${t.fail}${t.scriptFail ? ` (สคริปเทสเอง ${t.scriptFail})` : ''}`,
+    `ข้าม ${t.skipped}`];
   if (t.todo) counts.push(`ยังไม่ทดสอบ ${t.todo}`);
   const lines = [
     `ผลทดสอบรอบที่ ${meta.round || 1} — สรุป: ${o.word}${today ? ' (' + today + ')' : ''}`,
@@ -247,6 +263,6 @@ function latestQtestFor(sheets, issue) {
 }
 
 module.exports = {
-  BY, RESULT, OUTCOMES, parseQtest, serializeQtest, qtestFilename, nextQtestName, listQtests,
+  BY, RESULT, CAUSE, OUTCOMES, parseQtest, serializeQtest, qtestFilename, nextQtestName, listQtests,
   formatTestResults, mergeTestResults, latestQtestFor,
 };

@@ -21,9 +21,9 @@ const SHEET = {
     receivedAt: '2026-08-06', status: 'open', model: 'litellm/gemma4',
   },
   items: [
-    { n: 1, title: 'login ด้วยบัญชี owner แล้ว sidebar แสดงเมนูครบ', by: 'qa', result: '–', date: '', test: '', run: '', note: '' },
-    { n: 2, title: 'dashboard แสดงยอด outlet ไม่เป็น 0', by: 'auto', result: 'pass', date: '2026-08-06', test: 'zinga-wallet-test-food-chanyathaidemo.js', run: '20260727173450', note: 'รันรอบเช้า' },
-    { n: 3, title: 'ตรวจ log ฝั่ง server', by: 'ข้าม', result: '–', date: '', test: '', run: '', note: 'ไม่เกี่ยวกับงานนี้' },
+    { n: 1, title: 'login ด้วยบัญชี owner แล้ว sidebar แสดงเมนูครบ', by: 'qa', result: '–', cause: '', date: '', system: '', test: '', run: '', note: '' },
+    { n: 2, title: 'dashboard แสดงยอด outlet ไม่เป็น 0', by: 'auto', result: 'pass', cause: '', date: '2026-08-06', system: 'Test-case-mobile', test: 'zinga-wallet-test-food-chanyathaidemo.js', run: '20260727173450', note: 'รันรอบเช้า' },
+    { n: 3, title: 'ตรวจ log ฝั่ง server', by: 'ข้าม', result: '–', cause: '', date: '', system: '', test: '', run: '', note: 'ไม่เกี่ยวกับงานนี้' },
   ],
   notes: '',
 };
@@ -133,26 +133,51 @@ test('ใบเก่าที่ยังไม่มีคอลัมน์�
   ].join('\n');
   const back = parseQtest(old);
   assert.strictEqual(back.items.length, 2);
-  assert.deepStrictEqual(back.items[0], { n: 1, title: 'login ให้ผ่าน', by: 'qa', result: 'pass', date: '', test: '', run: '', note: 'ดูด้วยตา' });
-  assert.deepStrictEqual(back.items[1], { n: 2, title: 'ยอดตรง', by: 'auto', result: 'fail', date: '', test: '', run: '20260727173450', note: '' });
+  assert.deepStrictEqual(back.items[0], { n: 1, title: 'login ให้ผ่าน', by: 'qa', result: 'pass', cause: '', date: '', system: '', test: '', run: '', note: 'ดูด้วยตา' });
+  assert.deepStrictEqual(back.items[1], { n: 2, title: 'ยอดตรง', by: 'auto', result: 'fail', cause: '', date: '', system: '', test: '', run: '20260727173450', note: '' });
 });
 
 test('อ่านคอลัมน์ตามชื่อในแถวหัวตาราง ไม่ใช่ตามตำแหน่ง', () => {
   // แก้ไฟล์ด้วยมือแล้วสลับคอลัมน์ได้ — ยึดหัวตารางแล้วค่าจะไม่ไปเข้าช่องผิด
   const swapped = [
     '---', 'qtest: 1', '---', '', '## Checklist', '',
-    '| # | สิ่งที่ต้องทดสอบ | ผล | ทำโดย | หมายเหตุ | วันที่ | เทส | run |',
-    '|---|---|---|---|---|---|---|---|',
-    '| 1 | ก | pass | auto | หมายเหตุ ก | 2026-08-06 | t.spec.js | 20260727173450 |', '',
+    '| # | สิ่งที่ต้องทดสอบ | ผล | ทำโดย | หมายเหตุ | วันที่ | ระบบ | เทส | run | สาเหตุ |',
+    '|---|---|---|---|---|---|---|---|---|---|',
+    '| 1 | ก | fail | auto | หมายเหตุ ก | 2026-08-06 | test-case | t.spec.js | 20260727173450 | สคริป |', '',
     '## บันทึกเพิ่มเติม', '',
   ].join('\n');
   assert.deepStrictEqual(parseQtest(swapped).items[0],
-    { n: 1, title: 'ก', by: 'auto', result: 'pass', date: '2026-08-06', test: 't.spec.js', run: '20260727173450', note: 'หมายเหตุ ก' });
+    { n: 1, title: 'ก', by: 'auto', result: 'fail', cause: 'สคริป', date: '2026-08-06', system: 'test-case', test: 't.spec.js', run: '20260727173450', note: 'หมายเหตุ ก' });
 });
 
-test('serialize เขียนคอลัมน์วันที่ต่อจากผล', () => {
+test('serialize เขียนหัวตารางครบทุกคอลัมน์ตามลำดับที่ตกลงไว้', () => {
   const head = serializeQtest(SHEET).split('\n').find(l => l.startsWith('| #'));
-  assert.strictEqual(head, '| # | สิ่งที่ต้องทดสอบ | ทำโดย | ผล | วันที่ | เทส | run | หมายเหตุ |');
+  assert.strictEqual(head, '| # | สิ่งที่ต้องทดสอบ | ทำโดย | ผล | สาเหตุ | วันที่ | ระบบ | เทส | run | หมายเหตุ |');
+});
+
+// ---- คอลัมน์ "สาเหตุ" และ "ระบบ" (เพิ่มทีหลังอีกรอบ) ----
+
+test('ใบที่เขียนก่อนมีคอลัมน์สาเหตุ/ระบบ ต้องอ่านได้ครบทุกแถว', () => {
+  // บทเรียนเดิมซ้ำรอบสาม — fixture ต้องเป็นสตริงดิบของ schema เก่าจริง ๆ ห้าม generate
+  // ด้วย serializeQtest รุ่นปัจจุบัน ไม่งั้นเทสพิสูจน์แค่ว่ารุ่นนี้คุยกับตัวเองรู้เรื่อง
+  const old = [
+    '---', 'qtest: 1', 'issue: 690', '---', '', '## Checklist', '',
+    '| # | สิ่งที่ต้องทดสอบ | ทำโดย | ผล | วันที่ | เทส | run | หมายเหตุ |',
+    '|---|---|---|---|---|---|---|---|',
+    '| 1 | ยอดตรง | auto | fail | 2026-08-06 | a.spec.js | 20260806101122 | เจ๊งตอนกดจ่าย |', '',
+    '## บันทึกเพิ่มเติม', '',
+  ].join('\n');
+  assert.deepStrictEqual(parseQtest(old).items[0], {
+    n: 1, title: 'ยอดตรง', by: 'auto', result: 'fail', cause: '', date: '2026-08-06',
+    system: '', test: 'a.spec.js', run: '20260806101122', note: 'เจ๊งตอนกดจ่าย',
+  });
+});
+
+test('สาเหตุที่ไม่รู้จักถูกดึงกลับเป็นว่าง = ยังไม่ได้ตรวจ', () => {
+  // "ยังไม่ได้ตรวจ" ปลอดภัยกว่าเดาว่าเป็นอะไรสักอย่าง เพราะมันไปโผล่ใน Test Results ที่ dev อ่าน
+  const text = serializeQtest({ meta: { qtest: 1 }, items: [{ title: 'ก', by: 'auto', result: 'fail', cause: 'สคริป' }], notes: '' })
+    .replace('| สคริป |', '| อะไรก็ไม่รู้ |');
+  assert.strictEqual(parseQtest(text).items[0].cause, '');
 });
 
 // ---- สรุปผลกลับ Redmine ----

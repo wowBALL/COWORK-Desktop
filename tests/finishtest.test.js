@@ -58,3 +58,21 @@ test('preview ที่ยังไม่มี tally ไม่ทำให้�
   assert.deepStrictEqual(warningsFor({}), []);
   assert.deepStrictEqual(warningsFor(null), []);
 });
+
+test('fail ที่ตรวจแล้วว่าสคริปเทสเองพัง ไม่ขวางการสรุปว่าผ่าน', () => {
+  // ระบบไม่ได้มีบั๊ก การเตือนตรงนี้จะกลายเป็นคำเตือนที่ขึ้นทุกใบจนคนเลิกอ่าน
+  assert.deepStrictEqual(
+    warningsFor({ outcome: 'success', status: 'Test', tally: { ...done, fail: 2, scriptFail: 2 } }), []);
+});
+test('fail ที่เหลือหลังหักกองสคริปออกแล้ว ยังต้องเตือน', () => {
+  const w = warningsFor({ outcome: 'success', status: 'Test', tally: { ...done, fail: 3, scriptFail: 2 } });
+  assert.strictEqual(w.length, 1);
+  assert.match(w[0], /1 ข้อ/);
+});
+test('auto fail ที่ยังไม่มีใครตรวจ ต้องเตือนทั้งขาผ่านและขาไม่ผ่าน', () => {
+  // ส่งกลับ Redmine ตอนนี้ = เดาแทน QA ว่าสคริปพังหรือระบบพัง ซึ่งผิดได้ทั้งสองทาง
+  for (const outcome of ['success', 'fail']) {
+    const w = warningsFor({ outcome, status: 'Test', tally: { ...done, fail: 1, unjudgedFail: 1 } });
+    assert.ok(w.some(x => /ยังไม่ได้ตรวจ/.test(x)), outcome);
+  }
+});

@@ -29,8 +29,16 @@
     const out = [];
     const t = (preview && preview.tally) || {};
     if (t.todo) out.push(`ยังมี ${t.todo} ข้อที่ยังไม่ได้ติ๊กผล — จะถูกบันทึกว่า "ยังไม่ทดสอบ"`);
-    if (preview && preview.outcome === 'success' && t.fail) {
-      out.push(`ใบนี้มี ${t.fail} ข้อที่ผลเป็น fail แต่กำลังจะสรุปว่าผ่าน`);
+    // fail ที่ตรวจแล้วว่าสคริปเทสเองพัง ไม่ใช่ข้อขัดข้องของการสรุปว่าผ่าน — ระบบไม่ได้มีบั๊ก
+    // เตือนเฉพาะ fail ที่เหลือหลังหักกองนั้นออก ไม่งั้นจะเตือนทุกใบจนคนเลิกอ่านคำเตือน
+    const realFail = (t.fail || 0) - (t.scriptFail || 0);
+    if (preview && preview.outcome === 'success' && realFail > 0) {
+      out.push(`ใบนี้มี ${realFail} ข้อที่ผลเป็น fail แต่กำลังจะสรุปว่าผ่าน`);
+    }
+    // กองที่อันตรายที่สุด: auto fail ที่ยังไม่มีใครเข้าไปดูว่าสคริปพังหรือระบบพัง
+    // ส่งกลับ Redmine ตอนนี้ = เดาแทน QA ไม่ว่าจะสรุปว่าผ่านหรือไม่ผ่านก็ผิดได้ทั้งคู่
+    if (t.unjudgedFail) {
+      out.push(`มี ${t.unjudgedFail} ข้อที่ auto fail แต่ยังไม่ได้ตรวจว่าเป็นที่สคริปเทสหรือที่ระบบ`);
     }
     if (preview && preview.status && preview.status !== 'Test') {
       out.push(`ตอนนี้งานอยู่สถานะ ${preview.status} ไม่ใช่ Test แล้ว`);

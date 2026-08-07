@@ -41,6 +41,8 @@
 .tr-tally .ok{color:var(--green)}
 .tr-tally .no{color:var(--rose)}
 .tr-tally .sk{color:var(--dim)}
+.tr-tally .sc{color:var(--violet)}
+.tr-tally .uj{color:var(--amber)}
 
 /* ---- การ์ดต่อข้อ ---- */
 .tr-item{background:var(--panel);border:1px solid var(--line-soft);border-left:2px solid var(--line);
@@ -88,6 +90,49 @@
   color:var(--cyan);background:transparent;border:1px solid color-mix(in srgb,var(--cyan) 45%,transparent);
   border-radius:6px;padding:3px 10px;cursor:pointer;transition:.12s}
 .tr-tally .tr-pull-all:hover{border-color:var(--cyan);background:color-mix(in srgb,var(--cyan) 12%,transparent)}
+/* ---- ระบบที่ใช้รัน + สาเหตุที่ fail ---- */
+.tr-sys{font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--violet);
+  border:1px solid color-mix(in srgb,var(--violet) 40%,transparent);border-radius:5px;padding:2px 7px}
+.tr-cause{display:flex;align-items:center;gap:6px;margin:6px 0 0 20px;flex-wrap:wrap}
+.tr-cause-q{font-size:10px;color:var(--dim)}
+.tr-cause-todo{font-size:10px;color:var(--amber)}
+.tr-cz{-webkit-app-region:no-drag;font-family:inherit;font-size:10px;font-weight:600;background:transparent;
+  border:1px solid var(--line);color:var(--muted);border-radius:5px;padding:2px 9px;cursor:pointer;transition:.12s}
+.tr-cz.app:hover,.tr-cz.app.on{color:var(--rose);border-color:var(--rose)}
+.tr-cz.script:hover,.tr-cz.script.on{color:var(--violet);border-color:var(--violet)}
+.tr-cz.on{background:color-mix(in srgb,currentColor 14%,transparent)}
+/* ข้อที่ตรวจแล้วว่าสคริปพัง ไม่ใช่ความผิดของระบบ แถบซ้ายจึงไม่ควรแดงเหมือน fail จริง */
+.tr-item.fail.script{border-left-color:var(--violet)}
+/* ---- ลำดับการรัน ---- */
+.tr-tally .tr-runall{-webkit-app-region:no-drag;font-family:inherit;font-size:10px;font-weight:600;
+  margin-left:auto;background:transparent;color:var(--violet);border-radius:6px;padding:3px 10px;cursor:pointer;
+  border:1px solid color-mix(in srgb,var(--violet) 45%,transparent);transition:.12s}
+.tr-tally .tr-runall:hover{border-color:var(--violet);background:color-mix(in srgb,var(--violet) 12%,transparent)}
+/* ปุ่ม ⤓ เคยเป็นตัวแรกของกลุ่มขวา พอ ▶ Run all มาอยู่หน้ามันแล้ว margin-left ต้องย้ายตาม
+   ไม่งั้นจะมีสองตัวที่ดัน auto แล้วกลุ่มขวาแตกออกจากกัน */
+.tr-tally .tr-pull-all{margin-left:0}
+.tr-link .tr-run1{-webkit-app-region:no-drag;font-family:inherit;font-size:10px;font-weight:600;
+  background:transparent;color:var(--violet);border-radius:5px;padding:2px 9px;cursor:pointer;
+  border:1px solid color-mix(in srgb,var(--violet) 40%,transparent);transition:.12s}
+.tr-link .tr-run1:hover{border-color:var(--violet);background:color-mix(in srgb,var(--violet) 12%,transparent)}
+#trRun:not(:empty){margin:10px 0 4px}
+.rp-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.rp-step{background:var(--panel);border:1px solid var(--line-soft);border-radius:7px;padding:7px 10px}
+.rp-line{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:11.5px}
+.rp-n{color:var(--dim)}
+.rp-sys{color:var(--violet);font-size:10px;letter-spacing:.03em}
+.rp-test{color:var(--ink);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px}
+.rp-last{margin-left:auto;font-size:10px}
+.rp-last.ok{color:var(--green)}
+.rp-last.no{color:var(--rose)}
+.rp-last.warn{color:var(--amber)}
+.rp-last.none{color:var(--dim)}
+.rp-cmd{display:flex;align-items:baseline;gap:8px;margin-top:5px;flex-wrap:wrap}
+.rp-cmd code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;color:var(--cyan);
+  background:var(--panel-2);border-radius:4px;padding:2px 7px}
+.rp-manual{font-size:10.5px;color:var(--amber)}
+.rp-cwd{font-size:9.5px;color:var(--dim)}
+.rp-warn{margin-top:5px;font-size:10.5px;color:var(--rose)}
 /* ---- จบงาน: สรุปผลกลับ Redmine ---- */
 /* ทรงเดียวกับ ⤓ ดึงผล แต่ margin-left:auto อยู่ที่ตัวแรกตัวเดียว สามปุ่มจึงเกาะกลุ่มกันชิดขวา */
 .tr-tally .tr-finish{-webkit-app-region:no-drag;font-family:inherit;font-size:10px;font-weight:600;

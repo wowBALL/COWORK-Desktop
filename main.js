@@ -15,6 +15,7 @@ const { serializeQtest, nextQtestName, listQtests, issuesByRun,
 // เมื่อ window เป็น undefined อยู่แล้ว (ทางเดียวกับที่ node --test ใช้) กฎ "ข้อที่ข้ามไม่นับ
 // เป็นงานค้าง" จึงมีที่เดียว ถ้าก๊อป progressOf มาไว้ที่นี่ด้วย สองสูตรจะเพี้ยนจากกันเงียบ ๆ
 const { progressOf } = require('./tab-testingroom.js');
+const { planRun } = require('./testrun');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -208,6 +209,142 @@ function loadAppConfig() {
     if (!grafanaConfig.prod.token) grafanaConfig.prod.token = ENV.GRAFANA_PROD_TOKEN || '';
   }
 }
+
+// ---- สั่งรันชุดเทสจากในแอป (เฟส 5) ----
+//
+// spawn เอง ไม่ยิง HTTP ไปหาแดชบอร์ดของ test-case เพราะนั่นบังคับให้ต้องเปิด dev server
+// ค้างไว้ก่อนทุกครั้ง = dependency ที่ซ่อนอยู่และพังเงียบ · ฝั่งมือถือยังไงก็ต้อง spawn
+// run-test.bat อยู่แล้ว มีกลไกเดียวง่ายกว่าสอง
+//
+// ราคาที่ต้องจ่ายคือกันลูกกำพร้าเอง — ฆ่าทั้งต้นไม้ตอนยกเลิกและตอนแอปปิด (ดู killRunChild)
+//
+// รอบเดียวทั้งแอป ไม่ใช่รอบเดียวต่อใบเทส: ทุกไฟล์แชร์ table/till และ BlueStacks ตัวเดียวกัน
+// รันซ้อนกันแล้วผลเพี้ยนทั้งสองรอบโดยไม่มีอะไรฟ้อง
+const RUN_LOG_MAX = 400;   // บรรทัดที่เก็บไว้ให้ดูย้อน — ยาวกว่านี้กินแรมฟรีและไม่มีใครเลื่อนดู
+let runSession = null;
+
+function runSnapshot() {
+  if (!runSession) return { running: false };
+  const s = runSession;
+  return {
+    running: true,
+    startedAt: s.startedAt,
+    index: s.index,
+    total: s.steps.length,
+    stopAfter: s.stopAfter,
+    steps: s.steps.map(st => ({
+      system: st.system || '', test: st.test, kind: st.kind || '',
+      status: st.status, error: st.error || '', code: st.code, ms: st.ms || 0,
+    })),
+    log: s.log,
+  };
+}
+function pushRun(extra) {
+  if (win) win.webContents.send('test-run-update', Object.assign(runSnapshot(), extra || {}));
+}
+function runLog(line) {
+  if (!runSession) return;
+  runSession.log.push(line);
+  if (runSession.log.length > RUN_LOG_MAX) runSession.log.splice(0, runSession.log.length - RUN_LOG_MAX);
+}
+// บน Windows child.kill() ฆ่าได้แค่ตัว cmd.exe ที่ห่ออยู่ ตัว node/appium ข้างในรอดแล้วรัน
+// ต่อจนจบ (และยังสั่งออเดอร์จริงต่อ) — ต้อง taskkill /T ถึงจะได้ทั้งต้นไม้
+function killRunChild() {
+  const child = runSession && runSession.child;
+  if (!child || child.killed) return;
+  try {
+    if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+    else child.kill('SIGTERM');
+  } catch {}
+}
+
+function finishRun(reason) {
+  if (!runSession) return;
+  runSession.child = null;
+  const snap = runSnapshot();
+  runSession = null;
+  if (win) win.webContents.send('test-run-update', Object.assign(snap, { running: false, done: true, reason }));
+}
+
+function runNextStep() {
+  const s = runSession;
+  if (!s) return;
+  if (s.cancelled || s.index >= s.steps.length) return finishRun(s.cancelled ? 'ยกเลิกแล้ว' : 'จบชุด');
+  const step = s.steps[s.index];
+  if (!step.ok) {                       // ประกอบคำสั่งไม่ได้ตั้งแต่แรก — ข้ามไปขั้นถัดไป ไม่ล้มทั้งชุด
+    step.status = 'error';
+    runLog(`[ข้าม] ${step.test}: ${step.error}`);
+    s.index += 1; pushRun();
+    return runNextStep();
+  }
+  step.status = 'running';
+  step.startedMs = Date.now();
+  runLog(`──── เริ่ม ${step.test} (${step.system}) ────`);
+  pushRun();
+  let child;
+  try {
+    child = spawn(step.line, { cwd: step.cwd, shell: true, windowsHide: true });
+  } catch (e) {
+    step.status = 'error'; step.error = e.message;
+    runLog(`[ล้มเหลว] ${e.message}`);
+    s.index += 1; pushRun();
+    return runNextStep();
+  }
+  s.child = child;
+  const onData = buf => {
+    for (const line of String(buf).replace(/\r\n/g, '\n').split('\n')) {
+      if (line.trim()) runLog(line.replace(/\s+$/, ''));
+    }
+    pushRun();
+  };
+  child.stdout.on('data', onData);
+  child.stderr.on('data', onData);
+  child.on('error', e => { runLog(`[ล้มเหลว] ${e.message}`); });
+  child.on('close', code => {
+    if (!runSession) return;                       // แอปปิดไปแล้วระหว่างรัน
+    step.code = code;
+    step.ms = Date.now() - step.startedMs;
+    // ยกเลิกกลางคันไม่ใช่ "เทสไม่ผ่าน" — exit code ตอนถูกฆ่าไม่ได้บอกอะไรเกี่ยวกับระบบเลย
+    step.status = s.cancelled ? 'cancelled' : code === 0 ? 'pass' : 'fail';
+    runLog(`──── จบ ${step.test} (exit ${code}) ────`);
+    s.child = null;
+    s.index += 1;
+    pushRun();
+    if (s.stopAfter) { s.cancelled = true; return finishRun('หยุดตามคำสั่ง (ไฟล์ที่ค้างรันจนจบแล้ว)'); }
+    runNextStep();
+  });
+}
+
+// renderer ส่งมาแค่ [{system, test}] — path กับคำสั่งประกอบที่ main ทั้งหมด
+ipcMain.handle('start-test-run', (_e, items) => {
+  if (runSession) return { ok: false, error: 'มีชุดที่กำลังรันอยู่แล้ว — รอให้จบหรือกดยกเลิกก่อน' };
+  const steps = planRun(autoTestList(), items);
+  if (!steps.length) return { ok: false, error: 'ไม่มีข้อไหนให้รัน' };
+  steps.forEach(st => { st.status = 'queued'; });
+  runSession = { steps, index: 0, child: null, cancelled: false, stopAfter: false, startedAt: Date.now(), log: [] };
+  pushRun();
+  runNextStep();
+  return { ok: true, total: steps.length };
+});
+// 'now' = ฆ่าทันที · 'after' = ปล่อยไฟล์ที่กำลังรันจนจบแล้วไม่รันตัวต่อไป
+// ต้องมีสองแบบเพราะฆ่ากลางคันทิ้งออเดอร์ค้างไว้ในระบบ dev ซึ่งต้องตามไปเก็บกวาดเอง
+ipcMain.handle('cancel-test-run', (_e, mode) => {
+  if (!runSession) return { ok: false, error: 'ไม่มีชุดที่กำลังรัน' };
+  if (mode === 'after') {
+    runSession.stopAfter = true;
+    runLog('[หยุดหลังไฟล์นี้จบ] จะไม่รันไฟล์ถัดไป');
+    pushRun();
+    return { ok: true };
+  }
+  runSession.cancelled = true;
+  runLog('[ยกเลิกทันที] กำลังฆ่าโปรเซสที่รันอยู่');
+  pushRun();
+  killRunChild();
+  return { ok: true };
+});
+ipcMain.handle('get-test-run', () => runSnapshot());
+// แอปปิดระหว่างรัน = โปรเซสเทสกลายเป็นลูกกำพร้าที่ยังสั่งออเดอร์ต่อโดยไม่มีใครเห็น log แล้ว
+app.on('before-quit', () => { if (runSession) { runSession.cancelled = true; killRunChild(); } });
 
 // ---- custom auto-update (path-aware) ----
 // electron-updater's NSIS silent install ignores custom install directories
@@ -806,15 +943,18 @@ ipcMain.handle('save-qtest', (_e, file, sheet) => {
 });
 // รายชื่อไฟล์เทสอัตโนมัติที่มีอยู่จริงตอนนี้ — อ่านดิสก์ทุกครั้ง ไฟล์เทสที่เพิ่งเขียนจึงโผล่
 // ให้เลือกได้ทันทีโดยไม่ต้องแก้อะไรในแอปนี้
-ipcMain.handle('list-auto-tests', () => (autoTestSources || []).map(src => {
-  let tests = [];
-  try {
-    tests = fs.readdirSync(src.path)
-      .filter(f => /\.(spec\.)?js$/i.test(f) && !f.startsWith('_'))
-      .sort();
-  } catch {}
-  return { label: src.label || path.basename(src.path || ''), path: src.path, tests };
-}));
+function autoTestList() {
+  return (autoTestSources || []).map(src => {
+    let tests = [];
+    try {
+      tests = fs.readdirSync(src.path)
+        .filter(f => /\.(spec\.)?js$/i.test(f) && !f.startsWith('_'))
+        .sort();
+    } catch {}
+    return { label: src.label || path.basename(src.path || ''), path: src.path, tests };
+  });
+}
+ipcMain.handle('list-auto-tests', () => autoTestList());
 // ผลรันล่าสุดของแต่ละไฟล์เทส — จับคู่ด้วย testId ที่ตัวรันเขียนไว้เอง ไม่ใช่ชื่อที่คนอ่าน
 // (runs เรียงใหม่สุดก่อนอยู่แล้ว ตัวแรกที่เจอจึงเป็นล่าสุด)
 ipcMain.handle('latest-auto-results', (_e, testIds) => {

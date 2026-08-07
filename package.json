@@ -53,6 +53,7 @@
       "redmine-issue-form.js",
       "qatest.js",
       "testingroom.js",
+      "testrun.js",
       "grafana.js",
       "uidump.js",
       "meetingrun.js",

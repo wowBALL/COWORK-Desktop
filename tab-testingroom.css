@@ -133,6 +133,22 @@
 .rp-manual{font-size:10.5px;color:var(--amber)}
 .rp-cwd{font-size:9.5px;color:var(--dim)}
 .rp-warn{margin-top:5px;font-size:10.5px;color:var(--rose)}
+/* ---- หน้ากำลังรัน ---- */
+.rr-bars{display:flex;gap:4px;margin:8px 0 9px}
+.rr-bar{flex:1;height:4px;border-radius:2px;background:var(--line)}
+.rr-bar.go{background:var(--violet)}
+.rr-bar.ok{background:var(--green)}
+.rr-bar.no{background:var(--rose)}
+.rr-bar.err{background:var(--amber)}
+.rr-now{font-size:11.5px;color:var(--muted);margin-bottom:8px}
+.rr-now code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--ink)}
+.rr-now b{color:var(--violet);font-size:10px}
+.rr-next{color:var(--dim);font-size:10px}
+.rr-stopafter{color:var(--amber);font-size:10px}
+/* log สูงคงที่และเลื่อนเอง — เนื้อหาโตเรื่อย ๆ ปล่อยให้ยืดจะดันปุ่มยกเลิกตกจอตอนที่ต้องใช้ */
+.rr-log{background:var(--panel);border:1px solid var(--line-soft);border-radius:7px;padding:8px 10px;
+  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;line-height:1.75;color:var(--muted);
+  white-space:pre-wrap;word-break:break-word;height:210px;overflow-y:auto}
 /* ---- จบงาน: สรุปผลกลับ Redmine ---- */
 /* ทรงเดียวกับ ⤓ ดึงผล แต่ margin-left:auto อยู่ที่ตัวแรกตัวเดียว สามปุ่มจึงเกาะกลุ่มกันชิดขวา */
 .tr-tally .tr-finish{-webkit-app-region:no-drag;font-family:inherit;font-size:10px;font-weight:600;

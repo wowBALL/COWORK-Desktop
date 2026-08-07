@@ -40,6 +40,11 @@ contextBridge.exposeInMainWorld('cowork', {
   // ปุ่ม ✅/❌ — ขอผลสรุปมาให้ QA ตรวจก่อน แล้วค่อยสั่งเขียนกลับ Redmine เป็นคนละคำสั่ง
   getFinishPreview: (issueId, outcome) => ipcRenderer.invoke('get-finish-preview', issueId, outcome),
   finishTest: (issueId, outcome, value, fieldId) => ipcRenderer.invoke('finish-test', issueId, outcome, value, fieldId),
+  // สั่งรันชุดเทสจากในแอป — ส่งไปแค่ [{system, test}] คำสั่งจริงประกอบที่ main
+  startTestRun: (items) => ipcRenderer.invoke('start-test-run', items),
+  cancelTestRun: (mode) => ipcRenderer.invoke('cancel-test-run', mode),
+  getTestRun: () => ipcRenderer.invoke('get-test-run'),
+  onTestRun: (cb) => ipcRenderer.on('test-run-update', (_e, payload) => cb(payload)),
   getAutoTestSources: () => ipcRenderer.invoke('get-auto-test-sources'),
   saveAutoTestSources: (sources) => ipcRenderer.invoke('save-auto-test-sources', sources),
   getQtestDir: () => ipcRenderer.invoke('get-qtest-dir'),

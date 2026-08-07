@@ -134,19 +134,22 @@
     if (hits.length > 1) return { src: null, warn: 'ไฟล์ชื่อนี้มีอยู่ในหลายระบบ — กดเลือกไฟล์ใหม่เพื่อระบุว่าใช้ตัวไหน' };
     return { src: null, warn: 'หาไฟล์นี้ในโฟลเดอร์ที่ตั้งค่าไว้ไม่เจอแล้ว' };
   }
-  // run-test.bat อยู่ระดับเดียวกับโฟลเดอร์ Tests\ ไม่ใช่ในนั้น — qaSources ชี้ไปที่โฟลเดอร์
-  // ไฟล์เทส คำสั่งจึงต้องถอยขึ้นมาหนึ่งชั้น · path ที่ไม่ได้ลงท้ายด้วย Tests ใช้ตามที่ตั้งไว้
+  // ทั้ง run-test.bat และ playwright.config.js อยู่ระดับเดียวกับโฟลเดอร์ tests\ ไม่ใช่ข้างใน
+  // ส่วน autoTestSources ชี้ไปที่โฟลเดอร์ไฟล์เทส คำสั่งจึงต้องถอยขึ้นมาหนึ่งชั้นทั้งคู่
+  // (เดิมฝั่ง Playwright ใช้ path ของโฟลเดอร์ tests ตรง ๆ ซึ่งผิด — playwright หา config
+  //  จาก cwd สั่งจากในโฟลเดอร์ tests/ จะไม่เจอ testDir แล้วรันไม่ออกเลย)
   function repoRoot(p) {
     return String(p || '').replace(/[\\/]+$/, '').replace(/[\\/]tests$/i, '');
   }
-  // คำสั่งที่ต้องไปรันเอง — .spec.js คือชุด Playwright · ที่เหลือคือชุดมือถือผ่าน run-test.bat
-  // ซึ่งรับชื่อไฟล์เป็น argument ได้แล้วตั้งแต่ 2026-08-07 (ก่อนหน้านั้นเป็นเมนูตัวเลขล้วน
-  // สั่งจากข้างนอกไม่ได้เลย) — โหมด argument ไม่มี pause และคืน exit code ของ node ออกมา
+  // คำสั่งสำหรับ "ก๊อปไปรันเอง" — คนละตัวกับที่แอป spawn จริง (นั่นอยู่ใน testrun.js ฝั่ง main
+  // และเรียก binary ในเครื่องโปรเจกต์) ตัวนี้เขียนให้คนอ่านและพิมพ์ตามได้สะดวก
   function commandFor(item, src) {
     if (!src) return { cwd: '', cmd: '', manual: '' };
-    return /\.spec\.js$/i.test(item.test)
-      ? { cwd: src.path || '', cmd: `npx playwright test ${item.test}`, manual: '' }
-      : { cwd: repoRoot(src.path), cmd: `run-test.bat ${item.test}`, manual: '' };
+    return {
+      cwd: repoRoot(src.path),
+      cmd: /\.spec\.js$/i.test(item.test) ? `npx playwright test ${item.test}` : `run-test.bat ${item.test}`,
+      manual: '',
+    };
   }
   // only = ไอเทมเดียวที่กด ▶ รัน รายข้อ — ยังต้องส่ง items ทั้งใบเข้ามา เพราะเลขข้อที่โชว์
   // ต้องเป็นตำแหน่งจริงในใบ (ข้อ 3 ต้องขึ้นว่า "3.") ไม่ใช่นับใหม่จาก 1 ในลิสต์ที่กรองแล้ว
@@ -287,6 +290,17 @@
     const host = document.getElementById('trRun');
     if (!host) return;
     host.innerHTML = '<div class="testPreview">กำลังอ่านรายชื่อไฟล์เทส…</div>';
+    // มีชุดที่กำลังรันอยู่แล้ว = กดปุ่มรันคือ "ขอดูว่ารันถึงไหน" ไม่ใช่ "ขอเริ่มชุดใหม่"
+    // (main ปฏิเสธชุดที่สองอยู่แล้ว แต่โชว์แผนใหม่ให้กดปุ่มที่กดไม่ได้คือหลอกกันเปล่า ๆ)
+    if (api && api.getTestRun) {
+      return api.getTestRun().then(run => {
+        if (run && run.running) return paintRunning(host, run, sheet);
+        return openPlanPanel(host, sheet, only);
+      });
+    }
+    return openPlanPanel(host, sheet, only);
+  }
+  function openPlanPanel(host, sheet, only) {
     loadAutoTests().then(sources => {
       const plan = runPlan(sheet.items, sources, only);
       // ผูกไฟล์ไว้แล้วแต่ยังไม่มีระบบ (ใบเก่า) และค้นเจอแหล่งเดียว = เติมให้เลย ไม่ต้องให้กดใหม่
@@ -338,10 +352,25 @@
       ${plan.skipped.length ? `<div class="tp-sum">ข้ามข้อ ${plan.skipped.join(', ')} (ไม่ใช่ auto หรือยังไม่ผูกไฟล์)</div>` : ''}
       <div class="tp-warn">⚠ รันชุดนี้ = สั่งออเดอร์จริงบน dev ${plan.steps.length} ครั้ง</div>
       <div class="tp-actions">
+        <button class="confirm start">▶ เริ่มรัน</button>
         <button class="copy">คัดลอกคำสั่งทั้งชุด</button>
         <button class="cancel">ปิด</button>
       </div></div>`;
     host.querySelector('.cancel').onclick = () => { host.innerHTML = ''; };
+    // เก็บแผนไว้ให้ปุ่ม "เริ่มรัน" ใช้ — ส่งไปแค่ (ระบบ, ชื่อไฟล์) ฝั่ง main ประกอบคำสั่งเอง
+    const startBtn = host.querySelector('.start');
+    if (startBtn) startBtn.onclick = () => {
+      startBtn.disabled = true;
+      api.startTestRun(plan.steps.map(s => ({ system: s.system, test: s.test }))).then(res => {
+        if (!res || !res.ok) {
+          startBtn.disabled = false;
+          const err = document.createElement('div');
+          err.className = 'tp-err';
+          err.textContent = (res && res.error) || 'เริ่มรันไม่สำเร็จ';
+          host.querySelector('.testPreview').appendChild(err);
+        }
+      });
+    };
     const copyBtn = host.querySelector('.copy');
     copyBtn.onclick = () => {
       // เขียนเป็นสคริปต์ที่ก๊อปไปวางใน terminal ได้ทั้งก้อน ไฟล์ที่สั่งตรงไม่ได้เป็นคอมเมนต์
@@ -354,6 +383,75 @@
         setTimeout(() => { copyBtn.textContent = 'คัดลอกคำสั่งทั้งชุด'; }, 1500);
       });
     };
+  }
+
+  // ---- หน้ากำลังรัน ----
+  // แผงสลับทั้งแผงเป็นหน้านี้ตอนรัน (ตัดสินใจ 2026-08-07 แบบ B) — log ได้พื้นที่มากที่สุด
+  // เพราะเวลาที่ต้องจ้องหน้านี้จริง ๆ คือตอนเทสค้างแล้วต้องไล่ว่าติดตรงไหน
+  const RUN_STATUS = {
+    queued: { icon: '·', label: 'รอคิว', cls: 'wait' },
+    running: { icon: '▶', label: 'กำลังรัน', cls: 'go' },
+    pass: { icon: '✓', label: 'PASS', cls: 'ok' },
+    fail: { icon: '✗', label: 'FAIL', cls: 'no' },
+    error: { icon: '!', label: 'สั่งรันไม่ได้', cls: 'err' },
+    cancelled: { icon: '■', label: 'ยกเลิก', cls: 'wait' },
+  };
+  function elapsed(ms) {
+    const s = Math.max(0, Math.round(ms / 1000));
+    return s < 60 ? `${s} วิ` : `${Math.floor(s / 60)} น. ${s % 60} วิ`;
+  }
+  // ผลรันที่เพิ่งเสร็จต้องไหลกลับเข้าใบเทสเอง ไม่ให้ต้องไปกด ⤓ ซ้ำ — นั่นคือทั้งหมดที่ปุ่มรัน
+  // มีไว้เพื่อ · ดึงเฉพาะไฟล์ที่เพิ่งจบ ไม่ดึงทั้งใบ เพราะข้ออื่นอาจกำลังถูกแก้ค้างอยู่
+  function pullFinished(sheet, tests) {
+    const want = tests.filter(Boolean);
+    if (!want.length || !api || !api.latestAutoResults) return;
+    api.latestAutoResults([...new Set(want)]).then(results => {
+      results = results || {};
+      let changed = false;
+      sheet.items = sheet.items.map(i => {
+        if (i.by !== 'auto' || !want.includes(i.test) || !results[i.test]) return i;
+        changed = true;
+        return applyAutoResult(i, results[i.test]);
+      });
+      if (!changed) return;
+      renderItems(sheet); repaintTally(sheet); queueSave();
+    });
+  }
+  let runSeenDone = new Set();   // ไฟล์ที่ดึงผลกลับไปแล้ว กันดึงซ้ำทุก push ที่เข้ามา
+  function paintRunning(host, run, sheet) {
+    const done = run.steps.filter(s => s.status !== 'queued' && s.status !== 'running').length;
+    const cur = run.steps[run.index] || null;
+    const next = run.steps[run.index + 1];
+    const bars = run.steps.map(s => `<span class="rr-bar ${RUN_STATUS[s.status] ? RUN_STATUS[s.status].cls : 'wait'}"></span>`).join('');
+    const head = run.running
+      ? `▶ กำลังรัน ${Math.min(run.index + 1, run.total)} / ${run.total}`
+      : `จบชุดแล้ว · ${run.steps.filter(s => s.status === 'pass').length} ผ่าน · ${run.steps.filter(s => s.status === 'fail').length} ไม่ผ่าน`;
+    host.innerHTML = `<div class="testPreview finish run">
+      <div class="tp-head"><span class="tp-title">${esc(head)}</span>
+        <span class="tp-sum">${run.startedAt ? 'ผ่านมา ' + esc(elapsed(Date.now() - run.startedAt)) : ''}</span></div>
+      <div class="rr-bars">${bars}</div>
+      <div class="rr-now">${cur ? `<b>${esc(cur.system || '?')}</b> <code>${esc(cur.test)}</code>` : ''}
+        ${next ? `<span class="rr-next">· ถัดไป ${esc(next.test)}</span>` : ''}
+        ${run.stopAfter ? '<span class="rr-stopafter">· จะหยุดหลังไฟล์นี้จบ</span>' : ''}</div>
+      <div class="rr-log" id="trRunLog">${esc((run.log || []).join('\n'))}</div>
+      <div class="tp-actions">
+        ${run.running ? `<button class="stop-after">■ หยุดหลังไฟล์นี้จบ</button>
+        <button class="confirm danger stop-now">ยกเลิกทันที</button>` : ''}
+        <button class="cancel">${run.running ? 'ซ่อนหน้านี้' : 'ปิด'}</button>
+      </div></div>`;
+    // ต่อท้าย log เสมอ — ผู้ใช้จ้องบรรทัดล่าสุด ไม่ใช่บรรทัดแรก
+    const logEl = document.getElementById('trRunLog');
+    if (logEl) logEl.scrollTop = logEl.scrollHeight;
+    host.querySelector('.cancel').onclick = () => { host.innerHTML = ''; };
+    const after = host.querySelector('.stop-after'), now = host.querySelector('.stop-now');
+    if (after) after.onclick = () => { after.disabled = true; api.cancelTestRun('after'); };
+    if (now) now.onclick = () => { now.disabled = true; api.cancelTestRun('now'); };
+    // ดึงผลของไฟล์ที่เพิ่งจบเข้าใบเทส (เฉพาะใบที่เปิดอยู่ — รันจากใบไหนก็เห็นผลใบนั้น)
+    const justDone = run.steps.filter(s => (s.status === 'pass' || s.status === 'fail') && !runSeenDone.has(s.test));
+    if (justDone.length && sheet) {
+      justDone.forEach(s => runSeenDone.add(s.test));
+      pullFinished(sheet, justDone.map(s => s.test));
+    }
   }
 
   // ---- จบงาน: สรุปผลกลับ Redmine ----
@@ -631,6 +729,14 @@
     api = shell().api;
     document.getElementById('qaSubTr').onclick = () => showSub('tr');
     document.getElementById('qaSubRuns').onclick = () => showSub('runs');
+    // main ยิงสถานะมาทุกบรรทัด log — วาดทับเฉพาะตอนแผงเปิดอยู่ ผู้ใช้ที่กด "ซ่อนหน้านี้"
+    // ต้องไม่โดนเด้งกลับมาเองทุกวินาที (กด ▶ Run all ใหม่เพื่อเปิดดูอีกครั้งได้)
+    if (api && api.onTestRun) api.onTestRun(run => {
+      const host = document.getElementById('trRun');
+      if (!host || !host.innerHTML) return;
+      paintRunning(host, run, current());
+      if (run.done) runSeenDone = new Set();
+    });
     // ↻ บนแถบเป็นของแท็บ QA test (tab-qatest.js ผูก onclick ไว้แล้ว) — เกาะเพิ่มด้วย
     // addEventListener เพื่อไม่ทับของเดิม แล้วค่อยเช็คเองว่าตอนนี้อยู่ sub-tab ไหน
     const btn = document.getElementById('qaRefresh');

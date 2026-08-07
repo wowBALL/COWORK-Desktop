@@ -212,14 +212,22 @@ test('runPlan: เรียงตามลำดับข้อในใบ แ�
   assert.deepStrictEqual(plan.skipped, [1, 3]);
 });
 
-test('runPlan: .spec.js ได้คำสั่ง Playwright · ที่เหลือบอกให้ไปกด run-test.bat เอง', () => {
-  // run-test.bat เป็นเมนูตัวเลข ไม่รับชื่อไฟล์เป็น argument จึงแต่งคำสั่งให้ก๊อปไม่ได้
+test('runPlan: .spec.js ได้คำสั่ง Playwright · ที่เหลือได้คำสั่ง run-test.bat', () => {
   const [pw, mob] = runPlan([autoIt('dine-in-tyro.spec.js', 'test-case'), autoIt('zinga-food.js', 'Test-case-mobile')], SOURCES).steps;
   assert.strictEqual(pw.cmd, 'npx playwright test dine-in-tyro.spec.js');
   assert.strictEqual(pw.cwd, 'D:/COWORK/test-case');
-  assert.strictEqual(mob.cmd, '');
-  assert.match(mob.manual, /run-test\.bat/);
-  assert.strictEqual(mob.cwd, 'D:/COWORK/Test-case-mobile/appium-bluestacks');
+  assert.strictEqual(mob.cmd, 'run-test.bat zinga-food.js');
+  assert.strictEqual(mob.manual, '');
+});
+
+test('runPlan: cwd ของชุดมือถือถอยขึ้นจาก Tests\\ หนึ่งชั้น เพราะ run-test.bat อยู่ตรงนั้น', () => {
+  // qaSources ชี้ไปที่โฟลเดอร์ไฟล์เทส แต่ .bat อยู่ระดับเดียวกับโฟลเดอร์นั้น ไม่ใช่ในนั้น
+  const src = [{ label: 'm', path: 'D:/COWORK/Test-case-mobile/appium-bluestacks/Tests', tests: ['a.js'] }];
+  assert.strictEqual(runPlan([autoIt('a.js', 'm')], src).steps[0].cwd, 'D:/COWORK/Test-case-mobile/appium-bluestacks');
+});
+test('runPlan: path ที่ไม่ได้ลงท้ายด้วย Tests ใช้ตามที่ตั้งค่าไว้ ไม่ตัดมั่ว', () => {
+  const src = [{ label: 'm', path: 'D:/somewhere/mobile', tests: ['a.js'] }];
+  assert.strictEqual(runPlan([autoIt('a.js', 'm')], src).steps[0].cwd, 'D:/somewhere/mobile');
 });
 
 test('runPlan: ใบเก่าที่ไม่มีระบบ เติมให้เมื่อค้นเจอแหล่งเดียว', () => {

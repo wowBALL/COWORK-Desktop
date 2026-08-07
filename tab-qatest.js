@@ -11,7 +11,7 @@
   const {dateMatch, dateFilterHtml, wireDateFilter} = global.COWORK.dateFilter;
   const shell = () => global.COWORK.shell;   // เปลือกสร้างทีหลังไฟล์นี้ ต้องหยิบตอนเรียกใช้
 
-  let qaData=null, qaFilter='all', qaSrcFilter=null, qaOpen=null, qaXmlCache=new Map();
+  let qaData=null, qaFilter='all', qaSrcFilter=null, qaTestFilter=null, qaOpen=null, qaXmlCache=new Map();
   const qaDateSel={y:null,m:null,d:null};
   let qaTab='log';                 // log = ข้อความ log, ui = วิวเวอร์ failure.xml, xml = XML ดิบ
 
@@ -531,6 +531,22 @@
   function qaSrcTag(label){
     return `<span class="qa-src sp${hashN(label,8)}">${esc(label)}</span>`;
   }
+  // ย่อคนละทางตามชนิดของข้อความ เพราะส่วนที่ใช้แยกความต่างอยู่คนละที่:
+  //   ชื่อไฟล์ — ชุดเดียวกันขึ้นต้นเหมือนกันหมด (zinga-wallet-test-food-…) ต่างกันที่หาง → เก็บหาง
+  //   ชื่อไทย (ล็อกเก่าที่ไม่มีบรรทัด TEST:) — ต่างกันกลางประโยค ("dine-in" กับ "dine-in (Tyro)")
+  //     แต่ลงท้ายเหมือนกันเป๊ะ ("…ผ่านแอป Zinga (native, BlueStacks)") → เก็บหัว
+  // ย่อผิดทางแล้วชิปสองอันจะอ่านได้เหมือนกันทุกตัวอักษร ซึ่งคือปัญหาที่ป้ายนี้เกิดมาเพื่อแก้พอดี
+  function shortTestName(s, max=22){
+    const t=String(s==null?'':s).trim();
+    if(t.length<=max) return t;
+    return /\.[cm]?js$/i.test(t) ? '…'+t.slice(t.length-max+1) : t.slice(0,max-1)+'…';
+  }
+  // ป้ายบอกว่ารอบนี้มาจากไฟล์เทสไหน — โผล่เฉพาะตอนรู้ชื่อไฟล์จริง (บรรทัด TEST: ในล็อก)
+  // ล็อกเก่าที่ไม่มีบรรทัดนั้นได้ป้ายจาง ๆ แทน ไม่ใช่เอาชื่อไทยมาใส่ซ้ำกับข้อความในแถวเดียวกัน
+  function qaTestTag(r){
+    if(r.testId) return `<span class="qa-tf" title="${esc(r.testId)}">${esc(shortTestName(r.testId))}</span>`;
+    return `<span class="qa-tf none" title="ล็อกนี้ไม่มีบรรทัด TEST: — จัดกลุ่มจากชื่อเทสแทน">?</span>`;
+  }
   // แปลฟอร์ม issue กลับเป็นบรรทัด (label, value) สำหรับหน้า review — id -> ชื่อคนอ่านได้
   // ฟังก์ชันบริสุทธิ์ ไม่แตะ DOM เพื่อให้เทสได้ตรงๆ
   function buildReviewLines(form, meta) {
@@ -593,7 +609,19 @@
     return runs.filter(r=>
       (skip==='status'||qaFilter==='all'||r.status===qaFilter) &&
       (skip==='src'||qaSrcFilter===null||r.sourceLabel===qaSrcFilter) &&
+      (skip==='test'||qaTestFilter===null||(r.testKey||'')===qaTestFilter) &&
       (skip==='date'||dateMatch(qaDateSel,qaDateOf(r))));
+  }
+  // รายการไฟล์เทสที่เห็นในผลรัน — จำนวนรอบต่อไฟล์ เรียงจากมากไปน้อย แล้วจึงตามชื่อ
+  // key มาจาก main (testId ถ้ามี ไม่งั้นชื่อไทย) ป้ายบนชิปแสดง key ตรง ๆ เพราะชิปมีที่พอ
+  function qaTestGroups(list){
+    const by=new Map();
+    for(const r of list){
+      const k=r.testKey||'';
+      by.set(k,(by.get(k)||0)+1);
+    }
+    return [...by.entries()].map(([key,n])=>({key,n}))
+      .sort((a,b)=>b.n-a.n||a.key.localeCompare(b.key));
   }
   function qaList(){
     if(!qaData||!qaData.runs) return [];
@@ -642,6 +670,23 @@
     } else {
       srcLabelEl.style.display='none'; srcEl.style.display='none'; srcEl.innerHTML=''; qaSrcFilter=null;
     }
+
+    // ชิปกรองตามไฟล์เทส — เหตุผลที่มี: ผลรันของงานเดียวกันหลายสิบรอบมีชื่อไทยเหมือนกันหมด
+    // แยกออกได้แค่เวลา ซึ่งไม่ช่วยอะไรตอนอยากดูเฉพาะเทสตัวหนึ่ง
+    const inTest=qaExcept('test');
+    const groups=qaTestGroups(inTest);
+    // ล้างตัวกรองที่ค้างก่อนนับ ด้วยเหตุผลเดียวกับ source ข้างบน (ไฟล์ที่กรองไว้อาจหายไปแล้ว)
+    if(qaTestFilter!==null && !groups.some(g=>g.key===qaTestFilter)) qaTestFilter=null;
+    const tLabelEl=document.getElementById('qaTestLabel'), tEl=document.getElementById('qaTestChips');
+    // มีไฟล์เดียวก็ไม่ต้องมีชิป — ชิป "ทุกไฟล์" กับชิปเดียวที่เหลือให้ผลเหมือนกันเป๊ะ
+    if(groups.length>1){
+      tLabelEl.style.display=''; tEl.style.display='';
+      tEl.innerHTML=`<div class="chip${qaTestFilter===null?' active':''}" data-t="">ทุกไฟล์<span class="n">${qaExcept('test').length}</span></div>`+
+        groups.map(g=>`<div class="chip${qaTestFilter===g.key?' active':''}" data-t="${esc(g.key)}" title="${esc(g.key||'ล็อกที่ไม่มีทั้งบรรทัด TEST: และชื่อเทส')}">${esc(shortTestName(g.key,28)||'(ไม่ระบุ)')}<span class="n">${g.n}</span></div>`).join('');
+      tEl.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{qaTestFilter=c.dataset.t||null;renderQaChips();renderQaRows()});
+    } else {
+      tLabelEl.style.display='none'; tEl.style.display='none'; tEl.innerHTML=''; qaTestFilter=null;
+    }
   }
   function renderQaRows(){
     const el=document.getElementById('qaRows');
@@ -666,7 +711,7 @@
     // .sel ไฮไลต์แถวที่เลือกอยู่ — มีผลตอนจอกว้างที่ qaRows กับ qaReader โชว์คู่กัน (ดู container query ด้านบน)
     el.innerHTML=list.map(r=>`
       <div class="qa-row${r.id===qaOpen?' sel':''}" data-id="${esc(r.id)}">
-        ${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}
+        ${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}${qaTestTag(r)}
         <span class="qa-name">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span>
         <span class="qa-time">${esc(r.endedAt?r.endedAt.slice(11):r.id)}</span>
       </div>`).join('');
@@ -933,6 +978,7 @@
   // ได้ แทนที่จะเขียนโค้ดเลียนแบบขึ้นมาทดสอบเอง (ซึ่งพิสูจน์แค่ว่าของเลียนแบบทำงาน)
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+      shortTestName, qaTestGroups,
       buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName, qiIsImageDataUrlText,
       qiImageTokens, qiFitPlan, QI_IMAGE_TOKEN_LIMIT, qiFitImagesToBudget,
       qiFitNotice, QI_SAFE_FIT_SCALE, qiCustomFieldsHtml, QI_CUSTOM_FIELD_DEFAULTS,

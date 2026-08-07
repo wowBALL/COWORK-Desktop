@@ -264,3 +264,41 @@ test('qiCustomFieldsHtml: ไม่มี field เลย = ว่าง ไม�
 test('QI_CUSTOM_FIELD_DEFAULTS: ค่าเริ่มต้นอยู่ที่เดียว แก้ที่นี่ที่เดียวจบ', () => {
   assert.strictEqual(QI_CUSTOM_FIELD_DEFAULTS['Document Type'], 'ASPIRE-FR-18 ISSUE TRACKING');
 });
+
+// ---- จัดกลุ่มผลรันตามไฟล์เทส ----
+const { shortTestName, qaTestGroups } = require('../tab-qatest.js');
+
+test('shortTestName: ย่อจากหัว เก็บหางไว้', () => {
+  // ไฟล์ชุดเดียวกันขึ้นต้นเหมือนกันหมด ตัดหางทิ้งแล้วสองไฟล์จะเหลือข้อความเดียวกันเป๊ะ
+  const a = shortTestName('zinga-wallet-test-food-tyro-chanyathaishop.js');
+  const b = shortTestName('zinga-wallet-test-food-chanyathaidemo.js');
+  assert.notStrictEqual(a, b);
+  assert.ok(a.endsWith('chanyathaishop.js'));
+  assert.ok(a.startsWith('…'));
+});
+test('shortTestName: สั้นอยู่แล้วไม่ต้องย่อ', () => {
+  assert.strictEqual(shortTestName('a.spec.js'), 'a.spec.js');
+  assert.strictEqual(shortTestName(null), '');
+});
+
+test('qaTestGroups: นับรอบต่อไฟล์ เรียงมากไปน้อย', () => {
+  const g = qaTestGroups([
+    { testKey: 'b.js' }, { testKey: 'a.js' }, { testKey: 'b.js' }, { testKey: 'b.js' },
+  ]);
+  assert.deepStrictEqual(g, [{ key: 'b.js', n: 3 }, { key: 'a.js', n: 1 }]);
+});
+test('qaTestGroups: รันที่ไม่มี key เลยรวมเป็นกองเดียว ไม่หายไป', () => {
+  const g = qaTestGroups([{ testKey: '' }, {}, { testKey: 'a.js' }]);
+  assert.deepStrictEqual(g, [{ key: '', n: 2 }, { key: 'a.js', n: 1 }]);
+});
+
+test('shortTestName: ชื่อไทยย่อจากท้าย เก็บหัว — ต่างกันกลางประโยคแต่ลงท้ายเหมือนกัน', () => {
+  // ย่อผิดทางแล้วชิปสองอันอ่านได้เหมือนกันทุกตัวอักษร (เจอตอนตรวจบนหน้าจอจริง 2026-08-07:
+  // ทั้ง 8 รอบที่มีอยู่ไม่มีบรรทัด TEST: จึงตกมาใช้ชื่อไทย แล้วสองกลุ่มโชว์ป้ายเดียวกันหมด)
+  const a = shortTestName('สั่งอาหาร dine-in ผ่านแอป Zinga (native, BlueStacks)', 28);
+  const b = shortTestName('สั่งอาหาร dine-in (Tyro) ผ่านแอป Zinga (native, BlueStacks)', 28);
+  assert.notStrictEqual(a, b);
+  assert.ok(a.startsWith('สั่งอาหาร dine-in'));
+  assert.ok(b.includes('(Tyro)'));
+  assert.ok(a.endsWith('…') && b.endsWith('…'));
+});

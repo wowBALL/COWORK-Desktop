@@ -35,6 +35,12 @@
 .qa-src{--sbg:color-mix(in srgb,var(--sc) 16%,transparent);font-size:10px;font-weight:600;padding:2px 8px;
   border-radius:6px;flex-shrink:0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--sc);background:var(--sbg)}
+/* ป้ายไฟล์เทส — ย่อจากหัวเก็บหางไว้ (ดู shortTestName) ตัวเต็มอยู่ใน title
+   ล็อกเก่าที่ไม่มีบรรทัด TEST: ได้ป้าย ? จาง ๆ ไม่ใช่หายไปเฉย ๆ ให้เข้าใจว่ารู้ที่มาแล้ว */
+.qa-tf{font-family:'JetBrains Mono',monospace;font-size:9.5px;padding:2px 7px;border-radius:6px;flex-shrink:0;
+  color:var(--violet);border:1px solid color-mix(in srgb,var(--violet) 35%,transparent);
+  max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qa-tf.none{color:var(--dim);border-color:var(--line)}
 .qa-row .qa-name{font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qa-row .qa-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);flex-shrink:0}
 .qa-reader-head{display:flex;align-items:center;gap:9px;margin-bottom:4px;flex-wrap:wrap}

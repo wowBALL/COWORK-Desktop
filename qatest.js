@@ -41,6 +41,7 @@ function readQaSource(source) {
       dir: runDir,
       sourceLabel: source.label || path.basename(source.path),
       ...parsed,
+      testKey: runTestKey(parsed),
       hasXml: fs.existsSync(path.join(runDir, 'failure.xml')),
     };
   }).filter(Boolean);
@@ -61,4 +62,13 @@ function readQaResults(sources) {
   return { runs, sources: sources.map(s => s.label || path.basename(s.path)) };
 }
 
-module.exports = { readQaResults, parseLog };
+// ---- "รอบนี้มาจากเทสตัวไหน" ----
+// testId (ชื่อไฟล์จากบรรทัด TEST:) เป็นของจริง แต่ล็อกที่เขียนก่อน 2026-08-06 ไม่มีบรรทัดนั้น
+// เลย — ผลรันที่มีอยู่ตอนนี้ทุกอันเป็นแบบนั้นทั้งหมด ถ้าจัดกลุ่มด้วย testId ล้วนจะได้กอง
+// "ไม่รู้ไฟล์" กองเดียวจนกว่าจะรันรอบใหม่ จึงตกไปใช้ชื่อไทยจาก 🚀 เริ่มทดสอบ แทน
+// (ชื่อไทยไม่ใช่ id: ไฟล์คนละไฟล์เขียนซ้ำกันได้ ใช้ได้แค่แยกกลุ่มคร่าว ๆ ไม่ใช่ใช้จับคู่กับใบเทส)
+function runTestKey(run) {
+  if (!run) return '';
+  return String(run.testId || run.name || '').trim();
+}
+module.exports = { readQaResults, parseLog, runTestKey };

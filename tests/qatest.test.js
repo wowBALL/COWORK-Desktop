@@ -76,3 +76,19 @@ test('readQaResults: source ที่โฟลเดอร์หายไป ต
 test('readQaResults: ไม่ได้ตั้งค่า source = คืน error ไม่ใช่โยน', () => {
   assert.match(readQaResults([]).error, /ไม่พบโฟลเดอร์ QA test/);
 });
+
+// ---- จัดกลุ่มผลรันตามไฟล์เทส ----
+const { runTestKey } = require('../qatest.js');
+
+test('runTestKey: ใช้ testId เมื่อมี', () => {
+  assert.strictEqual(runTestKey({ testId: 'a.spec.js', name: 'ชื่อไทย' }), 'a.spec.js');
+});
+test('runTestKey: ล็อกที่ไม่มีบรรทัด TEST: ตกไปใช้ชื่อไทยแทน', () => {
+  // ผลรันที่มีอยู่จริงตอนนี้ทั้ง 8 รอบเป็นแบบนี้หมด (เขียนก่อน 2026-08-06) ถ้าจัดกลุ่มด้วย
+  // testId ล้วนจะได้กองเดียวจนกว่าจะรันใหม่ ฟีเจอร์นี้ก็จะไม่มีประโยชน์ในวันที่ปล่อย
+  assert.strictEqual(runTestKey({ testId: null, name: 'สั่งอาหาร dine-in (Tyro)' }), 'สั่งอาหาร dine-in (Tyro)');
+});
+test('runTestKey: ไม่มีทั้งคู่ = สตริงว่าง ไม่ใช่ null', () => {
+  assert.strictEqual(runTestKey({}), '');
+  assert.strictEqual(runTestKey(null), '');
+});

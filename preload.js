@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('cowork', {
   // Testing Room — สร้างใบเทส (Qtest) จากงานที่สถานะ Test เขียนไฟล์ในเครื่องอย่างเดียว
   createQtest: (issueId, model) => ipcRenderer.invoke('create-qtest', issueId, model),
   listQtests: () => ipcRenderer.invoke('list-qtests'),
+  createSystemQtest: (name, items) => ipcRenderer.invoke('create-system-qtest', name, items),
   listAutoTests: () => ipcRenderer.invoke('list-auto-tests'),
   latestAutoResults: (testIds) => ipcRenderer.invoke('latest-auto-results', testIds),
   saveQtest: (file, sheet) => ipcRenderer.invoke('save-qtest', file, sheet),

@@ -13,6 +13,25 @@
 
   // ---- ฟังก์ชันบริสุทธิ์ (ท้ายไฟล์ export ให้ node --test) ----
 
+  // ชุดเทสระบบ = ใบเทสที่ไม่มีเจ้าของ (ไม่ผูกกับ issue) ไว้รัน regression ซ้ำได้ทุกเมื่อ
+  // โครงไฟล์เหมือนกันเป๊ะ เพราะใบเทสคือใบสั่งรันอยู่แล้ว (ตัดสินใจเฟส 4) — ที่ใช้ไม่ได้
+  // มีอย่างเดียวคือ ✅/❌ จบงาน เพราะไม่มีงานให้ส่งผลกลับ
+  function isSystemSheet(sheet) {
+    return !!(sheet && sheet.meta && sheet.meta.kind === 'system');
+  }
+  // ข้อที่จะถูกคัดลอกไปเป็นชุดระบบจริง ๆ — ฝั่ง main กรองซ้ำอีกทีในฐานะเจ้าของความจริง
+  // (systemItemsFrom) แต่หน้าจอต้องนับด้วยเกณฑ์เดียวกัน ไม่งั้นบอกว่าจะคัดลอก 3 ข้อแล้วได้ 2
+  function autoLinked(items) {
+    return (Array.isArray(items) ? items : []).filter(i => i && i.by === 'auto' && i.test);
+  }
+  // ใบระบบใช้ชื่อที่ตั้งเอง ใบของงานใช้หัวเรื่องจาก Redmine
+  function sheetTitle(sheet) {
+    const meta = (sheet && sheet.meta) || {};
+    return isSystemSheet(sheet)
+      ? String(meta.name || '').trim() || '(ชุดระบบไม่มีชื่อ)'
+      : String(meta.subject || '').trim() || '(ไม่มีหัวเรื่อง)';
+  }
+
   // ข้อที่ "ข้าม" ไม่นับเป็นงานค้าง ไม่งั้นใบที่ตัดสินใจข้ามครบแล้วจะไม่มีวันเสร็จ
   function progressOf(items) {
     const list = Array.isArray(items) ? items : [];
@@ -174,7 +193,7 @@
   if (typeof window === 'undefined') {
     module.exports = {
       progressOf, sheetDone, applyAction, applyCause, emptyItem, doneAtFor,
-      applyAutoResult, autoSummary, runPlan,
+      applyAutoResult, autoSummary, runPlan, isSystemSheet, sheetTitle, autoLinked,
     };
     return;
   }
@@ -516,32 +535,93 @@
       el.innerHTML = `<div class="empty">ยังไม่มีใบเทส — กดปุ่ม 🧪 ที่งานสถานะ Test ในแท็บ Redmine เพื่อเปิดใบแรก</div>`;
       return;
     }
+    // ชุดระบบขึ้นก่อนเสมอ (ตัดสินใจ 2026-08-07 แบบ A) — เป็นของถาวรที่กลับมาใช้ซ้ำ ต่างจาก
+    // ใบของงานที่เกิดแล้วจบ ปนกันแล้วมันจะจมลงไปเรื่อย ๆ ทั้งที่เป็นของที่เปิดบ่อยที่สุด
+    const sys = sheets.filter(isSystemSheet);
+    const work = sheets.filter(s => !isSystemSheet(s));
     // จัดกลุ่มตามเลข issue: กลุ่มเรียงตามใบใหม่สุดของกลุ่ม ในกลุ่มเรียงรอบล่าสุดก่อน
     // รอบเก่าของ issue เดิมเยื้องเข้าและจางลง เพื่อให้เห็นว่าเป็นงานเดียวกันที่เทสมาหลายรอบ
     const groups = [];
-    for (const s of sheets) {
+    for (const s of work) {
       const key = String(s.meta.issue);
       const g = groups.find(x => x.key === key);
       if (g) g.rows.push(s); else groups.push({ key, rows: [s] });
     }
-    el.innerHTML = groups.map(g => g.rows.map((s, i) => {
+    function statOf(s) {
       const p = progressOf(s.items);
       const at = doneAtFor(s.items);
       // เห็นวันที่เทสเสร็จตั้งแต่หน้าลิสต์ ไม่ต้องเปิดใบทีละใบเพื่อหาว่าอันไหนเสร็จเมื่อไหร่
       const stat = sheetDone(s.items) ? `<span class="tr-done">เสร็จ${at ? ' ' + esc(shortDate(at)) : ''}</span>`
         : `<span class="tr-prog">${p.pass + p.fail}/${p.active}</span>`;
-      const fail = p.fail ? `<span class="tr-fail">fail ${p.fail}</span>` : '';
-      return `<div class="tr-row${i ? ' older' : ''}${s.path === openPath ? ' sel' : ''}" data-p="${esc(s.path)}">
+      return (p.fail ? `<span class="tr-fail">fail ${p.fail}</span>` : '') + stat;
+    }
+    const sysHtml = sys.map(s => `<div class="tr-row sys${s.path === openPath ? ' sel' : ''}" data-p="${esc(s.path)}">
+        <span class="tr-kind">ระบบ</span>
+        <span class="tr-subj">${esc(sheetTitle(s))}</span>
+        ${statOf(s)}
+      </div>`).join('');
+    const workHtml = groups.map(g => g.rows.map((s, i) =>
+      `<div class="tr-row${i ? ' older' : ''}${s.path === openPath ? ' sel' : ''}" data-p="${esc(s.path)}">
         <span class="tr-id">#${esc(String(s.meta.issue || '?'))}</span>
-        <span class="tr-subj">${esc(s.meta.subject || '(ไม่มีหัวเรื่อง)')}</span>
-        ${fail}${stat}
+        <span class="tr-subj">${esc(sheetTitle(s))}</span>
+        ${statOf(s)}
         <span class="tr-round">รอบ ${esc(String(s.meta.round || 1))}</span>
-      </div>`;
-    }).join('')).join('');
+      </div>`).join('')).join('');
+    el.innerHTML = (sys.length ? `<div class="row-label">ชุดเทสระบบ</div>${sysHtml}` : '')
+      + (work.length ? `<div class="row-label"${sys.length ? ' style="margin-top:12px"' : ''}>ใบเทสของงาน</div>${workHtml}` : '')
+      + `<div id="trNewSys"></div>`;
     el.querySelectorAll('.tr-row').forEach(row => row.onclick = () => {
       openPath = row.dataset.p; saveState = ''; render();
       document.querySelector('.body').scrollTop = 0;
     });
+    renderNewSystem(null);
+  }
+
+  // ---- สร้างชุดเทสระบบ ----
+  // Electron ไม่มี window.prompt (ถูกถอดออกไปแล้ว) ต้องทำช่องกรอกในหน้าเอง
+  // seed = ข้อ auto ที่จะคัดลอกมาตั้งต้น (null = ใบเปล่า) · ชื่อตั้งต้นมาจากหัวเรื่องของใบที่คัดลอกมา
+  function renderNewSystem(seed) {
+    const host = document.getElementById('trNewSys');
+    if (!host) return;
+    if (!seed && host.dataset.open !== '1') {
+      host.innerHTML = `<button type="button" class="tr-newsys" id="trNewSysBtn">➕ สร้างชุดเทสระบบ</button>`;
+      document.getElementById('trNewSysBtn').onclick = () => { host.dataset.open = '1'; renderNewSystem(null); };
+      return;
+    }
+    host.dataset.open = '1';
+    const n = seed ? seed.items.length : 0;
+    host.innerHTML = `<div class="tr-newsys-form">
+      <div class="tr-newsys-hint">${seed
+        ? `คัดลอกข้อ auto ที่ผูกไฟล์ไว้ ${n} ข้อ จาก ${esc(sheetTitle(seed.from))} — ผลเก่าไม่ติดมาด้วย`
+        : 'ชุด regression ที่ไม่ผูกกับงานไหน เปิดรันซ้ำได้ทุกเมื่อ'}</div>
+      <input class="search" id="trNewSysName" type="text" placeholder="ชื่อชุด เช่น Regression ก่อน deploy" value="${esc(seed ? seed.name : '')}" autocomplete="off">
+      <div class="tr-newsys-act">
+        <button type="button" class="ok" id="trNewSysOk">สร้าง</button>
+        <button type="button" id="trNewSysNo">ยกเลิก</button>
+      </div>
+      <div class="tr-newsys-err" id="trNewSysErr"></div>
+    </div>`;
+    const input = document.getElementById('trNewSysName');
+    const err = document.getElementById('trNewSysErr');
+    const close = () => { delete host.dataset.open; renderNewSystem(null); };
+    document.getElementById('trNewSysNo').onclick = close;
+    const create = () => {
+      const name = input.value.trim();
+      if (!name) { err.textContent = 'ตั้งชื่อชุดก่อน'; input.focus(); return; }
+      api.createSystemQtest(name, seed ? seed.items : []).then(res => {
+        if (!res || !res.ok) { err.textContent = (res && res.error) || 'สร้างไม่สำเร็จ'; return; }
+        delete host.dataset.open;
+        openPath = res.path;          // เปิดชุดที่เพิ่งสร้างให้เลย จะได้เพิ่มข้อต่อได้ทันที
+        refresh();
+      });
+    };
+    document.getElementById('trNewSysOk').onclick = create;
+    input.onkeydown = e => {
+      if (e.key === 'Enter') { e.preventDefault(); create(); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+    };
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
   }
 
   // ---- วาดใบที่เปิดอยู่ ----
@@ -553,22 +633,25 @@
     if (!sheet) { el.classList.add('hidden'); list.classList.remove('hidden'); el.innerHTML = ''; return; }
     el.classList.remove('hidden'); list.classList.add('hidden');
     const m = sheet.meta, p = progressOf(sheet.items), at = doneAtFor(sheet.items);
+    const sys = isSystemSheet(sheet);
     el.innerHTML = `
       <button class="mt-back" id="trBack">← ใบเทสทั้งหมด</button>
       <div class="tr-head">
         <div class="tr-head-top">
-          <span class="tr-id">#${esc(String(m.issue || '?'))}</span>
-          <span class="tr-meta">รอบ ${esc(String(m.round || 1))} · ${esc(m.tracker || '–')} · ${esc(m.project || '–')}</span>
+          ${sys ? '<span class="tr-kind">ระบบ</span>'
+            : `<span class="tr-id">#${esc(String(m.issue || '?'))}</span>
+          <span class="tr-meta">รอบ ${esc(String(m.round || 1))} · ${esc(m.tracker || '–')} · ${esc(m.project || '–')}</span>`}
           <span class="tr-save" id="trSaveState"></span>
         </div>
-        <div class="tr-subject">${esc(m.subject || '(ไม่มีหัวเรื่อง)')}</div>
-        <div class="tr-sub">รับเข้า ${esc(m.receivedAt || '–')}<span id="trDoneAt">${doneAtHtml(at)}</span> · ${esc(sheet.file)}${m.model ? ' · ' + esc(m.model) : ''}</div>
+        <div class="tr-subject">${esc(sheetTitle(sheet))}</div>
+        <div class="tr-sub">${sys ? 'สร้างเมื่อ ' + esc(m.createdAt || '–') : 'รับเข้า ' + esc(m.receivedAt || '–')}<span id="trDoneAt">${doneAtHtml(at)}</span> · ${esc(sheet.file)}${m.model ? ' · ' + esc(m.model) : ''}</div>
         <div class="tr-tally">
           <span class="tr-counts">${tallyHtml(p)}</span>
           <button type="button" class="tr-runall" id="trRunAll">▶ Run all</button>
           <button type="button" class="tr-pull-all" id="trPullAll">⤓ ดึงผล auto ทั้งใบ</button>
+          ${sys ? '' : `<button type="button" class="tr-tosys" id="trToSys">⧉ เป็นชุดระบบ</button>
           <button type="button" class="tr-finish ok" id="trFinishOk">✅ จบงาน · ผ่าน</button>
-          <button type="button" class="tr-finish no" id="trFinishNo">❌ จบงาน · ไม่ผ่าน</button>
+          <button type="button" class="tr-finish no" id="trFinishNo">❌ จบงาน · ไม่ผ่าน</button>`}
         </div>
         <div class="tr-automsg" id="trAutoMsg">${esc(autoMsg)}</div>
       </div>
@@ -581,8 +664,17 @@
     document.getElementById('trBack').onclick = () => { openPath = null; autoMsg = ''; render(); };
     document.getElementById('trRunAll').onclick = () => openRunPlan(sheet, null);
     document.getElementById('trPullAll').onclick = () => pullAuto(sheet, null);
-    document.getElementById('trFinishOk').onclick = () => openFinish(sheet, 'success');
-    document.getElementById('trFinishNo').onclick = () => openFinish(sheet, 'fail');
+    if (!sys) {
+      document.getElementById('trFinishOk').onclick = () => openFinish(sheet, 'success');
+      document.getElementById('trFinishNo').onclick = () => openFinish(sheet, 'fail');
+      // "พอแมพกันแล้วสร้างเป็น test form" จากคำขอตั้งต้น — เด้งกลับลิสต์แล้วเปิดช่องตั้งชื่อ
+      // พร้อมข้อ auto ที่ผูกไฟล์ไว้แล้วเป็นตัวตั้งต้น (ฟอร์มอยู่ในหน้าลิสต์ ไม่ใช่ในใบ)
+      document.getElementById('trToSys').onclick = () => {
+        const seed = { items: autoLinked(sheet.items), name: sheetTitle(sheet), from: sheet };
+        openPath = null; render();
+        renderNewSystem(seed);
+      };
+    }
     document.getElementById('trAdd').onclick = () => {
       sheet.items.push(emptyItem());
       renderSheet();

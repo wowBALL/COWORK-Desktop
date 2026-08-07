@@ -223,6 +223,45 @@ function mergeTestResults(existing, block) {
   return old ? `${old}\n\n---\n\n${block}` : String(block == null ? '' : block);
 }
 
+// ---- ชุดเทสระบบ ----
+// ใบเทสรูปแบบเดียวกันเป๊ะ ต่างกันแค่ไม่มีเลข issue — เพราะใบเทสคือใบสั่งรันอยู่แล้ว
+// (ตัดสินใจเฟส 4) ชุด regression ที่ไม่ผูกกับงานไหนจึงเป็นแค่ใบที่ไม่มีเจ้าของ ▶ Run all
+// กับ ⤓ ดึงผล ใช้ได้เหมือนกันหมด ที่ใช้ไม่ได้มีอย่างเดียวคือ ✅/❌ จบงาน (ไม่มีงานให้ส่งกลับ)
+//
+// ไม่มี "รอบ" ด้วย — ชุดระบบเป็นของถาวรที่กลับมารันซ้ำ ประวัติการรันอยู่ในโฟลเดอร์ผลรันแล้ว
+// การแตกใบใหม่ทุกครั้งที่รันจะกลายเป็นขยะที่ต้องมาไล่ลบเอง
+// (isSystemSheet / sheetTitle อยู่ฝั่ง renderer ใน tab-testingroom.js — เป็นเรื่องของการแสดงผล
+//  และ renderer require ไฟล์นี้ไม่ได้เพราะมันใช้ fs · ที่นี่เก็บเฉพาะส่วนที่เขียนไฟล์)
+//
+// ชื่อที่ผู้ใช้ตั้งเป็นภาษาไทยได้ ตัดเฉพาะอักขระที่ Windows ห้ามในชื่อไฟล์
+function systemSlug(name) {
+  const s = String(name == null ? '' : name)
+    .replace(/[\\/:*?"<>|]/g, '')    // อักขระที่ Windows ห้ามในชื่อไฟล์ (ภาษาไทยใช้ได้ปกติ)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '');          // Windows ตัด . กับช่องว่างท้ายชื่อทิ้งเงียบ ๆ อยู่แล้ว
+  return s || 'ชุดระบบ';
+}
+// ขึ้นต้นด้วย system- เพื่อให้เรียงมาก่อนใบที่ขึ้นต้นด้วยปี (listQtests เรียงชื่อจากมากไปน้อย)
+function nextSystemName(existing, name) {
+  const files = Array.isArray(existing) ? existing : [];
+  const base = 'system-' + systemSlug(name);
+  let out = base + '.md';
+  for (let i = 2; files.includes(out); i++) out = `${base}-${i}.md`;
+  return out;
+}
+// ข้อ auto ที่ผูกไฟล์ไว้แล้วในใบหนึ่ง → ข้อตั้งต้นของชุดระบบ
+// ล้างผล/สาเหตุ/วันที่/เลข run ทิ้งทั้งหมด — ชุดที่เพิ่งสร้างยังไม่เคยรัน การยกผลเก่ามาด้วย
+// เท่ากับโกหกว่าชุดนี้เคยผ่านแล้ว ส่วน "ระบบ/เทส" เป็นการตั้งค่า ต้องติดมา
+function systemItemsFrom(items) {
+  return (Array.isArray(items) ? items : [])
+    .filter(it => it && it.by === 'auto' && it.test)
+    .map(it => ({
+      title: it.title || '', by: 'auto', result: '–', cause: '', date: '',
+      system: it.system || '', test: it.test, run: '', note: '',
+    }));
+}
+
 // ---- ชื่อไฟล์ / รอบ ----
 function stamp(receivedAt) { return String(receivedAt || '').replace(/-/g, '').slice(0, 8); }
 function qtestFilename(receivedAt, issue) { return `${stamp(receivedAt)}-${issue}.md`; }
@@ -289,5 +328,6 @@ function issuesByRun(sheets) {
 
 module.exports = {
   BY, RESULT, CAUSE, OUTCOMES, parseQtest, serializeQtest, qtestFilename, nextQtestName, listQtests, issuesByRun,
+  systemSlug, nextSystemName, systemItemsFrom,
   formatTestResults, mergeTestResults, latestQtestFor,
 };

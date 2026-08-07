@@ -9,7 +9,7 @@ const { Grafana, APP_GROUPS } = require('./grafana');
 const { parseGlossary, planWrite } = require('./glossary');
 const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors, canonicalRiskLevel, findFieldIdByName, fieldAvailability } = require('./redmine-issue-form');
 const { draftIssue, draftTestChecklist, historyForChecklist } = require('./llm');
-const { serializeQtest, nextQtestName, listQtests, issuesByRun,
+const { serializeQtest, nextQtestName, listQtests, issuesByRun, nextSystemName, systemItemsFrom,
   formatTestResults, mergeTestResults, latestQtestFor } = require('./testingroom');
 // ตั้งใจ require ไฟล์ฝั่ง renderer: tab-testingroom.js แยกส่วนฟังก์ชันบริสุทธิ์ออกมา export
 // เมื่อ window เป็น undefined อยู่แล้ว (ทางเดียวกับที่ node --test ใช้) กฎ "ข้อที่ข้ามไม่นับ
@@ -975,6 +975,33 @@ ipcMain.handle('save-auto-test-sources', (_e, sources) => {
   autoTestSources = (sources || []).filter(s => s && s.path);
   writeConfigMerge({ autoTestSources });
   return true;
+});
+// ชุดเทสระบบ — ใบเทสที่ไม่ผูกกับ issue ไหน ไว้รัน regression ซ้ำได้ทุกเมื่อ
+// items ที่ส่งมาถูกกรองเหลือเฉพาะข้อ auto ที่ผูกไฟล์แล้ว และล้างผลเก่าทิ้งเสมอ (systemItemsFrom)
+ipcMain.handle('create-system-qtest', (_e, name, items) => {
+  try {
+    fs.mkdirSync(qtestDir, { recursive: true });
+    let existing = [];
+    try { existing = fs.readdirSync(qtestDir); } catch {}
+    const file = nextSystemName(existing, name);
+    const sheet = {
+      meta: {
+        qtest: 1, kind: 'system',
+        name: String(name || '').trim() || 'ชุดระบบ',
+        createdAt: todayStr(), status: 'open',
+      },
+      items: systemItemsFrom(items),
+      notes: '',
+    };
+    const full = path.join(qtestDir, file);
+    // ไม่เขียนทับของเดิมเด็ดขาด — nextSystemName เลี่ยงชื่อซ้ำให้แล้ว แต่ถ้าพลาดขึ้นมาจริง
+    // การทับชุด regression ที่สะสมมานานคือความเสียหายที่กู้ไม่ได้
+    if (fs.existsSync(full)) return { ok: false, error: `มีไฟล์ ${file} อยู่แล้ว` };
+    fs.writeFileSync(full, serializeQtest(sheet), 'utf8');
+    return { ok: true, file, path: full, items: sheet.items.length };
+  } catch (e) {
+    return { ok: false, error: `สร้างชุดเทสระบบไม่สำเร็จ: ${e.message}` };
+  }
 });
 ipcMain.handle('get-qtest-dir', () => qtestDir);
 ipcMain.handle('save-qtest-dir', (_e, dir) => {

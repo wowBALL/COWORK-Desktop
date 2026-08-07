@@ -90,6 +90,27 @@
   color:var(--cyan);background:transparent;border:1px solid color-mix(in srgb,var(--cyan) 45%,transparent);
   border-radius:6px;padding:3px 10px;cursor:pointer;transition:.12s}
 .tr-tally .tr-pull-all:hover{border-color:var(--cyan);background:color-mix(in srgb,var(--cyan) 12%,transparent)}
+/* ---- ชุดเทสระบบ ---- */
+.tr-kind{font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--violet);flex:none;
+  border:1px solid color-mix(in srgb,var(--violet) 45%,transparent);border-radius:5px;padding:2px 7px}
+.tr-row.sys{border-left-color:var(--violet)}
+.tr-tally .tr-tosys{-webkit-app-region:no-drag;font-family:inherit;font-size:10px;font-weight:600;
+  background:transparent;color:var(--violet);border-radius:6px;padding:3px 10px;cursor:pointer;
+  border:1px solid color-mix(in srgb,var(--violet) 45%,transparent);transition:.12s}
+.tr-tally .tr-tosys:hover{border-color:var(--violet);background:color-mix(in srgb,var(--violet) 12%,transparent)}
+.tr-newsys{-webkit-app-region:no-drag;width:100%;margin-top:10px;font-family:inherit;font-size:11px;font-weight:600;
+  background:transparent;color:var(--violet);border-radius:8px;padding:7px;cursor:pointer;
+  border:1px dashed color-mix(in srgb,var(--violet) 45%,transparent);transition:.12s}
+.tr-newsys:hover{border-style:solid;background:color-mix(in srgb,var(--violet) 10%,transparent)}
+.tr-newsys-form{margin-top:10px;border:1px solid color-mix(in srgb,var(--violet) 45%,transparent);
+  border-radius:8px;padding:10px;background:var(--panel-2)}
+.tr-newsys-hint{font-size:10.5px;color:var(--dim);line-height:1.6;margin-bottom:7px}
+.tr-newsys-act{display:flex;gap:8px;margin-top:8px}
+.tr-newsys-act button{-webkit-app-region:no-drag;font-family:inherit;font-size:11px;font-weight:600;
+  border-radius:7px;padding:6px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--muted)}
+.tr-newsys-act button.ok{background:var(--violet);border-color:var(--violet);color:var(--on-accent)}
+.tr-newsys-err{font-size:10.5px;color:var(--rose);margin-top:6px}
+.tr-newsys-err:empty{display:none}
 /* ---- ระบบที่ใช้รัน + สาเหตุที่ fail ---- */
 .tr-sys{font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--violet);
   border:1px solid color-mix(in srgb,var(--violet) 40%,transparent);border-radius:5px;padding:2px 7px}

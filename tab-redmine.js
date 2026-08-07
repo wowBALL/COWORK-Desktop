@@ -162,7 +162,11 @@
       row.onclick=()=>api&&api.openLink&&api.openLink(issue.url);
       const slot=document.createElement('div');
       if(issue.status==='Resolved') row.appendChild(makeCloseBtn(issue.id, slot));
-      if(issue.status==='Test') row.appendChild(makeSendTestBtn(issue.id, slot));
+      if(issue.status==='Test'){
+        row.appendChild(makeSendTestBtn(issue.id, slot));
+        row.appendChild(makeFinishBtn(issue.id, slot, 'success'));
+        row.appendChild(makeFinishBtn(issue.id, slot, 'fail'));
+      }
       row.appendChild(makeNoteBtn(issue.id, slot, noteHit));
       el.appendChild(row);
       el.appendChild(slot);
@@ -220,6 +224,29 @@
         btn.classList.remove('pending'); btn.title='เปิดใบเทส → Testing Room';
         slot.dataset.kind='qtest';
         renderQtestPanel(slot, issueId, result, btn);
+      });
+    };
+    return btn;
+  }
+  // ปุ่ม ✅/❌ (สถานะ Test เท่านั้น) — สรุปผลจากใบเทสรอบล่าสุดกลับ Redmine
+  // เนื้อในแผงกับการเขียนจริงอยู่ใน finishtest.js ที่เดียว Testing Room ใช้ตัวเดียวกัน
+  function makeFinishBtn(issueId, slot, outcome){
+    const o=global.COWORK.finishtest.outcomeMeta(outcome);
+    const btn=document.createElement('button');
+    btn.className='finishBtn '+outcome; btn.textContent=o.icon;
+    btn.title=`${o.word} → ${o.target}`;
+    btn.onclick=(e)=>{
+      e.stopPropagation();
+      const kind='finish-'+outcome;
+      if(slot.dataset.kind===kind){ closeAllPanels(); return; }
+      closeAllPanels();
+      slot.dataset.kind=kind;
+      btn.classList.add('pending');
+      global.COWORK.finishtest.open(slot, issueId, outcome, {
+        onSettled:()=>btn.classList.remove('pending'),
+        onClose:()=>clearSlot(slot),
+        // สำเร็จแล้วงานจะไม่อยู่สถานะ Test อีก main ยิง payload ใหม่มาแล้วแถวนี้จะหายไปเอง
+        onDone:()=>clearSlot(slot),
       });
     };
     return btn;

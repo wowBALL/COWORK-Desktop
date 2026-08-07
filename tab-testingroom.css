@@ -35,7 +35,9 @@
 .tr-subject{font-size:13.5px;line-height:1.5;color:var(--ink)}
 .tr-sub{font-size:10px;color:var(--dim);margin-top:4px;word-break:break-all}
 .tr-doneat{color:var(--green);font-weight:700}
-.tr-tally{display:flex;gap:10px;margin-top:8px;font-size:10.5px;font-weight:600;color:var(--muted)}
+.tr-tally{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;
+  font-size:10.5px;font-weight:600;color:var(--muted)}
+.tr-counts{display:flex;gap:10px}
 .tr-tally .ok{color:var(--green)}
 .tr-tally .no{color:var(--rose)}
 .tr-tally .sk{color:var(--dim)}
@@ -86,6 +88,15 @@
   color:var(--cyan);background:transparent;border:1px solid color-mix(in srgb,var(--cyan) 45%,transparent);
   border-radius:6px;padding:3px 10px;cursor:pointer;transition:.12s}
 .tr-tally .tr-pull-all:hover{border-color:var(--cyan);background:color-mix(in srgb,var(--cyan) 12%,transparent)}
+/* ---- จบงาน: สรุปผลกลับ Redmine ---- */
+/* ทรงเดียวกับ ⤓ ดึงผล แต่ margin-left:auto อยู่ที่ตัวแรกตัวเดียว สามปุ่มจึงเกาะกลุ่มกันชิดขวา */
+.tr-tally .tr-finish{-webkit-app-region:no-drag;font-family:inherit;font-size:10px;font-weight:600;
+  background:transparent;border-radius:6px;padding:3px 10px;cursor:pointer;transition:.12s}
+.tr-tally .tr-finish.ok{color:var(--green);border:1px solid color-mix(in srgb,var(--green) 45%,transparent)}
+.tr-tally .tr-finish.ok:hover{border-color:var(--green);background:color-mix(in srgb,var(--green) 12%,transparent)}
+.tr-tally .tr-finish.no{color:var(--rose);border:1px solid color-mix(in srgb,var(--rose) 45%,transparent)}
+.tr-tally .tr-finish.no:hover{border-color:var(--rose);background:color-mix(in srgb,var(--rose) 12%,transparent)}
+#trFinish:not(:empty){margin:10px 0 4px}
 .tr-automsg{font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5}
 .tr-automsg:empty{display:none}
 .tr-link{display:flex;align-items:center;gap:6px;margin:6px 0 0 20px;flex-wrap:wrap}

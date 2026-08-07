@@ -9,7 +9,12 @@ const { Grafana, APP_GROUPS } = require('./grafana');
 const { parseGlossary, planWrite } = require('./glossary');
 const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors, canonicalRiskLevel, findFieldIdByName, fieldAvailability } = require('./redmine-issue-form');
 const { draftIssue, draftTestChecklist } = require('./llm');
-const { serializeQtest, nextQtestName, listQtests } = require('./testingroom');
+const { serializeQtest, nextQtestName, listQtests,
+  formatTestResults, mergeTestResults, latestQtestFor } = require('./testingroom');
+// ตั้งใจ require ไฟล์ฝั่ง renderer: tab-testingroom.js แยกส่วนฟังก์ชันบริสุทธิ์ออกมา export
+// เมื่อ window เป็น undefined อยู่แล้ว (ทางเดียวกับที่ node --test ใช้) กฎ "ข้อที่ข้ามไม่นับ
+// เป็นงานค้าง" จึงมีที่เดียว ถ้าก๊อป progressOf มาไว้ที่นี่ด้วย สองสูตรจะเพี้ยนจากกันเงียบ ๆ
+const { progressOf } = require('./tab-testingroom.js');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -311,6 +316,11 @@ let priorityIdCache = null;
 function fmtDateTime(iso) {
   const d = new Date(iso), p = x => String(x).padStart(2, '0');
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+// วันที่เครื่อง ไม่ใช่ UTC — ต้องตรงกับวันที่ผู้ใช้เห็นบนนาฬิกาและกับคอลัมน์วันที่ในใบเทส
+function todayStr() {
+  const n = new Date(), p = x => String(x).padStart(2, '0');
+  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
 }
 
 function topRisk(issue) {
@@ -725,8 +735,7 @@ ipcMain.handle('create-qtest', async (_e, issueId, model) => {
   if (!drafted.ok) return { ok: false, error: drafted.error };
 
   // วันที่รับเข้าเป็นเวลาเครื่อง ไม่ใช่ UTC — ชื่อไฟล์กับคอลัมน์วันที่ต้องตรงกับวันที่ผู้ใช้เห็น
-  const now = new Date();
-  const receivedAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const receivedAt = todayStr();
   try {
     fs.mkdirSync(qtestDir, { recursive: true });
     const { name, round } = nextQtestName(qtestDir, receivedAt, issue.id);
@@ -804,6 +813,74 @@ ipcMain.handle('save-qtest-dir', (_e, dir) => {
   qtestDir = dir;
   writeConfigMerge({ qtestDir: dir });
   return true;
+});
+
+// ---- ปุ่ม ✅/❌ สรุปผลเทสกลับ Redmine ----
+// สองขั้นแยกกันตั้งใจ: handler นี้อ่านอย่างเดียว ไม่แตะ Redmine เลย ประกอบข้อความที่ "จะ"
+// เขียนแล้วส่งกลับให้ QA ตรวจก่อน (ข้อกำหนดของผู้ใช้ 2026-08-07) การเขียนจริงอยู่ที่
+// finish-test ซึ่งรับข้อความที่ QA เห็น/แก้แล้วเท่านั้น ไม่ประกอบเองซ้ำ — ไม่งั้นสิ่งที่ตรวจ
+// กับสิ่งที่เขียนจะไม่ใช่อันเดียวกัน
+ipcMain.handle('get-finish-preview', async (_e, issueId, outcome) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  // อ่านจากดิสก์ตอนเรียก ไม่ใช้ของที่ renderer ถืออยู่ — ใบอาจเพิ่งถูกแก้จากหน้าต่างอื่น
+  // หรือแก้มือใน editor และฝั่ง Testing Room flush การบันทึกที่ค้างก่อนเรียกอยู่แล้ว
+  const sheet = latestQtestFor(listQtests(qtestDir), issueId);
+  if (!sheet) {
+    return { ok: false, error: `ยังไม่มีใบเทสของงาน #${issueId} ในโฟลเดอร์ Qtest — กดปุ่ม 🧪 เปิดใบเทสก่อน` };
+  }
+  let issue;
+  try {
+    const res = await fetch(`${redmineConfig.url}/issues/${issueId}.json?include=custom_fields`,
+      { headers: { 'X-Redmine-API-Key': redmineConfig.apiKey } });
+    if (!res.ok) return { ok: false, error: `Redmine HTTP ${res.status}` };
+    ({ issue } = await res.json());
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  if (!issue) return { ok: false, error: `ไม่พบงาน #${issueId} ใน Redmine` };
+  const trField = (issue.custom_fields || []).find(f => f.name === 'Test Results');
+  const tally = progressOf(sheet.items);
+  const block = formatTestResults(sheet, tally, outcome, todayStr());
+  return {
+    ok: true,
+    outcome,
+    file: sheet.file,
+    round: sheet.meta.round || 1,
+    subject: issue.subject || sheet.meta.subject || '',
+    status: (issue.status && issue.status.name) || '',
+    tally,
+    block,
+    testResults: trField ? { fieldId: trField.id, value: trField.value || '' } : null,
+    // ค่าที่จะถูกเขียนจริงทั้งก้อน (ของเดิม + ผลรอบนี้) — QA เห็นและแก้ตัวนี้ ไม่ใช่เห็นแค่
+    // ส่วนที่เพิ่ม แล้วให้เซิร์ฟเวอร์ไปต่อให้ทีหลังโดยไม่มีใครเห็นผลลัพธ์สุดท้าย
+    merged: mergeTestResults(trField ? trField.value || '' : '', block),
+  };
+});
+// เขียนจริง — ย้ายสถานะพร้อมเขียน Test Results ในคำขอเดียว ล้มก็ล้มทั้งคู่
+// (งานที่ย้ายไป Resolved แล้วแต่ผลไม่ถูกบันทึกคือกรณีที่แย่ที่สุด: ไม่มีใครรู้ว่าเทสอะไรไปบ้าง)
+ipcMain.handle('finish-test', async (_e, issueId, outcome, value, fieldId) => {
+  if (!redmineConfig.url || !redmineConfig.apiKey) return { ok: false, error: 'ยังไม่ได้ตั้งค่า Redmine' };
+  const target = outcome === 'success' ? 'Resolved' : 'In Progress';
+  try {
+    const statusId = await getStatusId(target);
+    if (!statusId) return { ok: false, error: `ไม่พบสถานะ "${target}" ใน Redmine` };
+    const issuePayload = { status_id: statusId };
+    if (fieldId) issuePayload.custom_fields = [{ id: fieldId, value: String(value == null ? '' : value) }];
+    const res = await fetch(`${redmineConfig.url}/issues/${issueId}.json`, {
+      method: 'PUT',
+      headers: { 'X-Redmine-API-Key': redmineConfig.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issue: issuePayload }),
+    });
+    if (!res.ok) {
+      let msg = `Redmine HTTP ${res.status}`;
+      try { const body = await res.json(); if (body.errors) msg = body.errors.join(', '); } catch {}
+      return { ok: false, error: msg };
+    }
+    pushTasks();
+    return { ok: true, status: target };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 // renderer asks to close a Resolved issue (Resolved -> Closed), optionally writing a custom field first
 ipcMain.handle('close-issue', async (_e, issueId, customField) => {

@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const {
   parseQtest, serializeQtest, qtestFilename, nextQtestName, listQtests, BY, RESULT,
+  formatTestResults, mergeTestResults, latestQtestFor,
 } = require('../testingroom');
 
 function tmpdir() {
@@ -152,4 +153,72 @@ test('อ่านคอลัมน์ตามชื่อในแถวห�
 test('serialize เขียนคอลัมน์วันที่ต่อจากผล', () => {
   const head = serializeQtest(SHEET).split('\n').find(l => l.startsWith('| #'));
   assert.strictEqual(head, '| # | สิ่งที่ต้องทดสอบ | ทำโดย | ผล | วันที่ | เทส | run | หมายเหตุ |');
+});
+
+// ---- สรุปผลกลับ Redmine ----
+// ข้อความก้อนนี้ไปโผล่ใน field ที่ dev อ่านต่อ พลาดแล้วไม่มีอะไรฟ้อง: ข้อที่ยังไม่ติ๊ก
+// หายไปเงียบ ๆ · หมายเหตุที่บอกว่าพังยังไงหลุด · ของเดิมใน field ถูกทับ
+const FINISH_SHEET = {
+  file: '20260806-690-2.md',
+  meta: { issue: 690, round: 2, subject: 'sidebar ว่าง' },
+  items: [
+    { title: 'login แล้ว sidebar ขึ้นครบ', by: 'qa', result: 'pass', date: '2026-08-06', test: '', run: '', note: '' },
+    { title: 'ยอด outlet ตรง', by: 'auto', result: 'pass', date: '2026-08-06', test: 'a.spec.js', run: '20260806101122', note: '' },
+    { title: 'owner_id ต้องไม่ว่าง', by: 'qa', result: 'fail', date: '2026-08-07', test: '', run: '', note: 'เหลือ 3 outlet' },
+    { title: 'ทดสอบบน Safari', by: 'ข้าม', result: '–', date: '', test: '', run: '', note: '' },
+  ],
+  notes: 'รอบนี้เทสบน dev',
+};
+const FINISH_TALLY = { total: 4, skipped: 1, active: 3, pass: 2, fail: 1, todo: 0 };
+
+test('formatTestResults: ทุกข้อขึ้นครบ พร้อมป้ายผลและหมายเหตุ', () => {
+  const out = formatTestResults(FINISH_SHEET, FINISH_TALLY, 'fail', '2026-08-07');
+  assert.match(out, /^ผลทดสอบรอบที่ 2 — สรุป: ไม่ผ่าน \(2026-08-07\)$/m);
+  assert.match(out, /^ผ่าน 2 · ไม่ผ่าน 1 · ข้าม 1 \(ทั้งหมด 4 ข้อ\)$/m);
+  assert.match(out, /^1\. \[PASS\] login แล้ว sidebar ขึ้นครบ — 2026-08-06$/m);
+  assert.match(out, /^2\. \[PASS\] ยอด outlet ตรง — 2026-08-06 · auto · run 20260806101122$/m);
+  assert.match(out, /^3\. \[FAIL\] owner_id ต้องไม่ว่าง — 2026-08-07$/m);
+  assert.match(out, /^ {3}หมายเหตุ: เหลือ 3 outlet$/m);
+  assert.match(out, /^4\. \[ข้าม\] ทดสอบบน Safari$/m);
+  assert.ok(out.includes('\nบันทึกเพิ่มเติม:\nรอบนี้เทสบน dev\n'));
+  assert.match(out, /\(จากใบเทส 20260806-690-2\.md\)$/);
+});
+
+test('formatTestResults: ข้อที่ยังไม่ติ๊กต้องพูดออกมา ไม่ใช่หายไปจากสรุป', () => {
+  // "เตือนแต่กดได้" — ใบที่ยังไม่ครบส่งกลับได้ แต่ผู้อ่านต้องเห็นว่าข้อไหนไม่ได้ทดสอบ
+  const sheet = { file: 'x.md', meta: { round: 1 }, items: [{ title: 'ยังไม่ได้ทำ', by: 'qa', result: '–' }], notes: '' };
+  const out = formatTestResults(sheet, { total: 1, skipped: 0, active: 1, pass: 0, fail: 0, todo: 1 }, 'success', '2026-08-07');
+  assert.match(out, /^1\. \[ยังไม่ทดสอบ\] ยังไม่ได้ทำ$/m);
+  assert.match(out, /ยังไม่ทดสอบ 1/);
+});
+
+test('formatTestResults: ข้อที่ข้ามอ่านเป็น [ข้าม] แม้ผลเก่ายังค้างในไฟล์', () => {
+  // ใบที่แก้ด้วยมือมี by=ข้าม กับ result=pass พร้อมกันได้ — ข้ามแปลว่าไม่ได้ทดสอบ ต้องชนะ
+  const sheet = { file: 'x.md', meta: { round: 1 }, items: [{ title: 'ก', by: 'ข้าม', result: 'pass', date: '2026-08-01' }], notes: '' };
+  const out = formatTestResults(sheet, { total: 1, skipped: 1, active: 0, pass: 0, fail: 0, todo: 0 }, 'fail', '2026-08-07');
+  assert.match(out, /\[ข้าม\] ก/);
+  assert.ok(!out.includes('[PASS]'));
+});
+
+test('mergeTestResults: ต่อท้ายของเดิม ไม่ทับ', () => {
+  const merged = mergeTestResults('ผลรอบที่ 1 เดิม\n', 'ผลรอบที่ 2');
+  assert.strictEqual(merged, 'ผลรอบที่ 1 เดิม\n\n---\n\nผลรอบที่ 2');
+});
+test('mergeTestResults: field ว่างไม่ได้เส้นคั่นนำหน้า', () => {
+  assert.strictEqual(mergeTestResults('', 'ผลรอบที่ 1'), 'ผลรอบที่ 1');
+  assert.strictEqual(mergeTestResults('   \n ', 'ผลรอบที่ 1'), 'ผลรอบที่ 1');
+});
+
+test('latestQtestFor: เลือกรอบล่าสุดของ issue นั้น ไม่ใช่ชื่อไฟล์ล่าสุด', () => {
+  // ชื่อไฟล์ "…-690-2.md" กับ "…-690.md" ต่างกันที่ - กับ . ซึ่ง localeCompare
+  // ชั่งน้ำหนักตามกฎภาษา ไม่ใช่ตามลำดับ codepoint — เรียงตาม round จึงเชื่อถือได้กว่า
+  const sheets = [
+    { file: '20260806-690.md', meta: { issue: 690, round: 1 } },
+    { file: '20260806-690-2.md', meta: { issue: 690, round: 2 } },
+    { file: '20260807-691.md', meta: { issue: 691, round: 1 } },
+  ];
+  assert.strictEqual(latestQtestFor(sheets, 690).meta.round, 2);
+  assert.strictEqual(latestQtestFor(sheets, '690').meta.round, 2);   // renderer ส่งมาเป็นสตริงได้
+  assert.strictEqual(latestQtestFor(sheets, 999), null);
+  assert.strictEqual(latestQtestFor([], 690), null);
 });

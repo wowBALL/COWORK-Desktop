@@ -33,6 +33,7 @@
       "preload.js",
       "util.js",
       "datefilter.js",
+      "finishtest.js",
       "tab-redmine.js",
       "tab-redmine.css",
       "tab-workspace.js",

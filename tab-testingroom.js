@@ -205,6 +205,25 @@
       queueSave();
     });
   }
+  // ---- จบงาน: สรุปผลกลับ Redmine ----
+  // แผงกับการเขียนจริงอยู่ใน finishtest.js ตัวเดียวกับปุ่ม ✅/❌ ในแท็บ Redmine
+  //
+  // flushSave() ก่อนเสมอ — ฝั่ง main อ่านใบเทสจากดิสก์ใหม่ตอนประกอบข้อความ ติ๊กผลข้อสุดท้าย
+  // แล้วกดจบงานภายใน 500ms (ช่วง debounce) จะได้ผลสรุปที่ขาดข้อนั้นไปโดยไม่มีอะไรฟ้อง
+  function openFinish(sheet, outcome) {
+    const host = document.getElementById('trFinish');
+    if (!host || !global.COWORK.finishtest) return;
+    host.innerHTML = 'กำลังบันทึกใบเทส…';
+    flushSave().then(() => {
+      global.COWORK.finishtest.open(host, sheet.meta.issue, outcome, {
+        onDone: res => {
+          autoMsg = `ส่งผลกลับ Redmine แล้ว — #${sheet.meta.issue} ตอนนี้อยู่สถานะ ${res.status}`;
+          paintAutoMsg();
+        },
+      });
+    });
+  }
+
   function paintAutoMsg() {
     const el = document.getElementById('trAutoMsg');
     if (el) el.textContent = autoMsg;
@@ -292,18 +311,22 @@
         <div class="tr-subject">${esc(m.subject || '(ไม่มีหัวเรื่อง)')}</div>
         <div class="tr-sub">รับเข้า ${esc(m.receivedAt || '–')}<span id="trDoneAt">${doneAtHtml(at)}</span> · ${esc(sheet.file)}${m.model ? ' · ' + esc(m.model) : ''}</div>
         <div class="tr-tally">
-          <span class="ok">pass ${p.pass}</span><span class="no">fail ${p.fail}</span>
-          <span>ค้าง ${p.todo}</span><span class="sk">ข้าม ${p.skipped}</span>
+          <span class="tr-counts">${tallyHtml(p)}</span>
           <button type="button" class="tr-pull-all" id="trPullAll">⤓ ดึงผล auto ทั้งใบ</button>
+          <button type="button" class="tr-finish ok" id="trFinishOk">✅ จบงาน · ผ่าน</button>
+          <button type="button" class="tr-finish no" id="trFinishNo">❌ จบงาน · ไม่ผ่าน</button>
         </div>
         <div class="tr-automsg" id="trAutoMsg">${esc(autoMsg)}</div>
       </div>
+      <div id="trFinish"></div>
       <div id="trItems"></div>
       <button class="tr-add" id="trAdd">+ เพิ่มข้อทดสอบ</button>
       <div class="row-label" style="margin-top:14px">บันทึกเพิ่มเติม</div>
       <textarea id="trNotes" class="tr-notes" placeholder="จดอะไรก็ได้เกี่ยวกับการเทสรอบนี้…">${esc(sheet.notes || '')}</textarea>`;
     document.getElementById('trBack').onclick = () => { openPath = null; autoMsg = ''; render(); };
     document.getElementById('trPullAll').onclick = () => pullAuto(sheet, null);
+    document.getElementById('trFinishOk').onclick = () => openFinish(sheet, 'success');
+    document.getElementById('trFinishNo').onclick = () => openFinish(sheet, 'fail');
     document.getElementById('trAdd').onclick = () => {
       sheet.items.push(emptyItem());
       renderSheet();
@@ -393,14 +416,18 @@
     });
   }
   function doneAtHtml(at) { return at ? ` · <b class="tr-doneat">เทสเสร็จ ${esc(at)}</b>` : ''; }
+  function tallyHtml(p) {
+    return `<span class="ok">pass ${p.pass}</span><span class="no">fail ${p.fail}</span>`
+      + `<span>ค้าง ${p.todo}</span><span class="sk">ข้าม ${p.skipped}</span>`;
+  }
   // อัปเดตแถบสรุปโดยไม่วาดทั้งใบใหม่ — วาดใหม่จะทำให้ข้อความที่พิมพ์ค้างในช่องหมายเหตุเสีย focus
   // ต้องอัปเดต "เทสเสร็จ" ด้วย ไม่ใช่แค่ตัวเลข: ติ๊กข้อสุดท้ายแล้วบรรทัดนั้นต้องโผล่ทันที
+  // เขียนทับเฉพาะ .tr-counts ไม่ใช่ทั้ง .tr-tally — ปุ่มดึงผล/จบงานอยู่ในแถวเดียวกัน
+  // เขียนทับทั้งแถวจะลบปุ่มทิ้งทุกครั้งที่ติ๊กผล (บั๊กเดิมของปุ่ม ⤓ ดึงผล ตั้งแต่เฟส 3)
   function repaintTally(sheet) {
-    const el = document.querySelector('#trSheet .tr-tally');
+    const el = document.querySelector('#trSheet .tr-tally .tr-counts');
     if (!el) return;
-    const p = progressOf(sheet.items);
-    el.innerHTML = `<span class="ok">pass ${p.pass}</span><span class="no">fail ${p.fail}</span>`
-      + `<span>ค้าง ${p.todo}</span><span class="sk">ข้าม ${p.skipped}</span>`;
+    el.innerHTML = tallyHtml(progressOf(sheet.items));
     const at = document.getElementById('trDoneAt');
     if (at) at.innerHTML = doneAtHtml(doneAtFor(sheet.items));
   }

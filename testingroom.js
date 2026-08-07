@@ -149,6 +149,64 @@ function parseQtest(text) {
   return { meta, items, notes };
 }
 
+// ---- สรุปผลกลับไป Redmine ----
+// ข้อความที่ปุ่ม ✅/❌ จะเขียนลง field "Test Results" ของ issue — คนอ่านคือ dev ที่รับงานต่อ
+// และผู้ตรวจย้อนหลัง ไม่ใช่โปรแกรม จึงเขียนเป็นข้อความล้วน ไม่ใช่ตาราง markdown: Redmine
+// เรนเดอร์ field นี้ด้วย textile ซึ่งไม่รู้จักตาราง markdown แล้วจะได้ท่อ | เต็มหน้าจอ
+// ป้ายผลใช้ [PASS]/[FAIL] แทนสัญลักษณ์ ✓/✗ เพราะ field นี้ถูกก๊อปไปวางในอีเมล/แชตบ่อย
+const OUTCOMES = {
+  success: { word: 'ผ่าน', status: 'Resolved' },
+  fail: { word: 'ไม่ผ่าน', status: 'In Progress' },
+};
+// ป้ายของข้อหนึ่ง — "ข้าม" มาก่อนผล เพราะข้อที่ข้ามไม่ได้ถูกทดสอบ ผลที่ค้างอยู่ (ถ้ามี)
+// ไม่มีความหมายแล้ว ส่วนข้อที่ยังไม่ติ๊กต้องพูดออกมาตรง ๆ ไม่ใช่หายไปเฉย ๆ จากสรุป
+function itemLabel(it) {
+  if (!it || it.by === 'ข้าม') return '[ข้าม]';
+  if (it.result === 'pass') return '[PASS]';
+  if (it.result === 'fail') return '[FAIL]';
+  return '[ยังไม่ทดสอบ]';
+}
+function itemLine(it, i) {
+  const bits = [];
+  if (it.date) bits.push(it.date);
+  if (it.by === 'auto') bits.push(it.run ? `auto · run ${it.run}` : 'auto');
+  const tail = bits.length ? ` — ${bits.join(' · ')}` : '';
+  const head = `${i + 1}. ${itemLabel(it)} ${it.title || '(ไม่มีหัวข้อ)'}${tail}`;
+  // หมายเหตุคือที่ที่ QA เขียนว่าพังยังไง — ส่วนที่มีค่าที่สุดของใบ ต้องติดไปด้วยเสมอ
+  return it.note ? `${head}\n   หมายเหตุ: ${it.note}` : head;
+}
+
+// tally รับมาจากข้างนอก (progressOf ใน tab-testingroom.js) ไม่นับเองซ้ำ — กฎว่าข้อที่ "ข้าม"
+// ไม่นับเป็นงานค้างมีที่เดียว ถ้าโมดูลนี้นับเองจะกลายเป็นสองสูตรที่เพี้ยนจากกันได้เงียบ ๆ
+function formatTestResults(sheet, tally, outcome, today) {
+  const meta = (sheet && sheet.meta) || {};
+  const items = (sheet && Array.isArray(sheet.items)) ? sheet.items : [];
+  const t = tally || { pass: 0, fail: 0, skipped: 0, todo: 0, total: items.length };
+  const o = OUTCOMES[outcome] || OUTCOMES.fail;
+  const counts = [`ผ่าน ${t.pass}`, `ไม่ผ่าน ${t.fail}`, `ข้าม ${t.skipped}`];
+  if (t.todo) counts.push(`ยังไม่ทดสอบ ${t.todo}`);
+  const lines = [
+    `ผลทดสอบรอบที่ ${meta.round || 1} — สรุป: ${o.word}${today ? ' (' + today + ')' : ''}`,
+    `${counts.join(' · ')} (ทั้งหมด ${t.total} ข้อ)`,
+    '',
+  ];
+  if (items.length) lines.push(...items.map(itemLine));
+  else lines.push('(ใบเทสนี้ไม่มีข้อทดสอบ)');
+  const notes = String((sheet && sheet.notes) || '').trim();
+  if (notes) lines.push('', 'บันทึกเพิ่มเติม:', notes);
+  // ชื่อไฟล์ใบเทสท้ายสุด — คนอ่านย้อนหลังจะได้รู้ว่าสรุปนี้มาจากใบไหนในเครื่อง QA
+  if (sheet && sheet.file) lines.push('', `(จากใบเทส ${sheet.file})`);
+  return lines.join('\n');
+}
+
+// ต่อท้ายของเดิมเสมอ ไม่ทับ (ตัดสินใจ 2026-08-07) — งานหนึ่งใบเทสหลายรอบ ประวัติการเทส
+// ทุกรอบต้องสะสมอยู่ใน field เดียวกัน ไม่ใช่รอบล่าสุดลบรอบก่อนหน้าทิ้ง
+// เส้นคั่นช่วยให้ยังแยกออกว่าอันไหนรอบไหนตอนอ่านย้อน
+function mergeTestResults(existing, block) {
+  const old = String(existing == null ? '' : existing).replace(/\s+$/, '');
+  return old ? `${old}\n\n---\n\n${block}` : String(block == null ? '' : block);
+}
+
 // ---- ชื่อไฟล์ / รอบ ----
 function stamp(receivedAt) { return String(receivedAt || '').replace(/-/g, '').slice(0, 8); }
 function qtestFilename(receivedAt, issue) { return `${stamp(receivedAt)}-${issue}.md`; }
@@ -178,6 +236,17 @@ function listQtests(dir) {
   }).filter(Boolean);
 }
 
+// ใบล่าสุดของ issue หนึ่ง — เรียงตาม round ก่อน ไม่ใช่ชื่อไฟล์: localeCompare ตัดสิน
+// "20260806-690-2.md" กับ "20260806-690.md" ตามกฎภาษา ซึ่งชั่งน้ำหนัก - กับ . ไม่แน่นอน
+// round มาจาก frontmatter ที่ปุ่ม 🧪 เขียนไว้ เป็นตัวเลขที่ตั้งใจให้เรียงอยู่แล้ว
+function latestQtestFor(sheets, issue) {
+  return (Array.isArray(sheets) ? sheets : [])
+    .filter(s => s && s.meta && String(s.meta.issue) === String(issue))
+    .sort((a, b) => (Number(b.meta.round) || 1) - (Number(a.meta.round) || 1)
+      || String(b.file || '').localeCompare(String(a.file || '')))[0] || null;
+}
+
 module.exports = {
-  BY, RESULT, parseQtest, serializeQtest, qtestFilename, nextQtestName, listQtests,
+  BY, RESULT, OUTCOMES, parseQtest, serializeQtest, qtestFilename, nextQtestName, listQtests,
+  formatTestResults, mergeTestResults, latestQtestFor,
 };

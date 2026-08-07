@@ -11,7 +11,7 @@
   const {dateMatch, dateFilterHtml, wireDateFilter} = global.COWORK.dateFilter;
   const shell = () => global.COWORK.shell;   // เปลือกสร้างทีหลังไฟล์นี้ ต้องหยิบตอนเรียกใช้
 
-  let qaData=null, qaFilter='all', qaSrcFilter=null, qaTestFilter=null, qaOpen=null, qaXmlCache=new Map();
+  let qaData=null, qaFilter='all', qaSrcFilter=null, qaTestFilter=null, qaIssueFilter=null, qaOpen=null, qaXmlCache=new Map();
   const qaDateSel={y:null,m:null,d:null};
   let qaTab='log';                 // log = ข้อความ log, ui = วิวเวอร์ failure.xml, xml = XML ดิบ
 
@@ -547,6 +547,14 @@
     if(r.testId) return `<span class="qa-tf" title="${esc(r.testId)}">${esc(shortTestName(r.testId))}</span>`;
     return `<span class="qa-tf none" title="ล็อกนี้ไม่มีบรรทัด TEST: — จัดกลุ่มจากชื่อเทสแทน">?</span>`;
   }
+  // เลขงานที่อ้างถึงรอบนี้ — มาจากคอลัมน์ run ในใบเทส (main เป็นคนกลับด้านให้)
+  // รอบที่ไม่มีใบไหนอ้างถึงไม่ได้ป้ายเลย ไม่ใช่ป้ายว่าง ๆ — แถวนี้มีป้ายเยอะพออยู่แล้ว
+  // และ "ยังไม่ถูกใช้ตอบงานไหน" ดูได้จากชิปกรองซึ่งมีที่อธิบายมากกว่า
+  function qaIssueTag(r){
+    const list=(r.issues||[]);
+    if(!list.length) return '';
+    return `<span class="qa-iss" title="ใบเทสของงานนี้อ้างถึงรอบรันนี้">${list.map(n=>'#'+esc(String(n))).join(' ')}</span>`;
+  }
   // แปลฟอร์ม issue กลับเป็นบรรทัด (label, value) สำหรับหน้า review — id -> ชื่อคนอ่านได้
   // ฟังก์ชันบริสุทธิ์ ไม่แตะ DOM เพื่อให้เทสได้ตรงๆ
   function buildReviewLines(form, meta) {
@@ -610,7 +618,26 @@
       (skip==='status'||qaFilter==='all'||r.status===qaFilter) &&
       (skip==='src'||qaSrcFilter===null||r.sourceLabel===qaSrcFilter) &&
       (skip==='test'||qaTestFilter===null||(r.testKey||'')===qaTestFilter) &&
+      (skip==='issue'||qaIssueFilter===null||issueMatch(r,qaIssueFilter)) &&
       (skip==='date'||dateMatch(qaDateSel,qaDateOf(r))));
+  }
+  // '' = กองที่ยังไม่มีใบเทสไหนอ้างถึง ต้องเป็นค่าที่กรองได้จริง ไม่ใช่ค่าว่างที่แปลว่า "ทุกอัน"
+  function issueMatch(r,want){
+    const list=(r.issues||[]).map(String);
+    return want==='' ? !list.length : list.includes(want);
+  }
+  // จำนวนรอบต่อเลขงาน เรียงเลขมากไปน้อย (งานใหม่อยู่บน) กองที่ยังไม่ผูกไว้ท้ายสุดเสมอ
+  function qaIssueGroups(list){
+    const by=new Map(); let none=0;
+    for(const r of list){
+      const issues=(r.issues||[]).map(String);
+      if(!issues.length){ none+=1; continue; }
+      for(const k of issues) by.set(k,(by.get(k)||0)+1);
+    }
+    const out=[...by.entries()].map(([key,n])=>({key,n}))
+      .sort((a,b)=>Number(b.key)-Number(a.key)||a.key.localeCompare(b.key));
+    if(none) out.push({key:'',n:none});
+    return out;
   }
   // รายการไฟล์เทสที่เห็นในผลรัน — จำนวนรอบต่อไฟล์ เรียงจากมากไปน้อย แล้วจึงตามชื่อ
   // key มาจาก main (testId ถ้ามี ไม่งั้นชื่อไทย) ป้ายบนชิปแสดง key ตรง ๆ เพราะชิปมีที่พอ
@@ -687,6 +714,27 @@
     } else {
       tLabelEl.style.display='none'; tEl.style.display='none'; tEl.innerHTML=''; qaTestFilter=null;
     }
+
+    // ชิปกรองตามเลขงาน — ตอบ "งาน #690 รันอะไรไปบ้าง ผลยังไง" ซึ่งเป็นสิ่งที่ตอนแรกอยากได้
+    // จากการเปลี่ยนชื่อโฟลเดอร์ผลรัน แต่ทำได้จากใบเทสโดยไม่ต้องขยับไฟล์เลย
+    const inIssue=qaExcept('issue');
+    const iGroups=qaIssueGroups(inIssue);
+    if(qaIssueFilter!==null && !iGroups.some(g=>g.key===qaIssueFilter)) qaIssueFilter=null;
+    const iLabelEl=document.getElementById('qaIssueLabel'), iEl=document.getElementById('qaIssueChips');
+    // กองเดียวก็ไม่ต้องมีชิป ไม่ว่าจะเป็นงานเดียวหรือไม่ผูกกับงานไหนเลยทั้งหมด
+    if(iGroups.length>1){
+      iLabelEl.style.display=''; iEl.style.display='';
+      iEl.innerHTML=`<div class="chip${qaIssueFilter===null?' active':''}" data-q="all">ทุกงาน<span class="n">${inIssue.length}</span></div>`+
+        iGroups.map(g=>`<div class="chip${qaIssueFilter===g.key?' active':''}" data-q="${esc(g.key)}">${g.key?'#'+esc(g.key):'ไม่ผูกกับงานไหน'}<span class="n">${g.n}</span></div>`).join('');
+      // data-q ต้องแยก "ทุกงาน" (null) ออกจาก "ไม่ผูกกับงานไหน" ('') ให้ได้ — ใช้ค่าว่างแทน
+      // ทั้งสองอย่างไม่ได้ เพราะกองที่ไม่ผูกกับงานไหนก็เป็นตัวกรองจริงอันหนึ่ง
+      iEl.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+        qaIssueFilter=c.dataset.q==='all'?null:c.dataset.q;
+        renderQaChips(); renderQaRows();
+      });
+    } else {
+      iLabelEl.style.display='none'; iEl.style.display='none'; iEl.innerHTML=''; qaIssueFilter=null;
+    }
   }
   function renderQaRows(){
     const el=document.getElementById('qaRows');
@@ -711,7 +759,7 @@
     // .sel ไฮไลต์แถวที่เลือกอยู่ — มีผลตอนจอกว้างที่ qaRows กับ qaReader โชว์คู่กัน (ดู container query ด้านบน)
     el.innerHTML=list.map(r=>`
       <div class="qa-row${r.id===qaOpen?' sel':''}" data-id="${esc(r.id)}">
-        ${qaBadge(r.status)}${qaSrcTag(r.sourceLabel)}${qaTestTag(r)}
+        ${qaBadge(r.status)}${qaIssueTag(r)}${qaSrcTag(r.sourceLabel)}${qaTestTag(r)}
         <span class="qa-name">${esc(r.name||'(ไม่ระบุชื่อเทส)')}</span>
         <span class="qa-time">${esc(r.endedAt?r.endedAt.slice(11):r.id)}</span>
       </div>`).join('');
@@ -978,7 +1026,7 @@
   // ได้ แทนที่จะเขียนโค้ดเลียนแบบขึ้นมาทดสอบเอง (ซึ่งพิสูจน์แค่ว่าของเลียนแบบทำงาน)
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-      shortTestName, qaTestGroups,
+      shortTestName, qaTestGroups, qaIssueGroups, issueMatch,
       buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName, qiIsImageDataUrlText,
       qiImageTokens, qiFitPlan, QI_IMAGE_TOKEN_LIMIT, qiFitImagesToBudget,
       qiFitNotice, QI_SAFE_FIT_SCALE, qiCustomFieldsHtml, QI_CUSTOM_FIELD_DEFAULTS,

@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const {
   parseQtest, serializeQtest, qtestFilename, nextQtestName, listQtests, BY, RESULT,
-  formatTestResults, mergeTestResults, latestQtestFor,
+  formatTestResults, mergeTestResults, latestQtestFor, issuesByRun,
 } = require('../testingroom');
 
 function tmpdir() {
@@ -246,4 +246,29 @@ test('latestQtestFor: เลือกรอบล่าสุดของ issue 
   assert.strictEqual(latestQtestFor(sheets, '690').meta.round, 2);   // renderer ส่งมาเป็นสตริงได้
   assert.strictEqual(latestQtestFor(sheets, 999), null);
   assert.strictEqual(latestQtestFor([], 690), null);
+});
+
+// ---- ดัชนีย้อนกลับ run → issue ----
+// ตอบ "ผลรันรอบนี้ถูกใช้ตอบงานไหน" จากใบเทสล้วน ๆ โดยไม่เขียนอะไรลงโฟลเดอร์ผลรัน
+// (เหตุผลเดียวกับที่ไม่เปลี่ยนชื่อโฟลเดอร์เป็น yyyymmdd-issue)
+const sheetOf = (issue, runs) => ({ meta: { issue }, items: runs.map(run => ({ run })) });
+
+test('issuesByRun: จับคู่รอบรันกับงานที่อ้างถึง', () => {
+  assert.deepStrictEqual(
+    issuesByRun([sheetOf(690, ['r1', 'r2']), sheetOf(712, ['r3'])]),
+    { r1: [690], r2: [690], r3: [712] });
+});
+test('issuesByRun: รอบเดียวถูกอ้างได้หลายงาน', () => {
+  // ชุด regression ตัวเดียวใช้ตอบหลาย issue ได้ ถ้าเก็บเป็นค่าเดียวจะทับกันเงียบ ๆ
+  assert.deepStrictEqual(issuesByRun([sheetOf(712, ['r1']), sheetOf(690, ['r1'])]), { r1: [690, 712] });
+});
+test('issuesByRun: งานเดิมอ้างรอบเดิมซ้ำหลายข้อ ไม่นับซ้ำ', () => {
+  assert.deepStrictEqual(issuesByRun([sheetOf(690, ['r1', 'r1'])]), { r1: [690] });
+});
+test('issuesByRun: ข้อที่ไม่มีเลข run และใบที่ไม่มีเลข issue ถูกข้าม', () => {
+  assert.deepStrictEqual(issuesByRun([sheetOf(690, ['', '  ']), sheetOf('', ['r9']), sheetOf(null, ['r8'])]), {});
+});
+test('issuesByRun: รับค่าที่ไม่ใช่ array ได้โดยไม่โยน', () => {
+  assert.deepStrictEqual(issuesByRun(null), {});
+  assert.deepStrictEqual(issuesByRun([null, {}, { meta: { issue: 1 } }]), {});
 });

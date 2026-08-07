@@ -9,7 +9,7 @@ const { Grafana, APP_GROUPS } = require('./grafana');
 const { parseGlossary, planWrite } = require('./glossary');
 const { buildFieldSchema, fieldSchemaKey, composeDescription, buildIssuePayload, parseValidationErrors, canonicalRiskLevel, findFieldIdByName, fieldAvailability } = require('./redmine-issue-form');
 const { draftIssue, draftTestChecklist, historyForChecklist } = require('./llm');
-const { serializeQtest, nextQtestName, listQtests,
+const { serializeQtest, nextQtestName, listQtests, issuesByRun,
   formatTestResults, mergeTestResults, latestQtestFor } = require('./testingroom');
 // ตั้งใจ require ไฟล์ฝั่ง renderer: tab-testingroom.js แยกส่วนฟังก์ชันบริสุทธิ์ออกมา export
 // เมื่อ window เป็น undefined อยู่แล้ว (ทางเดียวกับที่ node --test ใช้) กฎ "ข้อที่ข้ามไม่นับ
@@ -597,6 +597,12 @@ function pushQaTests() {
   let payload;
   try { payload = readQaResults(qaSources); }
   catch (e) { payload = { runs: [], sources: [], error: e.message }; }
+  // เติมเลข issue ที่อ้างถึงแต่ละรอบ — มาจากใบเทส ไม่ใช่จากโฟลเดอร์ผลรัน (ดู issuesByRun)
+  // อ่านใบพังไม่ควรทำให้ลิสต์ผลรันหายทั้งแถบ ป้าย issue เป็นของแถม ไม่ใช่แกนของหน้านี้
+  try {
+    const byRun = issuesByRun(listQtests(qtestDir));
+    for (const r of (payload.runs || [])) r.issues = byRun[r.id] || [];
+  } catch {}
   win.webContents.send('qatest-update', payload);
 }
 

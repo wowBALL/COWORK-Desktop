@@ -41,6 +41,10 @@
   color:var(--violet);border:1px solid color-mix(in srgb,var(--violet) 35%,transparent);
   max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qa-tf.none{color:var(--dim);border-color:var(--line)}
+/* เลขงานที่ใบเทสอ้างถึงรอบนี้ — สีเดียวกับสถานะ Test ในแท็บ Redmine ให้อ่านว่า "งาน" ได้ทันที */
+.qa-iss{font-family:'JetBrains Mono',monospace;font-size:9.5px;padding:2px 7px;border-radius:6px;flex-shrink:0;
+  color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);
+  max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qa-row .qa-name{font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qa-row .qa-time{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);flex-shrink:0}
 .qa-reader-head{display:flex;align-items:center;gap:9px;margin-bottom:4px;flex-wrap:wrap}

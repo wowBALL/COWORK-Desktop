@@ -302,3 +302,26 @@ test('shortTestName: ชื่อไทยย่อจากท้าย เก�
   assert.ok(b.includes('(Tyro)'));
   assert.ok(a.endsWith('…') && b.endsWith('…'));
 });
+
+// ---- กรองผลรันตามเลขงาน ----
+const { qaIssueGroups, issueMatch } = require('../tab-qatest.js');
+
+test('qaIssueGroups: เรียงงานใหม่ก่อน กองที่ยังไม่ผูกอยู่ท้ายสุด', () => {
+  const g = qaIssueGroups([
+    { issues: [690] }, { issues: [712] }, { issues: [690, 712] }, { issues: [] }, {},
+  ]);
+  assert.deepStrictEqual(g, [{ key: '712', n: 2 }, { key: '690', n: 2 }, { key: '', n: 2 }]);
+});
+test('qaIssueGroups: ไม่มีรอบไหนผูกกับงานเลย = กองเดียว', () => {
+  assert.deepStrictEqual(qaIssueGroups([{ issues: [] }, {}]), [{ key: '', n: 2 }]);
+});
+
+test('issueMatch: "" กรองเฉพาะรอบที่ยังไม่มีใบไหนอ้างถึง', () => {
+  // ค่าว่างต้องเป็นตัวกรองจริง ไม่ใช่แปลว่า "ทุกอัน" — ไม่งั้นกองนี้กดดูแยกไม่ได้
+  assert.strictEqual(issueMatch({ issues: [] }, ''), true);
+  assert.strictEqual(issueMatch({ issues: [690] }, ''), false);
+});
+test('issueMatch: เทียบเป็นสตริงเสมอ เพราะ dataset ให้มาเป็นสตริง', () => {
+  assert.strictEqual(issueMatch({ issues: [690] }, '690'), true);
+  assert.strictEqual(issueMatch({ issues: [690] }, '69'), false);
+});

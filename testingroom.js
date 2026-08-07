@@ -262,7 +262,32 @@ function latestQtestFor(sheets, issue) {
       || String(b.file || '').localeCompare(String(a.file || '')))[0] || null;
 }
 
+// ดัชนีย้อนกลับ run → เลข issue ที่อ้างถึงรอบรันนั้น
+//
+// ใบเทสเก็บคอลัมน์ run รายข้ออยู่แล้ว คำถาม "ผลรันรอบนี้ถูกใช้ตอบงานไหน" จึงตอบได้จากใบเทส
+// ล้วน ๆ ไม่ต้องเขียนอะไรลงในโฟลเดอร์ผลรัน และไม่ต้องให้ตัวรันรู้จักเลข issue (มันไม่รู้ และ
+// รอบที่รันจากเมนูเองก็ไม่มีเลขให้อยู่ดี) — เหตุผลเดียวกับที่ไม่เปลี่ยนชื่อโฟลเดอร์ผลรัน
+// เป็น yyyymmdd-issue (ตัดสินใจ 2026-08-07)
+//
+// รอบเดียวถูกอ้างได้หลายงาน (ชุด regression ที่ใช้ตอบหลาย issue) จึงเป็น array ไม่ใช่ค่าเดียว
+// เรียงเลขน้อยไปมากเพื่อให้ป้ายบนหน้าจอไม่สลับที่ไปมาทุกครั้งที่โหลดใหม่
+function issuesByRun(sheets) {
+  const out = {};
+  for (const s of (Array.isArray(sheets) ? sheets : [])) {
+    const issue = s && s.meta && s.meta.issue;
+    if (issue == null || issue === '') continue;
+    for (const it of (s.items || [])) {
+      const run = it && String(it.run || '').trim();
+      if (!run) continue;
+      if (!out[run]) out[run] = [];
+      if (!out[run].includes(issue)) out[run].push(issue);
+    }
+  }
+  for (const k of Object.keys(out)) out[k].sort((a, b) => Number(a) - Number(b) || String(a).localeCompare(String(b)));
+  return out;
+}
+
 module.exports = {
-  BY, RESULT, CAUSE, OUTCOMES, parseQtest, serializeQtest, qtestFilename, nextQtestName, listQtests,
+  BY, RESULT, CAUSE, OUTCOMES, parseQtest, serializeQtest, qtestFilename, nextQtestName, listQtests, issuesByRun,
   formatTestResults, mergeTestResults, latestQtestFor,
 };

@@ -137,6 +137,12 @@
   .navrow .refresh{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);
     background:var(--panel);color:var(--muted);cursor:pointer;font-size:12px;transition:.15s}
   .navrow .refresh:hover{color:var(--ink);border-color:var(--accent)}
+  /* กำลังโหลดอยู่ — หมุนตัวอักษร ↻ เอง ไม่ต้องมี spinner แยก · pointer-events:none กันกดซ้ำ
+     ระหว่างรอ (กดรัวแล้วยิง Redmine ซ้ำโดยที่หน้าจอดูเหมือนไม่มีอะไรเกิดขึ้น) */
+  .navrow .refresh.pending{color:var(--accent);border-color:var(--accent);pointer-events:none;font-size:0}
+  .navrow .refresh.pending::before{content:'↻';display:inline-block;font-size:12px;
+    animation:rmspin 1s linear infinite}
+  @keyframes rmspin{to{transform:rotate(360deg)}}
   /* ตัวเลือกโมเดล LLM — ปุ่มไอคอนเปิดเมนู วางเมนูแบบ absolute เทียบตัวห่อ ไม่ใช่เทียบ .navrow
      เพื่อให้เมนูตามปุ่มไปเองเวลาปุ่มขวาตัวอื่นโผล่/หายตามแท็บ */
   /* :not(.hidden) จำเป็น — .navrow .llmpick มี specificity สูงกว่า .hidden ถ้าตั้ง display ตรง ๆ
@@ -274,6 +280,10 @@
         <button id="navGrafana">Grafana</button>
         <button id="navWorkspace">Workspace</button>
       </div>
+      <!-- ไม่มี .hidden ตั้งต้น เหมือน ➕ และตัวเลือกโมเดล: แอปเปิดมาที่แท็บ Redmine โดยที่
+           showTab() ยังไม่เคยถูกเรียกเลย ปุ่มของแท็บ rm ที่ซ่อนไว้ใน markup จะไม่โผล่จนกว่า
+           ผู้ใช้จะกดสลับแท็บไปกลับ (ปุ่มของแท็บอื่นซ่อนไว้ได้ เพราะกว่าจะถึงต้องกดอยู่แล้ว) -->
+      <button id="rmRefresh" class="refresh" title="ดึงงาน Redmine ใหม่ตอนนี้">↻</button>
       <button id="wsRefresh" class="refresh hidden" title="โหลด Workspace ใหม่">↻</button>
       <button id="qaRefresh" class="refresh hidden" title="โหลดผล QA test ใหม่">↻</button>
       <!-- โมเดล LLM ของกลาง — ใช้ทั้งปุ่มร่าง issue และตอนส่งงานเข้า Testing Room จึงอยู่บนแถบ
@@ -295,7 +305,7 @@
         <div class="clock"><span id="hm">--:--</span><span class="sec" id="s">00</span></div>
         <div class="date" id="date">—</div>
 
-        <h3>งาน Redmine</h3>
+        <h3 class="rm-h3">งาน Redmine<span id="rmStamp" class="rm-stamp"></span></h3>
         <input id="rmSearch" class="search" type="text" placeholder="🔍 ค้นหา (เลข # / ชื่อเรื่อง / โปรเจกต์ / ผู้รับผิดชอบ / โน้ต)" autocomplete="off">
         <div id="rmSearchHint"></div>
         <div class="row-label">โปรเจกต์ · เลือกได้หลายอัน</div>
@@ -543,6 +553,18 @@
       <!-- ===== Settings view ===== -->
       <div id="settingsView" class="hidden">
         <h3>ตั้งค่า</h3>
+        <!-- การ์ดนี้เป็นของเปลือก ไม่ใช่ของ tab module ใด — ค่าข้างในมีผู้ใช้สี่แท็บพร้อมกัน
+             เหตุผลเดียวกับที่ตัวเลือกโมเดล LLM อยู่บน navrow ของเปลือก ไม่ได้อยู่ในฟอร์มใดฟอร์มหนึ่ง -->
+        <div class="set-card" id="cardGeneral">
+          <div class="set-card-header" data-card="cardGeneral"><span>◈ ทั่วไป</span><span class="chev">›</span></div>
+          <div class="set-card-body">
+            <div class="row-label">รอบรีเฟรชอัตโนมัติ</div>
+            <select id="setRefresh" class="search"></select>
+            <div class="hint" style="margin:-4px 0 12px">ใช้กับ Redmine / Workspace / Meeting / QA test พร้อมกัน · มีผลทันทีไม่ต้องเปิดแอปใหม่ · เลือก "ปิด" แล้วรีเฟรชเองด้วยปุ่ม ↻ บนแถบด้านบน</div>
+            <div id="setRefreshStatus" class="set-status"></div>
+            <div class="set-actions"><button id="setRefreshSave" class="set-save">บันทึก</button></div>
+          </div>
+        </div>
         <div class="set-card" id="cardRedmine">
           <div class="set-card-header" data-card="cardRedmine"><span>◈ Redmine</span><span class="chev">›</span></div>
           <div class="set-card-body">
@@ -674,6 +696,18 @@
     hm.textContent=`${p(h)}:${p(n.getMinutes())}`; s.textContent=p(n.getSeconds());
     greet.textContent=(h<12?'Good morning':h<18?'Good afternoon':'Good evening')+(currentUserName?', '+currentUserName:'');
     date.textContent=`${D[n.getDay()]} ${n.getDate()} ${M[n.getMonth()]} ${n.getFullYear()+543}`;
+    // แท็บที่มีอะไรผูกกับเวลาเดินใส่ onTick ไว้ในสัญญา (ตอนนี้มีแค่ Redmine ที่โชว์อายุข้อมูล)
+    // เกาะนาฬิกาที่เดินอยู่แล้วแทนที่จะให้แต่ละแท็บตั้ง setInterval เอง — timer ที่ไม่มีใคร
+    // หยุดในโมดูล renderer ทำให้ node --test ค้างรอ event loop ไม่ยอมจบ
+    // ต้องทนถูกเรียกก่อนแท็บมีข้อมูลได้ (เช็คจาก DOM ไม่ใช่ตัวแปร) เหมือน onTheme
+    //
+    // วนจาก COWORK.tabs ตรง ๆ ไม่ใช่จาก TABS เหมือนที่อื่น เพราะ tick() ถูกเรียกครั้งแรกทันที
+    // ที่บรรทัดถัดไป ซึ่งอยู่เหนือ const TABS — อ้าง TABS ตรงนี้จะตกใน TDZ แล้วนาฬิกาตายตั้งแต่
+    // วินาทีแรก · ลำดับไม่สำคัญสำหรับ onTick (ต่างจาก mount ที่ TABS คุมลำดับ boot)
+    for(const name in window.COWORK.tabs){
+      const mod=window.COWORK.tabs[name];
+      if(mod && mod.onTick) mod.onTick();
+    }
   }
   const hm=document.getElementById('hm'),s=document.getElementById('s'),
         greet=document.getElementById('greet'),date=document.getElementById('date');
@@ -698,7 +732,8 @@
   // สิ่งที่เปลือกเปิดให้โมดูลแท็บใช้ ต้องประกาศหลัง api (const ไม่ hoist)
   // ที่เหลือเป็น function declaration จึง hoist มาถึงตรงนี้ได้
   // showTab อยู่ในนี้เพราะแถบควบคุมการอัดของ Meeting ต้องพาผู้ใช้กลับเข้าแท็บตัวเองได้
-  window.COWORK.shell={ api, openSettings, openFile, showTab, setUserName, llmModel:()=>llmModel };
+  window.COWORK.shell={ api, openSettings, openFile, showTab, setUserName, llmModel:()=>llmModel,
+    refreshMinutes:()=>refreshMinutes };
   api && api.getVersion && api.getVersion().then(v=>{ document.getElementById('appVer').textContent='v'+v; });
   document.getElementById('close').onclick=()=>api&&api.close();
   let pinned=false;
@@ -735,6 +770,7 @@
         viewR=document.getElementById('redmineView'), viewW=document.getElementById('workspaceView'),
         viewQ=document.getElementById('qaView'), viewM=document.getElementById('meetingView'),
         viewG=document.getElementById('grafanaView'),
+        rmRefresh=document.getElementById('rmRefresh'),
         wsRefresh=document.getElementById('wsRefresh'), qaRefresh=document.getElementById('qaRefresh'),
         qaNewIssueBtn=document.getElementById('qaNewIssueBtn'),
         llmPick=document.getElementById('llmPick'), llmBtn=document.getElementById('llmBtn'),
@@ -752,6 +788,7 @@
     navR.classList.toggle('on',rm); navW.classList.toggle('on',ws);
     navQ.classList.toggle('on',qa); navM.classList.toggle('on',mt);
     navG.classList.toggle('on',gf);
+    rmRefresh.classList.toggle('hidden',!rm);
     wsRefresh.classList.toggle('hidden',!ws);
     qaRefresh.classList.toggle('hidden',!qa);
     qaNewIssueBtn.classList.toggle('hidden',!rm);
@@ -829,6 +866,7 @@
     document.querySelectorAll('.set-card').forEach(c=>c.classList.remove('open'));
     if(autoOpenCard) document.getElementById(autoOpenCard).classList.add('open');
     // ดึงค่าใหม่ทุกครั้งที่เปิด ไม่ใช่ครั้งเดียวตอน boot — ค่าอาจถูกแก้จากที่อื่นระหว่างทาง
+    loadRefreshSetting();   // การ์ด "ทั่วไป" ไม่มี tab module เป็นเจ้าของ เปลือกโหลดเอง
     TABS.forEach(name=>{
       const mod=window.COWORK.tabs[name];
       if(mod && mod.loadSettings) mod.loadSettings();
@@ -840,6 +878,41 @@
   }
   document.getElementById('settingsBtn').onclick=()=>openSettings();
   document.getElementById('setCancel').onclick=closeSettings;
+
+  // ---- การ์ด "ทั่วไป": รอบรีเฟรชอัตโนมัติ ----
+  // อยู่ที่เปลือกเพราะค่าเดียวนี้คุมทั้งสี่ตัว push (Redmine/Workspace/Meeting/QA test) —
+  // เหตุผลเดียวกับตัวเลือกโมเดล LLM ไม่ใช่ของแท็บใดแท็บหนึ่ง
+  //
+  // ต่างจาก llmModel ตรงที่เก็บใน config.json ไม่ใช่ localStorage เพราะ main เป็นคนตั้ง
+  // setInterval จริง เจ้าของค่าจึงอยู่ฝั่งนั้น เปลือกเก็บสำเนาไว้ให้แท็บอ่านตอนวาดเท่านั้น
+  const {REFRESH_CHOICES}=window.COWORK.util;
+  let refreshMinutes=5;
+  const setRefresh=document.getElementById('setRefresh'),
+        setRefreshStatus=document.getElementById('setRefreshStatus'),
+        setRefreshSave=document.getElementById('setRefreshSave');
+  const refreshLabel=m=>m===0?'ปิด — รีเฟรชเองด้วยปุ่ม ↻':(m===5?'ทุก 5 นาที (ค่าเริ่มต้น)':`ทุก ${m} นาที`);
+  setRefresh.innerHTML=REFRESH_CHOICES.map(m=>`<option value="${m}">${refreshLabel(m)}</option>`).join('');
+  // ตั้งค่าเริ่มต้นทันที ไม่รอ IPC — ตัวเลือกแรกในลิสต์คือ "ปิด" ถ้าปล่อยว่างไว้ระหว่างรอ
+  // (หรือถ้า IPC ล้ม) เมนูจะโชว์ว่าปิดอยู่ทั้งที่ยังรีเฟรชทุก 5 นาที แล้วคนกดบันทึกก็จะปิดจริง
+  setRefresh.value=String(refreshMinutes);
+  function loadRefreshSetting(){
+    setRefreshStatus.textContent=''; setRefreshStatus.className='set-status';
+    api && api.getRefreshMinutes && api.getRefreshMinutes().then(m=>{
+      refreshMinutes=m; setRefresh.value=String(m);
+    });
+  }
+  setRefreshSave.onclick=()=>{
+    setRefreshSave.disabled=true;
+    setRefreshStatus.className='set-status'; setRefreshStatus.textContent='กำลังบันทึก...';
+    api.saveRefreshMinutes(Number(setRefresh.value)).then(saved=>{
+      setRefreshSave.disabled=false;
+      // ใช้ค่าที่ main คืนมา ไม่ใช่ค่าที่ส่งไป — main เป็นคน normalize เมนูจะได้ไม่ค้างที่ค่าที่ถูกปฏิเสธ
+      refreshMinutes=saved; setRefresh.value=String(saved);
+      setRefreshStatus.className='set-status ok';
+      setRefreshStatus.textContent=saved?`บันทึกแล้ว · รีเฟรชทุก ${saved} นาที`:'บันทึกแล้ว · ปิดการรีเฟรชอัตโนมัติ';
+    });
+  };
+  loadRefreshSetting();
   // ปุ่มบันทึกของทั้งสี่การ์ดผูกในโมดูลของแท็บนั้นแล้ว (mountSettings)
 
   // boot โมดูลแท็บตามลำดับในทะเบียน — ต้องอยู่ท้ายสุด เพราะ mount() ของโมดูลอาจเรียก

@@ -16,6 +16,10 @@ const { serializeQtest, nextQtestName, listQtests, issuesByRun, nextSystemName, 
 // เป็นงานค้าง" จึงมีที่เดียว ถ้าก๊อป progressOf มาไว้ที่นี่ด้วย สองสูตรจะเพี้ยนจากกันเงียบ ๆ
 const { progressOf } = require('./tab-testingroom.js');
 const { planRun } = require('./testrun');
+// เหตุผลเดียวกับ tab-testingroom.js ข้างบน: ลิสต์ตัวเลือกรอบรีเฟรชกับด่านกันค่าเพี้ยนต้องเป็น
+// ตัวเดียวกันทั้งฝั่งเมนูและฝั่งที่ตั้ง setInterval จริง มีสองชุดเมื่อไหร่ก็มีวันที่เมนูให้เลือก
+// ค่าที่ main ปฏิเสธเงียบ ๆ (util.js สองตัวนี้ไม่แตะ document จึง require จาก main ได้)
+const { normalizeRefreshMinutes } = require('./util.js');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -80,6 +84,10 @@ let qtestDir = '';
 // ต้องอ่านจากดิสก์ตอนใช้งานจริงทุกครั้ง ห้ามฝังรายชื่อไว้ — ผู้ใช้ยืนยันว่าชุดเทสทั้งสองฝั่ง
 // ยังเพิ่มไฟล์ใหม่เรื่อย ๆ รายชื่อที่ hardcode จะเก่าทันทีที่เขียนเทสตัวถัดไป
 let autoTestSources = [];
+// รอบรีเฟรชอัตโนมัติของทั้งสี่ตัว push (นาที) — 0 = ปิด ผู้ใช้กด ↻ เอา
+// ค่าเดียวคุมทุกแท็บ ไม่แยกรายแท็บ: ทั้งสี่ตัวใช้ 5 นาทีเท่ากันมาตลอดตั้งแต่มีวิดเจ็ต
+// การแยกเป็นสี่ค่าเพิ่มจุดที่ต้องดูแลโดยไม่มีใครขอ
+let refreshMinutes = 5;
 // Port of meeting-notes' session_service — configurable because that side can
 // change UI_PORT in its .env, and a hardcoded 8765 would silently drift apart.
 let runnerPort = 8765;
@@ -185,6 +193,9 @@ function loadAppConfig() {
       { label: 'Zinga web (Playwright)', path: 'D:\\COWORK\\test-case\\tests' },
     ];
   }
+  // นอกบล็อก !app.isPackaged ตั้งแต่บรรทัดแรก — ค่าเริ่มต้นของ setting ห้ามอยู่ในนั้นเด็ดขาด
+  // (บทเรียนจาก autoTestSources: ตัวติดตั้งได้ค่าว่างแล้วฟีเจอร์ตายเงียบเฉพาะฝั่งผู้ใช้)
+  refreshMinutes = normalizeRefreshMinutes(saved.refreshMinutes);
   runnerPort = Number(saved.meetingRunnerPort) || 8765;
   runnerModel = saved.meetingRunnerModel || 'Qwen/Qwen3.6-35B-A3B';
   runnerProfile = saved.meetingRunnerProfile || 'dev';
@@ -743,6 +754,20 @@ function pushQaTests() {
   win.webContents.send('qatest-update', payload);
 }
 
+// ---- รอบรีเฟรชอัตโนมัติ ----------------------------------------------------
+// timer แยกตัวต่อ pusher ไม่ใช่ setInterval ก้อนเดียวสี่ callback: กด ↻ ของ Redmine ต้อง
+// รีเซ็ตนาฬิกาเฉพาะของ Redmine ถ้าใช้ก้อนเดียวจะลาก Workspace/Meeting/QA ไปเริ่มนับใหม่ด้วย
+// โดยไม่มีเหตุผล และบรรทัด "รอบถัดไปอีก N นาที" ที่แท็บ Redmine โชว์อยู่จะกลายเป็นคำโกหก
+const PUSHERS = { tasks: pushTasks, workspace: pushWorkspace, meetings: pushMeetings, qatest: pushQaTests };
+const pushTimers = {};
+function restartPushTimer(name) {
+  clearInterval(pushTimers[name]);
+  delete pushTimers[name];
+  if (!refreshMinutes) return;   // 0 = ปิด: ไม่ตั้ง timer เลย ไม่ใช่ตั้งไว้แล้วไม่ยิง
+  pushTimers[name] = setInterval(PUSHERS[name], refreshMinutes * 60 * 1000);
+}
+function restartAllPushTimers() { Object.keys(PUSHERS).forEach(restartPushTimer); }
+
 function createWidget() {
   const { width, height: availH } = screen.getPrimaryDisplay().workAreaSize;
   const W = 420, Y = 60;
@@ -776,10 +801,7 @@ function createWidget() {
   // meeting-notes ซึ่งไม่หยุดตามวิดเจ็ต -- ปิดหน้าต่างขณะกำลังอัดจึงปลอดภัยและ
   // ไม่ต้องถาม ผลพลอยได้คือวิดเจ็ตไม่มีทางฆ่างานที่กำลังทำอยู่ได้อีก
   win.webContents.on('did-finish-load', () => { pushTasks(); pushWorkspace(); pushMeetings(); pushQaTests(); });
-  setInterval(pushTasks, 5 * 60 * 1000);
-  setInterval(pushWorkspace, 5 * 60 * 1000);
-  setInterval(pushMeetings, 5 * 60 * 1000);
-  setInterval(pushQaTests, 5 * 60 * 1000);
+  restartAllPushTimers();
   pollRunner();
 }
 
@@ -820,6 +842,18 @@ ipcMain.on('open-link', (_e, url) => shell.openExternal(url));
 ipcMain.handle('get-app-version', () => app.getVersion());
 // open a local file/folder (project .md, daily note, project directory) in its default app
 ipcMain.on('open-file', (_e, p) => { if (p) shell.openPath(p); });
+// renderer asks to refetch Redmine now (manual refresh button)
+// ตั้งนาฬิกาของ Redmine ใหม่ด้วย ไม่ใช่แค่ยิงแทรก — กดเองแล้วอีก 10 วินาทีรอบอัตโนมัติมาซ้ำ
+// คือการยิง API สองรอบติดโดยเปล่าประโยชน์ และทำให้ "รอบถัดไปอีก N นาที" ที่โชว์อยู่ผิด
+ipcMain.on('tasks-refresh', () => { pushTasks(); restartPushTimer('tasks'); });
+// รอบรีเฟรชอัตโนมัติ — ค่าเดียวคุมทั้งสี่ตัว push (การ์ด "ทั่วไป" ในหน้าตั้งค่า)
+ipcMain.handle('get-refresh-minutes', () => refreshMinutes);
+ipcMain.handle('save-refresh-minutes', (_e, minutes) => {
+  refreshMinutes = normalizeRefreshMinutes(minutes);
+  writeConfigMerge({ refreshMinutes });
+  restartAllPushTimers();   // มีผลทันที ไม่ต้องเปิดแอปใหม่
+  return refreshMinutes;    // คืนค่าที่ normalize แล้ว เมนูจะได้ไม่ค้างที่ค่าที่ถูกปฏิเสธ
+});
 // renderer asks to re-read the workspace vault (manual refresh button)
 ipcMain.on('workspace-refresh', () => pushWorkspace());
 // renderer asks to re-read the meetings folder (manual refresh button)

@@ -53,7 +53,8 @@ function El(tag) {
 }
 const byId = {};
 for (const id of ['tasks', 'tabs', 'projectFilter', 'assigneeFilter', 'riskFilter',
-                  'rmSearchHint', 'rmStats', 'rmSearch', 'closedStat', 'notConfiguredBtn']) {
+                  'rmSearchHint', 'rmStats', 'rmSearch', 'closedStat', 'notConfiguredBtn',
+                  'rmRefresh', 'rmStamp']) {
   byId[id] = El('div');
 }
 byId.rmSearch.value = '';
@@ -63,14 +64,19 @@ global.document = {
   querySelectorAll: () => [],
 };
 global.window = global;
-global.COWORK = { shell: { api: null, setUserName() {}, openSettings() {} } };
+// รอบรีเฟรชเป็นของเปลือก (ใช้ร่วมสี่แท็บ) แท็บอ่านผ่าน shell เท่านั้น เทสจึงขยับได้จากตรงนี้
+let shellRefreshMinutes = 5;
+global.COWORK = { shell: { api: null, setUserName() {}, openSettings() {},
+  refreshMinutes: () => shellRefreshMinutes } };
 
 require(path.join(ROOT, 'util.js'));
 require(path.join(ROOT, 'tab-redmine.js'));
 const tab = global.COWORK.tabs.redmine;
 
 let onTasks = null;
-global.COWORK.shell.api = { onTasks: (cb) => { onTasks = cb; }, openLink() {}, saveNote() {}, getIssuePreview() {} };
+let refreshCalls = 0;
+global.COWORK.shell.api = { onTasks: (cb) => { onTasks = cb; }, openLink() {}, saveNote() {}, getIssuePreview() {},
+  refreshTasks: () => { refreshCalls++; } };
 tab.mount();
 assert.ok(onTasks, 'mount() ต้องลงทะเบียน onTasks');
 
@@ -179,5 +185,54 @@ test('8 payload กลับมาปกติ: คำค้นค้างใ�
   tabsNamed('ALL').onclick();
   assert.strictEqual(byId.rmSearchHint.classList.contains('on'), true, 'กลับมาแท็บ ALL ทั้งที่ยังค้างคำค้น บรรทัดเตือนต้องกลับมา');
   assert.strictEqual(byId.rmSearch.value, 'voucher', 'คำค้นต้องค้างในช่องข้ามการรีเฟรช');
+});
+
+// ---- 9. ปุ่มรีเฟรชด้วยมือ: ต้องยิง IPC จริงและหมุนจนกว่าข้อมูลก้อนใหม่จะกลับมา
+test('9 กด ↻: เรียก api.refreshTasks + ติด .pending จนกว่า payload ใหม่จะมา', () => {
+  const before = refreshCalls;
+  byId.rmRefresh.onclick();
+  assert.strictEqual(refreshCalls, before + 1, 'กดแล้วต้องยิง refreshTasks');
+  assert.strictEqual(byId.rmRefresh.classList.contains('pending'), true, 'ระหว่างรอต้องหมุน');
+  onTasks(PAYLOAD);
+  assert.strictEqual(byId.rmRefresh.classList.contains('pending'), false, 'ข้อมูลมาแล้วต้องหยุดหมุน');
+});
+
+// ---- 10. บรรทัดบอกอายุข้อมูล — เหตุผลทั้งหมดที่เพิ่มปุ่มนี้คือ "ที่เห็นอยู่เก่าแค่ไหน"
+test('10 บรรทัดสถานะ: บอกเวลาที่อัปเดตล่าสุด + รอบถัดไปตามค่าที่เปลือกให้มา', () => {
+  shellRefreshMinutes = 5;
+  onTasks(PAYLOAD);
+  assert.match(byId.rmStamp.textContent, /^อัปเดตล่าสุด เมื่อสักครู่ · รอบถัดไปอีก 5 นาที$/,
+    'ได้: ' + byId.rmStamp.textContent);
+  shellRefreshMinutes = 15;
+  onTasks(PAYLOAD);
+  assert.match(byId.rmStamp.textContent, /รอบถัดไปอีก 15 นาที$/, 'ได้: ' + byId.rmStamp.textContent);
+});
+
+// ---- 11. ปิดรอบอัตโนมัติแล้วต้องบอกให้รู้ ไม่ใช่เงียบ — ไม่งั้นตัวเลขค้างทั้งวันโดยไม่มีใครรู้
+test('11 refreshMinutes = 0: บรรทัดสถานะบอกว่าปิดอยู่ แทนที่จะบอกรอบถัดไป', () => {
+  shellRefreshMinutes = 0;
+  onTasks(PAYLOAD);
+  assert.match(byId.rmStamp.textContent, /^อัปเดตล่าสุด เมื่อสักครู่ · รีเฟรชอัตโนมัติปิดอยู่$/,
+    'ได้: ' + byId.rmStamp.textContent);
+  shellRefreshMinutes = 5;
+});
+
+// ---- 12. Redmine ล่ม = ยังนับเป็นการรีเฟรชที่เกิดขึ้นจริง ปุ่มต้องไม่หมุนค้างตลอดไป
+test('12 payload เป็น error: ถอด .pending และยังอัปเดตบรรทัดสถานะ', () => {
+  byId.rmRefresh.onclick();
+  assert.strictEqual(byId.rmRefresh.classList.contains('pending'), true);
+  onTasks({ currentUser: 'somchai', stats: null, error: 'โหลดไม่สำเร็จ' });
+  assert.strictEqual(byId.rmRefresh.classList.contains('pending'), false, 'error ก็ต้องหยุดหมุน');
+  assert.match(byId.rmStamp.textContent, /^อัปเดตล่าสุด เมื่อสักครู่/, 'ได้: ' + byId.rmStamp.textContent);
+});
+
+// ---- 13. onTick เดินเวลาให้บรรทัดสถานะ โดยไม่ไปวาดลิสต์งานใหม่ทั้งแท็บ
+test('13 onTick: วาดใหม่แค่บรรทัดสถานะ ลิสต์งานไม่ถูกแตะ', () => {
+  onTasks(PAYLOAD);
+  const listBefore = byId.tasks.children.length;
+  byId.rmStamp.textContent = 'ของเก่า';
+  tab.onTick();
+  assert.match(byId.rmStamp.textContent, /^อัปเดตล่าสุด /, 'onTick ต้องวาดบรรทัดสถานะใหม่');
+  assert.strictEqual(byId.tasks.children.length, listBefore, 'onTick ต้องไม่วาดลิสต์งานใหม่');
 });
 

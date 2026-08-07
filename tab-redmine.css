@@ -15,6 +15,13 @@
  * ไฟล์นี้จึงถอดออกไม่ได้ ต้องโหลดเสมอ
  */
 
+/* หัวข้อ "งาน Redmine" + บรรทัดบอกอายุข้อมูล — อยู่บรรทัดเดียวกัน ชิดคนละฝั่ง
+   ตัว h3 ของกลางเป็น uppercase/letter-spacing กว้าง ซึ่งอ่านเวลาไทยไม่ออก จึงรีเซ็ตเฉพาะ
+   ตัวป้ายเวลา ไม่ใช่แก้ h3 ของกลาง (แท็บอื่นใช้อยู่) */
+.rm-h3{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.rm-stamp{font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 .loadMoreBtn{-webkit-app-region:no-drag;width:100%;font-family:inherit;font-size:11.5px;font-weight:600;
   color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:9px;
   padding:9px;margin-top:6px;cursor:pointer;transition:.15s}

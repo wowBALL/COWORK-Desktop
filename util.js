@@ -53,10 +53,33 @@
     return `${Math.floor(mon / 12)} ปีที่แล้ว`;
   }
 
+  // รอบรีเฟรชอัตโนมัติ (นาที) — 0 = ปิด · ตัวเลือกสำเร็จรูป ไม่ใช่ช่องพิมพ์ตัวเลข เพราะพิมพ์
+  // 0.1 ได้แปลว่ายิง Redmine API ทุก 6 วินาทีทั้งวัน ซึ่งไม่มีใครตั้งใจและมองไม่เห็นจากในแอป
+  //
+  // ไฟล์นี้เป็นฝั่ง renderer ก็จริง แต่สองค่านี้ main.js ก็ require ไปใช้ (ตอนโหลด/บันทึก config)
+  // เพราะลิสต์ตัวเลือกกับด่านกันค่าเพี้ยนต้องเป็นตัวเดียวกันทั้งสองฝั่ง แยกเมื่อไหร่ก็มีวันที่
+  // เมนูให้เลือกค่าที่ main ปฏิเสธ — ตัวอื่นใน util.js แตะ document, สองตัวนี้ไม่แตะ จึง require ได้
+  const REFRESH_CHOICES = [0, 1, 2, 5, 10, 15, 30];
+  const DEFAULT_REFRESH_MINUTES = 5;
+  // config.json ผู้ใช้เปิดแก้เองได้ และ <select>.value เป็นสตริงเสมอ — ทั้งสองทางเป็น input
+  // ภายนอกที่ไว้ใจไม่ได้ ค่าที่ไม่ตรงตัวเลือกไหนเลยตกกลับค่าเริ่มต้น ไม่ใช่ปิดการรีเฟรชทิ้ง
+  //
+  // ต้องกรองชนิดก่อนเรียก Number() ไม่ใช่พึ่ง Number() อย่างเดียว: Number(null), Number(''),
+  // Number([]) ได้ 0 ทั้งหมด ซึ่งบังเอิญเป็นตัวเลือกที่ถูกต้อง (= ปิด) — คีย์ที่หายไปจาก config
+  // จึงจะกลายเป็น "ผู้ใช้สั่งปิดรีเฟรช" เงียบ ๆ แทนที่จะเป็นค่าเริ่มต้น 5 นาที
+  function normalizeRefreshMinutes(v) {
+    if (typeof v === 'string' && v.trim() === '') return DEFAULT_REFRESH_MINUTES;
+    if (typeof v !== 'number' && typeof v !== 'string') return DEFAULT_REFRESH_MINUTES;
+    const n = Number(v);
+    return REFRESH_CHOICES.includes(n) ? n : DEFAULT_REFRESH_MINUTES;
+  }
+
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.util = { D, M, esc, hashN, timeAgo };
+  global.COWORK.util = { D, M, esc, hashN, timeAgo, REFRESH_CHOICES, normalizeRefreshMinutes };
 
   // ให้ node --test เรียกใช้ได้โดยไม่ต้องมี DOM (esc ต้องมี document จึงเทสแยกไม่ได้ ตัวอื่นเทสได้)
-  if (typeof module !== 'undefined' && module.exports) module.exports = { D, M, hashN, timeAgo };
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { D, M, hashN, timeAgo, REFRESH_CHOICES, DEFAULT_REFRESH_MINUTES, normalizeRefreshMinutes };
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

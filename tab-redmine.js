@@ -494,7 +494,31 @@
       closedEl.onclick=()=>{ closedYearsOpen=!closedYearsOpen; renderRmStats(stats); };
     }
   }
+  // ===== ปุ่มรีเฟรชด้วยมือ + บรรทัดบอกอายุข้อมูล =====
+  // เหตุผลที่มีบรรทัดนี้: ตัวเลขบนหน้าจอไม่มีอะไรบอกว่ามันเก่าแค่ไหน คนอ่านจึงเดาไม่ออกว่า
+  // ที่เห็นคือสถานะล่าสุดหรือของเมื่อ 5 นาทีก่อน — ปุ่ม ↻ เฉย ๆ ตอบคำถามนั้นไม่ได้
+  let lastUpdatedAt=0;
+  function renderStamp(){
+    const el=document.getElementById('rmStamp');
+    if(!el) return;
+    if(!lastUpdatedAt){ el.textContent=''; return; }
+    // เวลาจากเปลือก ไม่ใช่ค่าที่แท็บนี้เก็บเอง — ค่าเดียวกันคุมทั้งสี่แท็บ เจ้าของคือเปลือก
+    const mins=shell().refreshMinutes?shell().refreshMinutes():0;
+    const stamp='อัปเดตล่าสุด '+timeAgo(new Date(lastUpdatedAt).toISOString());
+    if(!mins){ el.textContent=stamp+' · รีเฟรชอัตโนมัติปิดอยู่'; return; }
+    const left=Math.ceil((lastUpdatedAt+mins*60000-Date.now())/60000);
+    el.textContent=stamp+(left>0?` · รอบถัดไปอีก ${left} นาที`:' · รอบถัดไปเร็ว ๆ นี้');
+  }
+  function setRefreshPending(on){
+    const btn=document.getElementById('rmRefresh');
+    if(btn) btn.classList.toggle('pending', on);
+  }
   function onData(payload){
+    // payload.error ก็นับเป็นการรีเฟรชที่เกิดขึ้นจริง — ถ้าถอดสปินเนอร์เฉพาะตอนสำเร็จ
+    // ปุ่มจะหมุนค้างตลอดทุกครั้งที่ Redmine ล่ม ซึ่งอ่านไม่ออกว่าต่างจาก "กำลังโหลดอยู่"
+    lastUpdatedAt=Date.now();
+    setRefreshPending(false);
+    renderStamp();
     const el=document.getElementById('tasks');
     document.getElementById('tabs').innerHTML='';
     document.getElementById('projectFilter').innerHTML='';
@@ -541,7 +565,17 @@
     const apply=v=>{ searchQuery=v; visibleCount=15; renderAll(); };
     box.oninput=()=>apply(box.value);
     box.onkeydown=e=>{ if(e.key==='Escape'){ e.preventDefault(); box.value=''; apply(''); } };
+    // ↻ กดได้เสมอ แม้ตอนตั้งรอบอัตโนมัติเป็น "ปิด" — นั่นคือทั้งหมดที่เหลือให้กดในโหมดนั้น
+    const refreshBtn=document.getElementById('rmRefresh');
+    if(refreshBtn) refreshBtn.onclick=()=>{
+      setRefreshPending(true);
+      api&&api.refreshTasks&&api.refreshTasks();
+    };
   }
+  // เปลือกเรียกทุกวินาทีจากนาฬิกาที่มันเดินอยู่แล้ว — แท็บนี้จึงไม่ต้องมี timer ของตัวเอง
+  // (timer ที่ไม่มีใครหยุดในโมดูล renderer ทำให้ node --test ค้างรอ event loop ด้วย)
+  // วาดแค่บรรทัดเดียว ไม่เรียก renderAll() ซึ่งวาดชิป/แท็บ/ลิสต์งานใหม่ทั้งแท็บทุกครั้ง
+  function onTick(){ renderStamp(); }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====
   // markup ของการ์ดอยู่ใน widget.html เหมือนเดิม (เปลือกเป็นเจ้าของ markup ทุก view)
@@ -598,7 +632,7 @@
 
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};
-  global.COWORK.tabs.redmine = { key:"rm", settingsCard:'cardRedmine', mount, mountSettings, loadSettings, onData };
+  global.COWORK.tabs.redmine = { key:"rm", settingsCard:'cardRedmine', mount, mountSettings, loadSettings, onData, onTick };
 
   // เปิดทาง node --test แบบเดียวกับ tab-grafana.js / tab-meeting.js
   // เฉพาะฟังก์ชันบริสุทธิ์ที่ไม่ต้องใช้ DOM — พวกนี้คือที่เก็บกฎที่พลาดแล้วเงียบ:

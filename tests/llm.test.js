@@ -998,6 +998,14 @@ test('uiXmlRulesFor: มีกฎครบทั้งห้าข้อที�
   assert.ok(r.includes('Booking Settings'), 'ต้องบอกชื่อชุดให้โมเดลอ้างถึงได้');
 });
 
+// วัด 2026-08-08: dump ของ Zinga (Flutter) มี text="" ว่างทุก node ป้ายอยู่ใน content-desc
+// ทั้งหมด ถ้าพรอมป์ไม่บอก โมเดลจะสรุปว่าหน้าจอนี้ไม่มีข้อความอะไรเลย
+test('uiXmlRulesFor: บอกให้อ่าน content-desc ด้วย ไม่ใช่ text อย่างเดียว', () => {
+  const r = uiXmlRulesFor(DUMPS);
+  assert.ok(r.includes('content-desc'), 'ต้องเอ่ยถึง content-desc ตรง ๆ');
+  assert.ok(r.includes('text ว่างไม่ได้แปลว่า'), 'ต้องบอกว่า text ว่าง ไม่เท่ากับ ไม่มีชื่อ');
+});
+
 test('systemPromptFor: ไม่มี dumps แล้วพรอมป์ต้องไม่มีกฎ XML เลย (กันเส้นทางเดิมเปลี่ยนพฤติกรรม)', () => {
   const p = systemPromptFor('Bug', 'th');
   assert.ok(!p.includes('bounds='));

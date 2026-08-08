@@ -61,6 +61,11 @@ contextBridge.exposeInMainWorld('cowork', {
   openWebGrab: () => ipcRenderer.invoke('open-web-grab'),
   closeWebGrab: () => ipcRenderer.send('close-web-grab'),
   onWebGrab: (cb) => ipcRenderer.on('web-grab-result', (_e, payload) => cb(payload)),
+  // BlueStacks — ต่างจาก onWebGrab ตรงที่ผลกลับมาทาง invoke ตรง ๆ เพราะเป็นการกดครั้งเดียว
+  // รอผลเดียว ไม่ใช่หน้าต่างแยกที่กดถอดกี่ครั้งก็ได้
+  bsListInstances: () => ipcRenderer.invoke('bs-list-instances'),
+  bsSetInstance: (name) => ipcRenderer.invoke('bs-set-instance', name),
+  bsGrab: (name) => ipcRenderer.invoke('bs-grab', name),
   getLlmConfig: () => ipcRenderer.invoke('get-llm-config'),
   saveLlmConfig: (cfg) => ipcRenderer.invoke('save-llm-config', cfg),
   uploadIssueAttachment: (fileBuffer, filename) => ipcRenderer.invoke('upload-issue-attachment', fileBuffer, filename),

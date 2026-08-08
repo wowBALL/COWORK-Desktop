@@ -1,4 +1,4 @@
-const { app, BrowserWindow, BaseWindow, WebContentsView, ipcMain, screen, globalShortcut, shell, dialog, session } = require('electron');
+const { app, BrowserWindow, BaseWindow, WebContentsView, ipcMain, screen, globalShortcut, shell, dialog, session, desktopCapturer } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -25,6 +25,14 @@ const { normalizeRefreshMinutes } = require('./util.js');
 // จึงมีที่เดียวและถูกเทสด้วย node --test ได้ ไม่ต้องยิงขึ้น Redmine จริงเพื่อพิสูจน์
 const { buildIssueUpdate } = require('./finishtest.js');
 const { injectableSource } = require('./webdump.js');
+// ตรรกะจับคู่ instance อยู่ในไฟล์แยกที่ไม่มี I/O เลย เพื่อให้ node --test พิสูจน์ได้ว่า
+// "จับคู่ผิดคู่" ไม่เกิด โดยไม่ต้องเปิด BlueStacks สองตัวตอนรันเทส
+const { parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError }
+  = require('./bluestacks.js');
+// ตัวเรียก adb อยู่ในไฟล์แยกเพราะสคริปต์ probe ต้องใช้ตัวเดียวกันเป๊ะ — require('./main.js')
+// ไม่ได้ (มันเปิดหน้าต่างทันทีที่โหลด) ถ้าปล่อยให้ก๊อปไปไว้ทั้งสองที่ probe จะพิสูจน์คนละโค้ด
+// กับที่แอปรันจริง ซึ่งทำให้ทั้ง task 5 ไร้ความหมาย
+const { adb } = require('./bluestacks-adb.js');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -77,6 +85,11 @@ let redmineConfig = { url: '', apiKey: '' };
 let llmConfig = { baseUrl: '', apiKey: '' };
 // URL ล่าสุดของหน้าต่างถอดหน้าเว็บ — เปิดครั้งหน้าเริ่มที่เดิม เพราะบั๊กชุดเดียวกันมักอยู่หน้าเดิม
 let webGrabLastUrl = '';
+// เครื่อง BlueStacks ที่เลือกไว้ล่าสุด — ทรงเดียวกับ webGrabLastUrl ด้วยเหตุผลเดียวกัน
+// (งานชุดเดียวกันมักอยู่บนเครื่องเดิม เปิดฟอร์มใหม่แล้วต้องไม่ต้องเลือกซ้ำ)
+let bsLastInstance = '';
+let bsGrabCount = 0;
+const BS_CONF = 'C:/ProgramData/BlueStacks_nxt/bluestacks.conf';
 let workspaceDir = '';
 let meetingsDir = '';
 // QA test results — { label, path }[], array from day one: more sources
@@ -174,6 +187,7 @@ function loadAppConfig() {
   redmineConfig = { url: saved.redmineUrl || '', apiKey: saved.redmineApiKey || '' };
   llmConfig = { baseUrl: saved.llmBaseUrl || '', apiKey: saved.llmApiKey || '' };
   webGrabLastUrl = saved.webGrabLastUrl || '';
+  bsLastInstance = saved.bsLastInstance || '';
   workspaceDir = saved.workspaceDir || '';
   meetingsDir = saved.meetingsDir || '';
   qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
@@ -956,6 +970,112 @@ ipcMain.on('web-grab-capture', async () => {
     text: `ถอดแล้ว ✓ ${dump.nodes} nodes` + (pngDataUrl ? ' + รูป' : ' (แคปรูปไม่ได้)'),
     kind: 'ok', busy: false,
   });
+});
+
+// ── BlueStacks: รูป + UI hierarchy จากหน้าจอที่เปิดค้างอยู่ (spec 2026-08-08) ──
+
+// นับหน้าต่างอย่างเดียวใช้ thumbnailSize 0 — วัดแล้ว ~180ms อุ่นแล้ว เทียบกับ ~440ms ถ้าขอรูปด้วย
+// เร็วพอจะเรียกทุกครั้งที่เปิดฟอร์มและทุกครั้งที่กางเมนู ซึ่งจำเป็นเพราะผู้ใช้เปิด-ปิด instance ระหว่างวัน
+async function bsWindowNames() {
+  const sources = await desktopCapturer.getSources({
+    types: ['window'], thumbnailSize: { width: 0, height: 0 },
+  });
+  return sources.map(s => s.name);
+}
+
+function bsReadConf() {
+  try {
+    return parseConf(fs.readFileSync(BS_CONF, 'utf8'));
+  } catch {
+    throw new Error(bsError('no-conf', BS_CONF));
+  }
+}
+
+// ทางสำรองเมื่อ screencap โดน FLAG_SECURE — BlueStacks วาดภาพลงหน้าต่าง Windows ผ่าน compositor
+// ของโฮสต์ ซึ่ง Android ห้ามไม่ได้ · ชื่อซ้ำห้ามเดา คืน null ดีกว่าแนบรูปของเครื่องอื่นเข้าตั๋ว
+async function bsCaptureWindow(instanceName) {
+  const sources = await desktopCapturer.getSources({
+    types: ['window'], thumbnailSize: { width: 1600, height: 2000 },
+  });
+  const { index, count } = findWindow(sources.map(s => s.name), instanceName);
+  if (index < 0 || count !== 1) return null;
+  const img = sources[index].thumbnail;
+  return img.isEmpty() ? null : img.toPNG();
+}
+
+ipcMain.handle('bs-list-instances', async () => {
+  try {
+    const { ready, duplicates } = pairWithWindows(bsReadConf(), await bsWindowNames());
+    // ชื่อซ้ำต้องมาก่อน "ไม่พบหน้าต่าง" — ผู้ใช้ที่ตั้งชื่อซ้ำจะได้รู้ว่าต้องเปลี่ยนชื่อ
+    // ไม่ใช่ไปไล่หาว่าทำไมเครื่องที่เปิดอยู่ชัด ๆ ถึงไม่ขึ้น
+    if (!ready.length) {
+      return { ok: false, error: duplicates.length ? bsError('duplicate-window', duplicates[0]) : bsError('no-window') };
+    }
+    return { ok: true, instances: ready, duplicates, picked: chooseInstance(ready, bsLastInstance).name };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('bs-set-instance', (_e, name) => {
+  bsLastInstance = String(name || '');
+  writeConfigMerge({ bsLastInstance });
+  return { ok: true };
+});
+
+// ต่างจากเฟส 1 ที่ push ผลทาง channel เพราะหน้าต่างถอดเป็นคนละหน้าต่างและกดถอดกี่ครั้งก็ได้
+// เส้นทางนี้เป็นการกดปุ่มเดียวรอผลเดียว invoke จึงพา error กลับไปถึงปุ่มที่กดได้โดยตรง
+ipcMain.handle('bs-grab', async (_e, instanceName) => {
+  try {
+    const { ready, duplicates } = pairWithWindows(bsReadConf(), await bsWindowNames());
+    if (duplicates.includes(instanceName)) return { ok: false, error: bsError('duplicate-window', instanceName) };
+    const inst = ready.find(i => i.name === instanceName);
+    if (!inst) return { ok: false, error: bsError('gone', instanceName) };
+
+    const serial = `127.0.0.1:${inst.adbPort}`;
+    // adb devices ว่างเปล่าทั้งที่ BlueStacks เปิดอยู่ — ต้อง connect ก่อนเสมอ (วัดแล้ว 43ms)
+    const conn = await adb(['connect', serial], 5);
+    if (conn.code !== 0) {
+      return { ok: false, error: bsError('connect-failed', conn.stderr || conn.stdout.toString().trim()) };
+    }
+
+    // ใช้ dump + pull ตามที่วัดมา (2199ms) ไม่ใช่ exec-out cat ที่สั้นกว่าแต่ยังไม่ได้ยิงจริง
+    const devFile = '/sdcard/cowork-ui.xml';
+    const dump = await adb(['-s', serial, 'shell', 'uiautomator', 'dump', devFile], 30);
+    if (dump.code !== 0) return { ok: false, error: bsError('dump-failed', dump.stderr || 'exit ' + dump.code) };
+
+    const hostFile = path.join(app.getPath('temp'), `cowork-ui-${process.pid}.xml`);
+    const pull = await adb(['-s', serial, 'pull', devFile, hostFile], 15);
+    adb(['-s', serial, 'shell', 'rm', '-f', devFile], 10).catch(() => {});   // เก็บกวาด ไม่ต้องรอ
+    if (pull.code !== 0) return { ok: false, error: bsError('dump-failed', pull.stderr || 'pull exit ' + pull.code) };
+
+    let xml = '';
+    try { xml = fs.readFileSync(hostFile, 'utf8'); } catch {}
+    try { fs.unlinkSync(hostFile); } catch {}
+    const nodes = countNodes(xml);
+    if (!nodes) return { ok: false, error: bsError('empty-dump') };
+
+    // screencap ก่อนเสมอ — ได้พิกเซลของเครื่องตรง ๆ ไม่ติดขอบ chrome ของ BlueStacks จึงไม่ต้อง crop
+    // FLAG_SECURE ทำให้ได้ 0 ไบต์เงียบ ๆ ไม่ใช่ error ⇒ เช็คความยาว ห้ามเช็คแค่ exit code
+    let png = null;
+    const shot = await adb(['-s', serial, 'exec-out', 'screencap', '-p'], 15);
+    if (shot.code === 0 && shot.stdout.length > 0) png = shot.stdout;
+    if (!png) png = await bsCaptureWindow(instanceName);
+
+    bsGrabCount += 1;
+    // แคปรูปไม่ได้ยังถือว่าสำเร็จ — XML คือของหลัก กฎเดียวกับที่เส้นทางหน้าเว็บตั้งไว้แล้ว
+    return { ok: true, payload: {
+      kind: 'bluestacks',
+      label: labelFor(instanceName, xml),
+      url: '',
+      xml,
+      nodes,
+      filename: `bluestacks-${bsGrabCount}.png`,
+      pngDataUrl: png ? 'data:image/png;base64,' + png.toString('base64') : '',
+    } };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 // renderer asks to quit (screensaver: mouse move / key press)

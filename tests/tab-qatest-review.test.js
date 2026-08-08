@@ -4,7 +4,7 @@ require('../util.js');
 // tab-qatest.js destructure global.COWORK.dateFilter ตอนโหลด — require datefilter.js ก่อน
 // (แบบเดียวกับ tests/tab-meeting.test.js)
 require('../datefilter.js');
-const { buildReviewLines } = require('../tab-qatest.js');
+const { buildReviewLines, qiXmlChipsHtml } = require('../tab-qatest.js');
 
 test('buildReviewLines: แปล priority/assignee/tracker กลับเป็นชื่อคนอ่านได้ ไม่ใช่ id ดิบ', () => {
   const lines = buildReviewLines(
@@ -324,4 +324,32 @@ test('issueMatch: "" กรองเฉพาะรอบที่ยังไ�
 test('issueMatch: เทียบเป็นสตริงเสมอ เพราะ dataset ให้มาเป็นสตริง', () => {
   assert.strictEqual(issueMatch({ issues: [690] }, '690'), true);
   assert.strictEqual(issueMatch({ issues: [690] }, '69'), false);
+});
+
+// ---- ชิป UI hierarchy ที่ถอดจากหน้าเว็บ ----
+test('qiXmlChipsHtml: ไม่มีชุดเลยได้สตริงว่าง ไม่ใช่กรอบเปล่าค้างบนฟอร์ม', () => {
+  assert.strictEqual(qiXmlChipsHtml([]), '');
+  assert.strictEqual(qiXmlChipsHtml(null), '');
+});
+
+test('qiXmlChipsHtml: โชว์ชื่อหน้า จำนวน node และขนาด ให้ผู้ใช้รู้ว่ากำลังจะส่งอะไรไป', () => {
+  const html = qiXmlChipsHtml([{ label: 'Booking Settings', url: 'https://x.test/a', nodes: 143, xml: 'x'.repeat(12288) }]);
+  assert.ok(html.includes('Booking Settings'));
+  assert.ok(html.includes('143 nodes'));
+  assert.ok(html.includes('12 KB'), html);
+});
+
+test('qiXmlChipsHtml: มีปุ่มดูและปุ่มเอาออก พร้อม index ที่ตรงกับลำดับในอาร์เรย์', () => {
+  const html = qiXmlChipsHtml([
+    { label: 'A', url: '', nodes: 1, xml: 'a' },
+    { label: 'B', url: '', nodes: 2, xml: 'b' },
+  ]);
+  assert.ok(html.includes('class="qi-xml-view" data-i="0"'), html);
+  assert.ok(html.includes('class="qi-xml-drop" data-i="1"'), html);
+});
+
+test('qiXmlChipsHtml: ชื่อหน้าจากเว็บภายนอกต้องถูก escape ไม่ให้ยิง HTML เข้าฟอร์มเราได้', () => {
+  const html = qiXmlChipsHtml([{ label: '<img src=x onerror=alert(1)>', url: '', nodes: 1, xml: 'a' }]);
+  assert.ok(!html.includes('<img src=x'), 'title ของหน้าเว็บเป็นข้อมูลที่เราคุมไม่ได้');
+  assert.ok(html.includes('&lt;img'), html);
 });

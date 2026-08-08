@@ -103,6 +103,20 @@
     qiSyncDraftBtnLabel();
   }
 
+  // ===== UI hierarchy (XML) ที่ถอดจากหน้าเว็บ =====
+  // ต่างจากรูปย่อของ qiThumbsHtml ตรงที่ดูด้วยตาเปล่าไม่รู้เรื่อง จึงโชว์เป็นชิปที่บอกจำนวน node
+  // กับขนาด แล้วมีปุ่ม 👁 เปิดวิวเวอร์ตัวเดียวกับแท็บ QA ให้ตรวจก่อนกดร่าง
+  // label มาจาก <title> ของหน้าเว็บภายนอก = ข้อมูลที่เราคุมไม่ได้ ต้อง esc ทุกครั้ง
+  function qiXmlChipsHtml(dumps) {
+    return (dumps || []).map((d, i) => `
+      <span class="qi-xml-chip" title="${esc(d.url || '')}">
+        <span class="qi-xml-name">🌐 ${esc(d.label || 'หน้าเว็บ')}</span>
+        <span class="qi-xml-meta">${d.nodes} nodes · ${Math.round(String(d.xml || '').length / 1024)} KB</span>
+        <button type="button" class="qi-xml-view" data-i="${i}" title="ดูโครงหน้าจอชุดนี้ก่อนส่งให้โมเดล">👁</button>
+        <button type="button" class="qi-xml-drop" data-i="${i}" title="ไม่ส่งชุดนี้ให้โมเดล">×</button>
+      </span>`).join('');
+  }
+
   // วางรูปในช่องโน้ต = อัปขึ้น Redmine เป็นไฟล์แนบ + เก็บไบต์ไว้ส่งให้โมเดลดู ทำสองอย่างพร้อมกัน
   // เพื่อไม่ให้ผู้ใช้ต้องวางรูปสองรอบ (รอบให้ dev เห็น กับรอบให้ LLM เห็น) ซึ่งเป็นเคสปกติ
   function qiAttachImageToNotes(file, filename) {
@@ -1032,7 +1046,7 @@
       shortTestName, qaTestGroups, qaIssueGroups, issueMatch,
       buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName, qiIsImageDataUrlText,
       qiImageTokens, qiFitPlan, QI_IMAGE_TOKEN_LIMIT, qiFitImagesToBudget,
-      qiFitNotice, QI_SAFE_FIT_SCALE, qiCustomFieldsHtml, QI_CUSTOM_FIELD_DEFAULTS,
+      qiFitNotice, QI_SAFE_FIT_SCALE, qiCustomFieldsHtml, QI_CUSTOM_FIELD_DEFAULTS, qiXmlChipsHtml,
     };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -58,6 +58,8 @@
       "uidump.js",
       "meetingrun.js",
       "meetingrun.css",
+      "friday.js",
+      "friday.css",
       "widget.html",
       "screensaver.html",
       "icons/**/*",

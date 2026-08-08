@@ -1485,6 +1485,39 @@ ipcMain.handle('runner-stop', async () => {
     return { error: body.error || `http_${res.status}` };
   } catch { return { error: 'unreachable' }; }
 });
+// Friday — รูปคำตอบเดียวกับ runner-start/runner-stop เป๊ะ ({ok} หรือ {error})
+// เพราะ renderer ตัวเดิมอ่านทั้งสองแบบด้วยเงื่อนไขเดียวกัน
+ipcMain.handle('friday-start', async () => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${runnerPort}/api/companion/start`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(5000),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 201) return { ok: true };
+    // 409 gpu_busy / already_running และ 503 not_configured ปล่อยให้ poll รอบถัดไป
+    // รายงานความจริง แทนที่จะให้ renderer เดาแทน -- หลักเดียวกับ runner-start
+    return { error: body.error || `http_${res.status}` };
+  } catch { return { error: 'unreachable' }; }
+});
+ipcMain.handle('friday-stop', async () => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${runnerPort}/api/companion/stop`, {
+      method: 'POST',
+      // 12000 ไม่ใช่ 5000 เหมือนพี่น้อง -- ฝั่งเซิร์ฟเวอร์ถือ lock ระหว่างฆ่า child
+      // ได้นานสุดถึง 10 วิ (terminate grace 5 วิ + kill grace 5 วิ) คำสั่งปิดที่ยิงเข้า
+      // ไปตอนนั้นพอดีเลยต้องรอได้นานกว่า 10 วิ ไม่งั้น timeout ที่ 5 วิจะตัดกลางคัน
+      // แล้วเรนเดอเรอร์เห็น {error:'unreachable'} ทั้งที่การปิดกำลังจะสำเร็จจริง
+      signal: AbortSignal.timeout(12000),
+    });
+    // อ่าน body เหมือน friday-start และ runner-stop ที่อยู่ติดกัน -- route นี้ตอบ 200
+    // เสมอในเวอร์ชันปัจจุบัน แต่ถ้าเจอ service รุ่นเก่าที่ยังไม่มีทางนี้ ข้อความจริงจาก
+    // เซิร์ฟเวอร์มีค่ากว่า http_404 และการทำต่างจากพี่น้องข้าง ๆ คือหนี้ที่ไม่มีเหตุผลรองรับ
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 200) return { ok: true };
+    return { error: body.error || `http_${res.status}` };
+  } catch { return { error: 'unreachable' }; }
+});
 ipcMain.handle('get-runner-config', () => ({
   port: runnerPort, model: runnerModel, profile: runnerProfile, engine: runnerEngine, seen: runnerSeen,
 }));

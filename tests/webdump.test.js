@@ -196,6 +196,65 @@ test('collectTree: iframe ข้าม origin ต้องเขียนบอ�
   const node = collectTree(fakeDoc(body), fakeWin()).children[0].children[0];
   assert.strictEqual(node.cls, 'iframe');
   assert.ok(node.desc.includes('อ่านไม่ได้'), 'ถ้าหายเงียบ โมเดลจะสรุปว่าหน้านี้ไม่มีส่วนนั้น');
+  assert.deepStrictEqual(node.children, []);
+});
+
+test('collectTree: iframe ที่อ่าน contentDocument ได้ (same-origin) ต้องดึงเนื้อหาข้างในมาเป็นลูกจริง', () => {
+  const innerButton = el('button', { text: 'ในเฟรม', attrs: { id: 'inner-btn' } });
+  const innerBody = el('body', { children: [innerButton] });
+  const innerHtml = el('html', { children: [innerBody] });
+  const frame = el('iframe', { attrs: { id: 'editor' } });
+  frame.contentDocument = { documentElement: innerHtml };
+  const root = collectTree(fakeDoc(el('body', { children: [frame] })), fakeWin());
+  const frameNode = root.children[0].children[0];
+  assert.strictEqual(frameNode.cls, 'iframe');
+  assert.ok(!frameNode.desc.includes('อ่านไม่ได้'), 'อ่านได้แล้วไม่ควรมีข้อความบอกว่าอ่านไม่ได้');
+  // frameKids คือผลลัพธ์ของ walk(innerHtml) ซึ่งคืน [htmlNode] แล้วลูกของ html คือ body -> button
+  const htmlNode = frameNode.children[0];
+  assert.strictEqual(htmlNode.children[0].children[0].text, 'ในเฟรม');
+});
+
+test('collectTree: iframe ที่ contentDocument โยน error (cross-origin จริง) ต้องยังคงข้อความเดิม ไม่พัง', () => {
+  const frame = el('iframe', { attrs: { id: 'pay' } });
+  Object.defineProperty(frame, 'contentDocument', { get() { throw new Error('blocked by CORS'); } });
+  const node = collectTree(fakeDoc(el('body', { children: [frame] })), fakeWin()).children[0].children[0];
+  assert.strictEqual(node.cls, 'iframe');
+  assert.ok(node.desc.includes('อ่านไม่ได้'), 'ตัว getter โยน exception ต้องตกไปทาง fallback เดิม');
+  assert.deepStrictEqual(node.children, []);
+});
+
+test('collectTree: <svg> เก็บแค่ตัวเอง ไม่เดินลงไปเก็บ <path>/<g> ข้างในเป็น node แยก', () => {
+  const path = el('path', { attrs: { id: 'icon-path' } });
+  const svg = el('svg', { attrs: { id: 'icon' }, children: [path] });
+  const body = el('body', { children: [svg] });
+  const root = collectTree(fakeDoc(body), fakeWin());
+  const svgNode = root.children[0].children[0];
+  assert.strictEqual(svgNode.cls, 'svg');
+  assert.deepStrictEqual(svgNode.children, [], 'ห้ามมี node ของ path ข้างในเลย');
+});
+
+test('collectTree: opacity:0 ไม่ inherit ตามสเปก แต่ลูกของกล่องที่พ่อทึบ 0 ต้องมองไม่เห็นจริง (ตัดทั้งกิ่ง)', () => {
+  const child = el('span', { text: 'ซ่อนอยู่', style: { opacity: '1' } }); // ลูกตั้ง opacity ตัวเองเป็น 1 ตรง ๆ
+  const wrapper = el('div', { style: { opacity: '0' }, children: [child] });
+  const root = collectTree(fakeDoc(el('body', { children: [wrapper] })), fakeWin());
+  assert.strictEqual(root.children[0].children.length, 0, 'opacity:0 จากพ่อต้องตัดทั้งกิ่ง ไม่ใช่ยกลูกขึ้นมา');
+});
+
+test('collectTree: aria-hidden="true" ต้องถือว่ามองไม่เห็น (แต่ยกลูกขึ้นมาเหมือน case มองไม่เห็นอื่น ๆ)', () => {
+  const child = el('span', { text: 'ลูกยังอยู่' });
+  const decorative = el('div', { attrs: { 'aria-hidden': 'true' }, children: [child] });
+  const root = collectTree(fakeDoc(el('body', { children: [decorative] })), fakeWin());
+  assert.strictEqual(root.children[0].children.length, 1, 'ลูกของ aria-hidden ต้องถูกยกขึ้นมา ไม่ใช่หายไปด้วย');
+  assert.strictEqual(root.children[0].children[0].text, 'ลูกยังอยู่');
+});
+
+test('collectTree: element ที่ถูกเลื่อนพ้นเอกสารถาวร (เช่น left:-9999px) ต้องถือว่ามองไม่เห็น', () => {
+  const offscreen = el('div', {
+    text: 'มองไม่เห็นจริง',
+    rect: { left: -9999, top: -9999, right: -9899, bottom: -9959, width: 100, height: 40 },
+  });
+  const root = collectTree(fakeDoc(el('body', { children: [offscreen] })), fakeWin());
+  assert.strictEqual(root.children[0].children.length, 0, 'กล่องนอกขอบเอกสารทั้งกล่องต้องไม่ถูกเก็บ');
 });
 
 test('dumpPage: คืน xml + meta ครบ และนับ node ได้', () => {

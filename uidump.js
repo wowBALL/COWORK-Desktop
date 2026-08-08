@@ -351,11 +351,18 @@ setU();
     ].filter(Boolean).join(' · ');
 
     const palette = Object.assign({}, DEFAULT_PALETTE, opts.palette || {});
-    // </ inside the JSON would close the <script> block early
+    // </ ทั้งใน payload (ข้อมูลจากหน้าเว็บ) และ meta (label ที่ตอนนี้มาจาก <title> ของหน้าเว็บจริง
+    // ผ่าน qiOpenXmlViewer แล้ว ไม่ใช่ค่าคงที่ในโค้ดเราเองเหมือนก่อนเฟสนี้) ต้องหนีเหมือนกัน — ไม่งั้น
+    // title อย่าง "</script><script>...</script>" จะปิด <script> block ก่อนกำหนดแล้วรันโค้ดจริง
     const payload = JSON.stringify(tree).replace(/<\//g, '<\\/');
+    const metaJson = JSON.stringify(meta).replace(/<\//g, '<\\/');
+    // replacer เป็นฟังก์ชัน ไม่ใช่ string เพราะ String.replace ตีความ $&/$`/$'/$1 ในสตริงทดแทน
+    // เป็นแพตเทิร์นพิเศษเสมอ ไม่ว่าตัวค้นหาจะเป็น string ธรรมดาหรือ regex — ถ้า payload/metaJson
+    // มี "$'" อยู่ (หน้าเว็บทั่วไปที่มีตัวอย่างคำสั่งเชลล์/ราคาสินค้าก็มีได้) ค่าจะถูกแทนที่ผิดเพี้ยน
+    // จน const DATA = ... พังใน sandbox ของ iframe ซึ่ง try/catch ฝั่งเรียกมองไม่เห็นเลย
     return tpl(palette)
-      .replace('__DATA__', payload)
-      .replace('__META__', JSON.stringify(meta))
+      .replace('__DATA__', () => payload)
+      .replace('__META__', () => metaJson)
       .replace('__W__', String(w))
       .replace('__H__', String(h));
   }

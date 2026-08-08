@@ -1,4 +1,4 @@
-const { app, BrowserWindow, BaseWindow, WebContentsView, ipcMain, screen, globalShortcut, shell, dialog } = require('electron');
+const { app, BrowserWindow, BaseWindow, WebContentsView, ipcMain, screen, globalShortcut, shell, dialog, session } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -854,6 +854,19 @@ function openWebGrab() {
   // partition แยกจากตัวแอป: cookie ของระบบที่ล็อกอินไว้อยู่ในนี้ถาวร ล็อกอินครั้งเดียวต่อระบบ
   // แล้วครั้งต่อไปเปิดมาอยู่ในสถานะล็อกอินเลย (นี่คือเหตุผลที่เลือกทางนี้แทน CDP ต่อ Edge)
   webGrabPage = new WebContentsView({ webPreferences: { partition: 'persist:webgrab' } });
+  // ลิงก์ target="_blank" หรือ window.open() ในหน้าที่ถอดจะเปิดหน้าต่าง Electron ใหม่ทันทีถ้าไม่ดัก —
+  // หน้าต่างนั้นไม่มีแถบเครื่องมือ ไม่ถูกอ้างถึงใน webGrabWin เลย ปิดจาก close-web-grab หรือ
+  // ปุ่มปิดหน้าต่างไม่ได้ และ window-all-closed ไม่มีวันยิงเพราะยังมีหน้าต่างค้างอยู่ ผู้ใช้จึงปิดแอป
+  // ไม่ได้ทั้งที่ session ที่ล็อกอินไว้ยังโผล่อยู่ — ฟีเจอร์นี้ตั้งใจให้ถอดได้แค่ view หลักเดียว
+  // จึงนำทาง view เดิมไปยัง url นั้นแทน ไม่เปิดหน้าต่างใหม่เลย
+  webGrabPage.webContents.setWindowOpenHandler(({ url }) => {
+    webGrabPage.webContents.loadURL(url).catch(() => {});
+    return { action: 'deny' };
+  });
+  // partition นี้ไม่มีตัวจัดการคำขอสิทธิ์ของตัวเอง ถ้าไม่ตั้งเอง หน้าเว็บอะไรก็ได้ที่ผู้ใช้ถอดเข้ามา
+  // จะได้ค่าเริ่มต้นของ Electron ตรง ๆ สำหรับ notification/กล้อง/ตำแหน่ง — ฟีเจอร์นี้แค่ "อ่านหน้าเว็บ
+  // มาถอดโครง" ไม่มีเหตุผลต้องขอสิทธิ์อะไรจากผู้ใช้เลย ปิดให้หมดทุกคำขอ
+  session.fromPartition('persist:webgrab').setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   webGrabWin.contentView.addChildView(webGrabBar);
   webGrabWin.contentView.addChildView(webGrabPage);
 

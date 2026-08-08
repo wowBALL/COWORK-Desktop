@@ -51,14 +51,27 @@ function treeToXml(root, meta) {
 
 function collectTree(document, window) {
   // tag ที่ไม่มีวันเป็นสิ่งที่ผู้ใช้เห็น — ตัดตั้งแต่ต้นทางไม่ให้โค้ด JS/CSS หลุดเข้าไปเป็น text
+  // (SKIP เทียบด้วยชื่อ tag ตัวพิมพ์ใหญ่แบบ HTML เท่านั้น — <svg><title>/<style> รายงาน tagName
+  // เป็นตัวพิมพ์เล็กเลยไม่โดน SKIP แต่ไม่ใช่ปัญหาเพราะกิ่ง svg ทั้งกิ่งถูกตัดก่อนจะเดินลงไปถึง)
   var SKIP = { SCRIPT: 1, STYLE: 1, HEAD: 1, META: 1, LINK: 1, TITLE: 1, NOSCRIPT: 1, TEMPLATE: 1, BR: 1 };
   var sx = window.scrollX || 0;
   var sy = window.scrollY || 0;
+  var de = document.documentElement;
+  // ขอบเขตของทั้งเอกสาร ไม่ใช่แค่ viewport ที่มองเห็นอยู่ตอนนี้ — element ที่แค่ยังไม่ scroll ไปเจอ
+  // ต้องนับว่ามองเห็นได้ (เลื่อนไปเจอได้จริง) ต่างจาก element ที่ถูกซ่อนด้วยการเลื่อนพ้นเอกสารถาวร
+  // (เช่น left:-9999px) ซึ่งไม่มีวันถูกมองเห็นไม่ว่าจะเลื่อนยังไง
+  var docW = Math.max(de.scrollWidth || 0, window.innerWidth || 0);
+  var docH = Math.max(de.scrollHeight || 0, window.innerHeight || 0);
 
-  function visible(st, r) {
-    if (!r || r.width <= 0 || r.height <= 0) return false;
+  function visible(st, box, el) {
+    if (!box || box[2] - box[0] <= 0 || box[3] - box[1] <= 0) return false;
     if (st.display === 'none' || st.visibility === 'hidden') return false;
-    return parseFloat(st.opacity) !== 0;
+    // aria-hidden="true" คือหน้าเว็บบอกตรง ๆ ว่า element นี้ไม่ควรถูกมองเห็น (เช่น ไอคอน
+    // ตกแต่งที่ซ้ำกับ label ข้าง ๆ) ไม่เช็คไว้จะหลุดเข้าไปเป็น "สิ่งที่อยู่บนจอ" ทั้งที่ผู้ใช้ไม่เห็น
+    if (String(el.getAttribute('aria-hidden') || '').toLowerCase() === 'true') return false;
+    // นอกขอบเอกสารทั้งกล่อง = ซ่อนด้วยตำแหน่งถาวร ไม่ใช่แค่ยังไม่เลื่อนไปเจอ
+    if (box[2] <= 0 || box[3] <= 0 || box[0] >= docW || box[1] >= docH) return false;
+    return true;
   }
   // เฉพาะ text node ที่เป็นลูกตรงเท่านั้น — ถ้าใช้ textContent ข้อความของลูกจะถูกลากขึ้นไปซ้ำ
   // ทุกชั้นจนไฟล์บวมหลายเท่า และโมเดลเห็นข้อความเดียวกันสิบรอบจนสับสนว่ามีของซ้ำจริงบนจอ
@@ -105,24 +118,68 @@ function collectTree(document, window) {
   }
   // คืน array เสมอ (ไม่ใช่ node เดียว) เพราะ node ที่มองไม่เห็นต้องคืน "ลูกของมัน" ขึ้นไปแทนตัวเอง
   // ตัดทั้งกิ่งจะทำให้เนื้อหาที่อยู่ในกล่องขนาดศูนย์ (pattern ปกติของ dropdown/accordion) หายหมด
-  function walk(el) {
+  // parentOpacity คือค่า opacity สะสมจากพ่อลงมา (undefined ตอนเรียกครั้งแรกจาก documentElement)
+  function walk(el, parentOpacity) {
     if (!el || !el.tagName || SKIP[el.tagName]) return [];
-    var kids = [];
-    var ch = el.children || [];
-    for (var i = 0; i < ch.length; i++) kids = kids.concat(walk(ch[i]));
     var st = window.getComputedStyle(el);
+    var ownOpacity = parseFloat(st.opacity);
+    if (isNaN(ownOpacity)) ownOpacity = 1;
+    // opacity ไม่ได้ inherit ตามสเปก CSS (ลูกอ่าน computed style ของตัวเองได้ opacity:1 เสมอถ้าไม่
+    // ได้ตั้งเอง) แต่ตอนเรนเดอร์จริงพ่อทึบ 0 ทำให้ทั้งกิ่งมองไม่เห็นเสมอไม่ว่าลูกจะตั้งอะไรไว้
+    // ต้องคูณสะสมจากพ่อ ไม่ใช่อ่านแค่ค่าของ element เดียวแบบเดิม — และต่างจากเหตุผลอื่นที่ทำให้
+    // มองไม่เห็น (display:none ของตัวเอง, กล่องขนาดศูนย์) ตรงที่ opacity:0 จากพ่อทำให้ "ลูกก็มองไม่
+    // เห็นจริง ๆ ด้วย" จึงต้องตัดทั้งกิ่งทิ้งตรงนี้ ไม่ใช่ยกลูกขึ้นไปแทนเหมือน case อื่น
+    var effOpacity = (parentOpacity == null ? 1 : parentOpacity) * ownOpacity;
+    if (effOpacity === 0) return [];
+
+    // <svg>...</svg> เก็บแค่ตัว element เอง ไม่เดินลงไปใน <path>/<g>/<circle> ข้างในเลย เพราะ
+    // เส้นทางพวกนั้นไม่มีข้อความหรือความหมายให้โมเดลอ่าน มีแต่ทำให้ node บวมจากไอคอนเพียว ๆ
+    // เทียบ tagName ตัวพิมพ์เล็กเพราะ element ในเนมสเปซ SVG รายงาน tagName ตามที่เขียนในซอร์ส
+    // (ไม่ถูก uppercase เหมือน HTML) — SKIP เช็คด้วยตัวพิมพ์ใหญ่แบบ HTML เลยจับสิ่งนี้ไม่ได้
+    var isSvg = String(el.tagName).toLowerCase() === 'svg';
+    var kids = [];
+    if (!isSvg) {
+      var ch = el.children || [];
+      for (var i = 0; i < ch.length; i++) kids = kids.concat(walk(ch[i], effOpacity));
+    }
+
     var r = el.getBoundingClientRect();
-    if (!visible(st, r)) return kids;
+    var box = boxOf(r);
+    if (!visible(st, box, el)) return kids;
+
+    if (isSvg) {
+      return [{
+        cls: clsOf(el), rid: ridOf(el), text: '', desc: descOf(el),
+        bounds: box, clickable: false, scrollable: false, children: [],
+      }];
+    }
+
     if (el.tagName === 'IFRAME') {
+      // same-origin อ่าน contentDocument ได้ตรง ๆ — ลองอ่านจริงก่อนเสมอ แทนที่จะสรุปว่าอ่านไม่ได้
+      // เพราะแอปเป้าหมายของฟีเจอร์นี้ (editor/report ฝังในเชลล์) ส่วนใหญ่เป็น same-origin
+      // cross-origin จะโยน SecurityError ตอนอ่าน contentDocument ซึ่งเป็นทางเดียวที่แยกสองกรณีนี้ได้
+      var frameKids = null;
+      try {
+        var innerDoc = el.contentDocument;
+        if (innerDoc && innerDoc.documentElement) frameKids = walk(innerDoc.documentElement, 1);
+      } catch (e) {
+        frameKids = null;
+      }
+      if (frameKids) {
+        return [{
+          cls: 'iframe', rid: ridOf(el), text: '', desc: descOf(el),
+          bounds: box, clickable: false, scrollable: false, children: frameKids,
+        }];
+      }
       return [{
         cls: 'iframe', rid: ridOf(el), text: '',
         desc: descOf(el) || 'iframe — เนื้อหาข้าม origin อ่านไม่ได้',
-        bounds: boxOf(r), clickable: false, scrollable: false, children: [],
+        bounds: box, clickable: false, scrollable: false, children: [],
       }];
     }
     return [{
       cls: clsOf(el), rid: ridOf(el), text: ownText(el), desc: descOf(el),
-      bounds: boxOf(r), clickable: clickableOf(el, st), scrollable: scrollableOf(el, st),
+      bounds: box, clickable: clickableOf(el, st), scrollable: scrollableOf(el, st),
       children: kids,
     }];
   }

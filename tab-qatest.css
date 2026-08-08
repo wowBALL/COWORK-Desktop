@@ -147,3 +147,28 @@
 .qi-draft-gaps b { color: var(--ink); font-weight: 600; }
 .qi-draft-gaps ul { margin: 6px 0 0; padding-left: 18px; }
 .qi-draft-gaps li { margin: 2px 0; }
+
+/* ===== ชุด UI hierarchy ที่ถอดจากหน้าเว็บ =====
+   ทรงชิปแบบ #qiFileList ไม่ใช่รูปย่อแบบ .qi-notes-images เพราะสิ่งที่ต้องยืนยันคือ
+   "ถอดมาจากหน้าไหน กี่ node" ไม่ใช่หน้าตาของมัน */
+.qi-xml-dumps { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.qi-xml-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px 3px 10px; font-size: 12px; }
+.qi-xml-chip .qi-xml-meta { color: var(--muted); font-size: 11px; }
+.qi-xml-chip button { background: none; border: 0; color: var(--muted); cursor: pointer;
+  padding: 0 3px; font-size: 13px; line-height: 1; }
+.qi-xml-chip .qi-xml-view:hover { color: var(--accent); }
+.qi-xml-chip .qi-xml-drop:hover { color: var(--rose); }
+
+/* วิวเวอร์เต็มจอทับฟอร์ม — ฟอร์มยาวมาก ถ้าแทรกวิวเวอร์ลงไปกลางฟอร์มผู้ใช้จะหาทางกลับไม่เจอ */
+.qi-xml-viewer { position: fixed; inset: 0; z-index: 60; background: var(--bg);
+  display: flex; flex-direction: column; padding: 12px; gap: 10px; }
+/* .hidden ของ widget.html อยู่ใน <style> ที่ปิดก่อน tab-qatest.css จะถูกลิงก์ (มาทีหลัง)
+   ทั้งสอง selector specificity เท่ากัน (0,1,0) สไตล์ชีทที่มาทีหลังเลยชนะ display:flex ทับ
+   display:none — ปุ่มปิดกดไม่ออกเพราะ classList.add('hidden') ไม่มีผลอะไรเลย ต้องประกาศ
+   .hidden ทับที่นี่ให้ specificity สูงกว่า (0,2,0) เพื่อให้ซ่อนได้จริง */
+.qi-xml-viewer.hidden { display: none; }
+.qi-xml-viewer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.qi-xml-viewer-head span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#qiXmlViewerBody { flex: 1; min-height: 0; overflow: auto; }
+#qiXmlViewerBody .qa-ui { height: 100%; }

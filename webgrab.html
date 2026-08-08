@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>ดึงหน้าเว็บ</title>
+<!-- สีเขียนตรง ๆ ไม่ใช้ var(--x) เพราะนี่เป็นคนละ document กับตัวแอป ไม่เห็น :root ของ widget.html
+     (เหตุผลเดียวกับที่ qaViewerPalette ต้อง resolve ค่าก่อนส่งเข้า iframe ของวิวเวอร์) -->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #16151c; color: #e8e6e3;
+    font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+  .bar { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px;
+    box-sizing: border-box; border-bottom: 1px solid #2a2833; }
+  #url { flex: 1; min-width: 0; height: 28px; padding: 0 10px; border-radius: 6px;
+    border: 1px solid #2a2833; background: #1e1c26; color: #e8e6e3; font: inherit; }
+  button { height: 28px; padding: 0 12px; border-radius: 6px; border: 1px solid #2a2833;
+    background: #1e1c26; color: #e8e6e3; font: inherit; cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { border-color: #4ade80; }
+  button:disabled { opacity: .5; cursor: default; }
+  #grab { border-color: #4ade80; color: #4ade80; }
+  #status { color: #9a97a8; white-space: nowrap; max-width: 34%; overflow: hidden; text-overflow: ellipsis; }
+  #status.ok { color: #4ade80; }
+  #status.err { color: #f87171; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <input id="url" type="text" spellcheck="false" autocomplete="off" placeholder="วาง URL แล้วกด Enter">
+  <button id="go">ไป</button>
+  <button id="grab">📸 ถอดหน้านี้</button>
+  <span id="status"></span>
+  <button id="done">เสร็จแล้ว</button>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const go = () => { const u = $('url').value.trim(); if (u) window.grab.navigate(u); };
+  $('go').onclick = go;
+  $('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  $('grab').onclick = () => { $('grab').disabled = true; window.grab.capture(); };
+  $('done').onclick = () => window.grab.done();
+  window.grab.onStatus((s) => {
+    if (s.text != null) { $('status').className = s.kind || ''; $('status').textContent = s.text; }
+    // ไม่ทับค่าที่ผู้ใช้กำลังพิมพ์อยู่ — did-navigate ยิงมาระหว่างพิมพ์ได้
+    if (s.url != null && document.activeElement !== $('url')) $('url').value = s.url;
+    if (s.busy === false) $('grab').disabled = false;
+  });
+</script>
+</body>
+</html>

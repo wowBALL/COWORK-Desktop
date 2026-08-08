@@ -4,7 +4,7 @@ require('../util.js');
 // tab-qatest.js destructure global.COWORK.dateFilter ตอนโหลด — require datefilter.js ก่อน
 // (แบบเดียวกับ tests/tab-meeting.test.js)
 require('../datefilter.js');
-const { buildReviewLines } = require('../tab-qatest.js');
+const { buildReviewLines, qiXmlChipsHtml } = require('../tab-qatest.js');
 
 test('buildReviewLines: แปล priority/assignee/tracker กลับเป็นชื่อคนอ่านได้ ไม่ใช่ id ดิบ', () => {
   const lines = buildReviewLines(
@@ -324,4 +324,67 @@ test('issueMatch: "" กรองเฉพาะรอบที่ยังไ�
 test('issueMatch: เทียบเป็นสตริงเสมอ เพราะ dataset ให้มาเป็นสตริง', () => {
   assert.strictEqual(issueMatch({ issues: [690] }, '690'), true);
   assert.strictEqual(issueMatch({ issues: [690] }, '69'), false);
+});
+
+// ---- ชิป UI hierarchy ที่ถอดจากหน้าเว็บ ----
+test('qiXmlChipsHtml: ไม่มีชุดเลยได้สตริงว่าง ไม่ใช่กรอบเปล่าค้างบนฟอร์ม', () => {
+  assert.strictEqual(qiXmlChipsHtml([]), '');
+  assert.strictEqual(qiXmlChipsHtml(null), '');
+});
+
+test('qiXmlChipsHtml: โชว์ชื่อหน้า จำนวน node และขนาด ให้ผู้ใช้รู้ว่ากำลังจะส่งอะไรไป', () => {
+  const html = qiXmlChipsHtml([{ label: 'Booking Settings', url: 'https://x.test/a', nodes: 143, xml: 'x'.repeat(12288) }]);
+  assert.ok(html.includes('Booking Settings'));
+  assert.ok(html.includes('143 nodes'));
+  assert.ok(html.includes('12 KB'), html);
+});
+
+test('qiXmlChipsHtml: มีปุ่มดูและปุ่มเอาออก พร้อม index ที่ตรงกับลำดับในอาร์เรย์', () => {
+  const html = qiXmlChipsHtml([
+    { label: 'A', url: '', nodes: 1, xml: 'a' },
+    { label: 'B', url: '', nodes: 2, xml: 'b' },
+  ]);
+  assert.ok(html.includes('class="qi-xml-view" data-i="0"'), html);
+  assert.ok(html.includes('class="qi-xml-drop" data-i="1"'), html);
+});
+
+test('qiXmlChipsHtml: ชื่อหน้าจากเว็บภายนอกต้องถูก escape ไม่ให้ยิง HTML เข้าฟอร์มเราได้', () => {
+  const html = qiXmlChipsHtml([{ label: '<img src=x onerror=alert(1)>', url: '', nodes: 1, xml: 'a' }]);
+  assert.ok(!html.includes('<img src=x'), 'title ของหน้าเว็บเป็นข้อมูลที่เราคุมไม่ได้');
+  assert.ok(html.includes('&lt;img'), html);
+});
+
+// เทสข้างบนวาง label ไว้ในเนื้อความ ส่วน url อยู่ใน attribute ซึ่งแตกออกได้ด้วยอัญประกาศตัวเดียว
+// — คนละช่องโหว่กัน qiThumbsHtml มีเทสคู่นี้ครบอยู่แล้ว ชิป XML ต้องมีเท่ากัน
+test('qiXmlChipsHtml: url ใน attribute ต้องแตกออกมาเป็น attribute ใหม่ไม่ได้', () => {
+  const html = qiXmlChipsHtml([{ label: 'ปกติ', url: 'https://x.test/" onmouseover="alert(1)', nodes: 1, xml: 'a' }]);
+  assert.ok(!html.includes('onmouseover="alert'), html);
+  assert.ok(html.includes('&quot;'), 'อัญประกาศต้องถูกแปลง ไม่ใช่ผ่านไปดิบ ๆ');
+});
+
+// qiCloseForm อยู่ใน IIFE ที่พึ่ง DOM จริง เรียกตรงจาก node --test ไม่ได้ — ดักที่ระดับซอร์ส
+// แทน เพราะความพลาดที่ต้องกันคือ "ลืมเพิ่มบรรทัดล้าง" ซึ่งอ่านจากซอร์สก็เห็น
+// (ถ้าลืม XML ของ issue ใบก่อนจะติดไปกับใบถัดไปเงียบ ๆ แล้วร่างอ้างหน้าจอผิดหน้า)
+test('qiCloseForm: ต้องล้างชุด XML และปิดหน้าต่างถอดด้วย', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'tab-qatest.js'), 'utf8');
+  const body = src.slice(src.indexOf('function qiCloseForm()'), src.indexOf('function qiLoadMetaForSelection'));
+  assert.ok(/qiXmlDumps\s*=\s*\[\]/.test(body), 'ลืมล้าง qiXmlDumps');
+  assert.ok(body.includes('closeWebGrab'), 'ลืมปิดหน้าต่างถอดตอนปิดฟอร์ม');
+});
+
+// การถอดหน้าเว็บเป็นงาน async ฝั่ง main — กดถอดแล้วกดยกเลิกฟอร์มทันก่อนผลกลับมาได้จริง
+// ล้าง qiXmlDumps ตอนปิดฟอร์มอย่างเดียวไม่พอ เพราะ push เกิดหลังการล้าง
+const { qiAcceptsGrab } = require('../tab-qatest.js');
+
+test('qiAcceptsGrab: ผลที่มาถึงตอนฟอร์มปิดไปแล้วต้องถูกทิ้ง ไม่ติดไปกับ issue ใบถัดไป', () => {
+  const payload = { label: 'หน้าเก่า', xml: '<hierarchy/>', nodes: 5 };
+  assert.strictEqual(qiAcceptsGrab(true, payload), true);
+  assert.strictEqual(qiAcceptsGrab(false, payload), false, 'ฟอร์มปิดแล้วต้องไม่รับ');
+});
+
+test('qiAcceptsGrab: ผลที่ไม่มี xml ไม่รับ แม้ฟอร์มยังเปิดอยู่', () => {
+  assert.strictEqual(qiAcceptsGrab(true, { label: 'ว่าง', nodes: 0 }), false);
+  assert.strictEqual(qiAcceptsGrab(true, null), false);
 });

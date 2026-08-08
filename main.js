@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, dialog } = require('electron');
+const { app, BrowserWindow, BaseWindow, WebContentsView, ipcMain, screen, globalShortcut, shell, dialog, session } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -24,6 +24,7 @@ const { normalizeRefreshMinutes } = require('./util.js');
 // (finishtest.js ตัดฝั่ง DOM ทิ้งเองเมื่อ window เป็น undefined) กฎ "คีย์ที่ว่างต้องไม่ส่ง"
 // จึงมีที่เดียวและถูกเทสด้วย node --test ได้ ไม่ต้องยิงขึ้น Redmine จริงเพื่อพิสูจน์
 const { buildIssueUpdate } = require('./finishtest.js');
+const { injectableSource } = require('./webdump.js');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -74,6 +75,8 @@ function writeConfigMerge(patch) {
 }
 let redmineConfig = { url: '', apiKey: '' };
 let llmConfig = { baseUrl: '', apiKey: '' };
+// URL ล่าสุดของหน้าต่างถอดหน้าเว็บ — เปิดครั้งหน้าเริ่มที่เดิม เพราะบั๊กชุดเดียวกันมักอยู่หน้าเดิม
+let webGrabLastUrl = '';
 let workspaceDir = '';
 let meetingsDir = '';
 // QA test results — { label, path }[], array from day one: more sources
@@ -170,6 +173,7 @@ function loadAppConfig() {
   try { saved = JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch {}
   redmineConfig = { url: saved.redmineUrl || '', apiKey: saved.redmineApiKey || '' };
   llmConfig = { baseUrl: saved.llmBaseUrl || '', apiKey: saved.llmApiKey || '' };
+  webGrabLastUrl = saved.webGrabLastUrl || '';
   workspaceDir = saved.workspaceDir || '';
   meetingsDir = saved.meetingsDir || '';
   qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
@@ -823,6 +827,136 @@ function createScreensaver() {
   // Esc always exits
   globalShortcut.register('Escape', () => app.quit());
 }
+
+// ---- หน้าต่างถอดหน้าเว็บ (เฟส 1 ของ web-page-to-xml) ----
+// BaseWindow + WebContentsView สองชั้น ไม่ใช่ BrowserWindow เดียวที่ฉีดปุ่มลอยเข้าไปในหน้า
+// เพราะปุ่มที่ฉีดเข้าไปเปราะสองทาง: CSS ของหน้าทับได้ และหายทุกครั้งที่ผู้ใช้นำทางไปหน้าใหม่
+// แถบของเราเป็นคนละ view หน้าเว็บจึงแตะไม่ได้เลย
+const WEB_GRAB_BAR_H = 44;
+let webGrabWin = null, webGrabBar = null, webGrabPage = null, webGrabCount = 0;
+
+function webGrabStatus(patch) {
+  if (webGrabBar && !webGrabBar.webContents.isDestroyed()) {
+    webGrabBar.webContents.send('web-grab-status', patch);
+  }
+}
+
+function openWebGrab() {
+  if (webGrabWin) { webGrabWin.focus(); return; }
+  webGrabCount = 0;
+  webGrabWin = new BaseWindow({
+    width: 1280, height: 900, title: 'ดึงหน้าเว็บ — COWORK', backgroundColor: '#16151c',
+    icon: path.join(__dirname, 'icons', process.platform === 'win32' ? 'icon.ico' : 'icon-512.png'),
+  });
+  webGrabBar = new WebContentsView({
+    webPreferences: { preload: path.join(__dirname, 'preload-webgrab.js') },
+  });
+  // partition แยกจากตัวแอป: cookie ของระบบที่ล็อกอินไว้อยู่ในนี้ถาวร ล็อกอินครั้งเดียวต่อระบบ
+  // แล้วครั้งต่อไปเปิดมาอยู่ในสถานะล็อกอินเลย (นี่คือเหตุผลที่เลือกทางนี้แทน CDP ต่อ Edge)
+  webGrabPage = new WebContentsView({ webPreferences: { partition: 'persist:webgrab' } });
+  // ลิงก์ target="_blank" หรือ window.open() ในหน้าที่ถอดจะเปิดหน้าต่าง Electron ใหม่ทันทีถ้าไม่ดัก —
+  // หน้าต่างนั้นไม่มีแถบเครื่องมือ ไม่ถูกอ้างถึงใน webGrabWin เลย ปิดจาก close-web-grab หรือ
+  // ปุ่มปิดหน้าต่างไม่ได้ และ window-all-closed ไม่มีวันยิงเพราะยังมีหน้าต่างค้างอยู่ ผู้ใช้จึงปิดแอป
+  // ไม่ได้ทั้งที่ session ที่ล็อกอินไว้ยังโผล่อยู่ — ฟีเจอร์นี้ตั้งใจให้ถอดได้แค่ view หลักเดียว
+  // จึงนำทาง view เดิมไปยัง url นั้นแทน ไม่เปิดหน้าต่างใหม่เลย
+  webGrabPage.webContents.setWindowOpenHandler(({ url }) => {
+    webGrabPage.webContents.loadURL(url).catch(() => {});
+    return { action: 'deny' };
+  });
+  // partition นี้ไม่มีตัวจัดการคำขอสิทธิ์ของตัวเอง ถ้าไม่ตั้งเอง หน้าเว็บอะไรก็ได้ที่ผู้ใช้ถอดเข้ามา
+  // จะได้ค่าเริ่มต้นของ Electron ตรง ๆ สำหรับ notification/กล้อง/ตำแหน่ง — ฟีเจอร์นี้แค่ "อ่านหน้าเว็บ
+  // มาถอดโครง" ไม่มีเหตุผลต้องขอสิทธิ์อะไรจากผู้ใช้เลย ปิดให้หมดทุกคำขอ
+  session.fromPartition('persist:webgrab').setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  webGrabWin.contentView.addChildView(webGrabBar);
+  webGrabWin.contentView.addChildView(webGrabPage);
+
+  const layout = () => {
+    const { width, height } = webGrabWin.getContentBounds();
+    webGrabBar.setBounds({ x: 0, y: 0, width, height: WEB_GRAB_BAR_H });
+    webGrabPage.setBounds({ x: 0, y: WEB_GRAB_BAR_H, width, height: Math.max(0, height - WEB_GRAB_BAR_H) });
+  };
+  webGrabWin.on('resize', layout);
+  layout();
+
+  webGrabBar.webContents.loadFile('webgrab.html');
+  // ผู้ใช้คลิกลิงก์ในหน้าเว็บเองได้ ช่อง URL ต้องตามไปด้วย ไม่ค้างที่ค่าที่พิมพ์ไว้ตอนแรก
+  const syncUrl = (_e, url) => webGrabStatus({ url });
+  webGrabPage.webContents.on('did-navigate', syncUrl);
+  webGrabPage.webContents.on('did-navigate-in-page', syncUrl);
+
+  webGrabBar.webContents.once('did-finish-load', () => {
+    webGrabStatus({ url: webGrabLastUrl, busy: false, text: 'ไปหน้าที่ต้องการแล้วกด "ถอดหน้านี้"' });
+    if (webGrabLastUrl) webGrabPage.webContents.loadURL(webGrabLastUrl)
+      .catch(err => webGrabStatus({ text: 'เปิด URL ที่จำไว้ไม่สำเร็จ: ' + err.message, kind: 'err', busy: false }));
+  });
+  webGrabWin.on('closed', () => {
+    // BaseWindow ไม่ลาก WebContentsView ลูกไปตายด้วย (ต่างจาก BrowserWindow ที่ตายพร้อมกัน)
+    // ถ้าไม่เก็บเอง หน้าเว็บเก่ายังรันต่อ แล้ว syncUrl ของมันจะยิง URL ไปโผล่ในช่องของ
+    // toolbar เซสชันใหม่ตอนเปิดครั้งถัดไป — และทุกรอบเปิด/ปิดทิ้งโปรเซส renderer ค้างไว้
+    // isDestroyed() อยู่บน webContents ไม่ใช่บนตัว View — เรียกผิดที่จะโยนตอนปิดหน้าต่างพอดี
+    const wcOf = (v) => (v && v.webContents && !v.webContents.isDestroyed() ? v.webContents : null);
+    const pageWc = wcOf(webGrabPage);
+    if (pageWc) {
+      pageWc.removeListener('did-navigate', syncUrl);
+      pageWc.removeListener('did-navigate-in-page', syncUrl);
+      pageWc.close();
+    }
+    const barWc = wcOf(webGrabBar);
+    if (barWc) barWc.close();
+    webGrabWin = null;
+    webGrabBar = null;
+    webGrabPage = null;
+  });
+}
+
+ipcMain.handle('open-web-grab', () => { openWebGrab(); return { ok: true }; });
+ipcMain.on('close-web-grab', () => { if (webGrabWin) webGrabWin.close(); });
+ipcMain.on('web-grab-done', () => { if (webGrabWin) webGrabWin.close(); });
+
+ipcMain.on('web-grab-navigate', (_e, url) => {
+  if (!webGrabPage) return;
+  const u = /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : 'https://' + url;
+  webGrabLastUrl = u;
+  writeConfigMerge({ webGrabLastUrl: u });
+  webGrabPage.webContents.loadURL(u)
+    .catch(err => webGrabStatus({ text: 'เปิดไม่สำเร็จ: ' + err.message, kind: 'err', busy: false }));
+});
+
+ipcMain.on('web-grab-capture', async () => {
+  if (!webGrabPage) return;
+  webGrabStatus({ text: 'กำลังถอด...', kind: '' });
+  let dump;
+  try {
+    // executeJavaScript ของ Electron ไม่ถูก CSP ของหน้าบล็อก (ทำงานเหมือน DevTools console)
+    // จึงใช้ได้กับเว็บที่ตั้ง script-src เข้มด้วย ต่างจาก bookmarklet
+    dump = await webGrabPage.webContents.executeJavaScript(
+      injectableSource() + '\n;dumpPage(document, window)', true);
+  } catch (e) {
+    webGrabStatus({ text: 'ถอดไม่สำเร็จ: ' + e.message, kind: 'err', busy: false });
+    return;
+  }
+  if (!dump || !dump.ok) {
+    webGrabStatus({ text: (dump && dump.error) || 'ถอดไม่สำเร็จ', kind: 'err', busy: false });
+    return;
+  }
+  webGrabCount += 1;
+  // รูปเป็นของแถม ถอด XML ได้แล้วถือว่าสำเร็จ — กฎเดียวกับที่เฟส 2 ต้องใช้แน่ ๆ เพราะหน้าที่แอป
+  // ตั้ง FLAG_SECURE แคปไม่ได้เลย (วัดแล้ว ดู A_Workspace/refs/bluestacks-flag-secure-capture.md)
+  // ทำให้พฤติกรรมของสองปุ่มเหมือนกันตั้งแต่ต้น
+  let pngDataUrl = '';
+  try { pngDataUrl = (await webGrabPage.webContents.capturePage()).toDataURL(); } catch { /* ปล่อยว่าง */ }
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('web-grab-result', {
+      label: dump.title || dump.url || ('หน้าเว็บ ' + webGrabCount),
+      url: dump.url, xml: dump.xml, nodes: dump.nodes,
+      filename: `webgrab-${webGrabCount}.png`, pngDataUrl,
+    });
+  }
+  webGrabStatus({
+    text: `ถอดแล้ว ✓ ${dump.nodes} nodes` + (pngDataUrl ? ' + รูป' : ' (แคปรูปไม่ได้)'),
+    kind: 'ok', busy: false,
+  });
+});
 
 // renderer asks to quit (screensaver: mouse move / key press)
 ipcMain.on('quit-saver', () => app.quit());

@@ -193,19 +193,33 @@
 
   function qiBsRenderPick() {
     document.getElementById('qiBsPickName').textContent = qiBsPicked || 'ไม่พบเครื่อง';
-    // ใช้ data-i ไม่ใช่ data-name เพราะชื่อหน้าต่างเป็นค่าที่เราคุมไม่ได้ และ esc() ไม่ escape
-    // เครื่องหมายคำพูด — ใส่ลง attribute ตรง ๆ แล้วชื่อที่มี " จะทำ markup หลุด
+    // ใช้ data-i ไม่ใช่ data-name เพราะเลขลำดับไม่ได้มาจากภายนอกเลยสักนิด (esc() แปลง "
+    // ให้อยู่แล้ว ดู util.js — ชื่อเครื่องใส่ attribute ได้ ไม่ใช่เหตุผลที่ไม่ใช้) และมันมัดเมนู
+    // ไว้กับอาร์เรย์ชุดเดียวกับที่วาด HTML รอบนั้น ตอนคลิกจึงหยิบ object ตัวจริงกลับมาได้
+    // ไม่ต้องไล่หาด้วยชื่อที่อาจซ้ำกันหรือเปลี่ยนไปแล้วระหว่างรอบรีเฟรช
     document.getElementById('qiBsMenu').innerHTML = qiBsInstances.map((inst, i) =>
       `<button type="button" class="${inst.name === qiBsPicked ? 'qi-bs-menu-on' : ''}" data-i="${i}">${esc(inst.name)}</button>`
     ).join('') || '<button type="button" disabled>ไม่พบเครื่อง BlueStacks ที่เปิดอยู่</button>';
   }
 
   async function qiBsRefresh() {
-    if (!(api && api.bsListInstances)) return;
+    // ประกาศ api ในตัวเองเหมือนทุกฟังก์ชันในไฟล์นี้ — ตัวนี้ไม่มีใคร await ถ้าอ้าง api ลอย ๆ
+    // แล้ววันไหน widget.html เปลี่ยนวิธีโหลดสคริปต์ มันจะกลายเป็น ReferenceError ที่เงียบสนิท
+    const api = shell().api;
+    // ต้องวาดเมนูก่อนถอย ไม่งั้นกล่องที่กางออกมาเป็นกล่องเปล่า ๆ ไม่บอกอะไรผู้ใช้เลย
+    if (!(api && api.bsListInstances)) { qiBsRenderPick(); return; }
     const r = await api.bsListInstances();
     qiBsInstances = (r && r.ok) ? r.instances : [];
     qiBsPicked = (r && r.ok) ? r.picked : '';
     qiBsRenderPick();
+    // ป้ายในปุ่มบอกได้แค่ "ไม่พบเครื่อง" ซึ่งชี้ผิดทางเมื่อความจริงคือ adb ต่อไม่ได้ —
+    // ข้อความจาก main เป็นไทยและเขียนให้ผู้ใช้อ่านอยู่แล้ว จึงโชว์ทั้งดุ้นไม่ห่อไม่เติมคำนำหน้า
+    // qiFormAlive กันรอบรีเฟรชเบื้องหลังไม่ให้ไปเขียนทับสถานะของฟอร์มที่ปิดไปแล้ว
+    if (r && !r.ok && r.error && qiFormAlive) {
+      const status = document.getElementById('qiDraftStatus');
+      status.className = 'set-status err';
+      status.textContent = r.error;
+    }
   }
 
   // วางรูปในช่องโน้ต = อัปขึ้น Redmine เป็นไฟล์แนบ + เก็บไบต์ไว้ส่งให้โมเดลดู ทำสองอย่างพร้อมกัน
@@ -1129,13 +1143,26 @@
       // กดซ้ำระหว่างรอจะยิง adb ซ้อนกันบน serial เดียว ซึ่ง uiautomator dump ไม่ชอบ
       btn.disabled = true;
       try {
+        // guard แบบเดียวกับ qiBsRefresh — ไม่มีสะพานก็ต้องบอก ไม่ใช่ปล่อย TypeError ลอย
+        if (!(api && api.bsGrab)) throw new Error('ช่องทางคุยกับ BlueStacks ไม่พร้อมใช้งาน');
         const r = await api.bsGrab(qiBsPicked);
         if (!r || !r.ok) {
-          status.className = 'set-status err';
-          status.textContent = (r && r.error) || 'เก็บจาก BlueStacks ไม่สำเร็จ';
+          // ผลอาจมาถึงหลังผู้ใช้ปิดฟอร์มไปแล้ว (รอ ~3 วินาที) — qiOpenForm ไม่ล้างบรรทัดนี้
+          // ข้อความจึงค้างไปโผล่ในตั๋วใบถัดไป เงื่อนไขเดียวกับที่ qiAcceptsGrab ใช้ฝั่งสำเร็จ
+          if (qiFormAlive) {
+            status.className = 'set-status err';
+            status.textContent = (r && r.error) || 'เก็บจาก BlueStacks ไม่สำเร็จ';
+          }
           return;
         }
         qiAcceptGrabPayload(r.payload);
+      } catch (e) {
+        // ไม่มี catch แล้ว finally จะปลดปุ่มให้กดใหม่ได้ก็จริง แต่สถานะค้างที่ "กำลังเก็บ..."
+        // ตลอดกาล ผู้ใช้จึงนั่งรอผลที่ไม่มีวันมา
+        if (qiFormAlive) {
+          status.className = 'set-status err';
+          status.textContent = 'เก็บจาก BlueStacks ไม่สำเร็จ: ' + ((e && e.message) || e);
+        }
       } finally {
         btn.disabled = false;
       }

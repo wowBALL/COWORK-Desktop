@@ -148,17 +148,24 @@
 .qi-draft-gaps ul { margin: 6px 0 0; padding-left: 18px; }
 .qi-draft-gaps li { margin: 2px 0; }
 
-/* ปุ่มแบ่งสองส่วน — กรอบเดียวครอบทั้งคู่ คั่นด้วยเส้นเดียว ให้อ่านออกว่าเป็นปุ่มเดียวที่มีสองการกระทำ */
+/* ปุ่มแบ่งสองส่วน — กรอบเดียวครอบทั้งคู่ คั่นด้วยเส้นเดียว ให้อ่านออกว่าเป็นปุ่มเดียวที่มีสองการกระทำ
+   ห้ามใส่ overflow: hidden ที่นี่เด็ดขาด: กล่องนี้เป็น containing block ของ .qi-bs-menu
+   (position: relative ต้องอยู่เพื่อให้เมนูเกาะปุ่ม) เมนูวางที่ top: 100% คือนอกกล่องพอดี
+   overflow จึงตัดมันหายทั้งใบ ปุ่มขวากดแล้วไม่มีอะไรขึ้นเลย — มุมโค้งไปทำที่ปุ่มลูกแทน
+   เทียบกับ .navrow .llmpick ใน widget.html ที่เป็นดรอปดาวน์ทรงเดียวกันและไม่มี overflow */
 .qi-bs-split { position: relative; display: inline-flex; align-items: stretch;
-  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  border: 1px solid var(--line); border-radius: 8px; }
 .qi-bs-split > button { background: var(--panel-2); border: 0; color: var(--ink);
   padding: 6px 10px; font: inherit; cursor: pointer; }
+/* 7px ไม่ใช่ 8px เพราะขอบนอกหนา 1px — มุมด้านในของกรอบโค้งเท่านี้พอดี ได้หน้าตาเดิมที่
+   เคยได้จากการ clip ด้วย overflow */
+.qi-bs-split > button:first-child { border-radius: 7px 0 0 7px; }
 .qi-bs-split > button:hover { background: var(--line); }
 .qi-bs-split > button:disabled { color: var(--dim); cursor: default; background: var(--panel-2); }
 /* ส่วนขวายุบลงไปให้เห็นว่าเป็นตัวเลือกไม่ใช่ปุ่มลงมือ · ชื่อเครื่องเป็นสี accent
    เพราะเป็นค่าที่ผู้ใช้ต้องอ่านก่อนกด ไม่ใช่ป้ายประดับ */
 .qi-bs-split .qi-bs-pick { background: var(--bg); color: var(--accent);
-  border-left: 1px solid var(--line); font-size: 12.5px; }
+  border-left: 1px solid var(--line); font-size: 12.5px; border-radius: 0 7px 7px 0; }
 .qi-bs-menu { position: absolute; top: 100%; right: 0; z-index: 20; min-width: 150px;
   margin-top: 4px; padding: 4px; background: var(--panel);
   border: 1px solid var(--line); border-radius: 8px; }

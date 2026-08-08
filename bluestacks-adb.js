@@ -4,9 +4,6 @@
 const { spawn } = require('node:child_process');
 const { bsThrow } = require('./bluestacks.js');
 
-// ถ้า SIGTERM ไม่ทำงาน (adb client ค้างรอ adb server) ต้องยกระดับ ไม่งั้นโพรเซสยังวิ่งต่อ
-// หลัง promise settle ไปแล้ว — ผู้ใช้เห็นว่าเลิกรอแล้วแต่ของจริงยังกินเครื่องอยู่
-const HARD_KILL_MS = 2000;
 const DEFAULT_TIMEOUT_SEC = 30;
 
 // spawn พร้อม array ของ argument ไม่ผ่าน shell — ชื่อ instance กับพอร์ตจึงไม่มีทางกลายเป็นคำสั่ง
@@ -30,12 +27,10 @@ function adb(args, timeoutSec) {
       p.stderr.removeAllListeners('data');
       out.length = 0;
       err.length = 0;
+      // แอปนี้รันบน Windows เท่านั้น (ดู config path C:/ProgramData/... ของ BlueStacks) — บน
+      // Windows Node ไม่สนใจชื่อ signal เลย ยิง TerminateProcess ให้ทั้ง SIGTERM และ SIGKILL
+      // เหมือนกัน แค่ p.kill() เฉย ๆ จึงพอแล้ว ไม่ต้องมีตัวไล่ฆ่าซ้ำรอบสอง
       try { p.kill(); } catch { /* ตายไปก่อนแล้วก็ถือว่าจบ */ }
-      const hard = setTimeout(() => {
-        try { if (p.exitCode === null && p.signalCode === null) p.kill('SIGKILL'); } catch {}
-      }, HARD_KILL_MS);
-      if (hard.unref) hard.unref();   // ตัวไล่ฆ่าต้องไม่กั้นแอปตอนปิด
-      p.once('close', () => clearTimeout(hard));
       reject(bsThrow('timeout', secs));
     }, secs * 1000);
     p.on('error', finish(e => reject(e.code === 'ENOENT' ? bsThrow('no-adb') : e)));

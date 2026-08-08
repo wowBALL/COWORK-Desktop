@@ -1032,9 +1032,15 @@ ipcMain.handle('bs-list-instances', async () => {
 });
 
 ipcMain.handle('bs-set-instance', (_e, name) => {
-  bsLastInstance = String(name || '');
-  writeConfigMerge({ bsLastInstance });
-  return { ok: true };
+  try {
+    bsLastInstance = String(name || '');
+    writeConfigMerge({ bsLastInstance });
+    return { ok: true };
+  } catch (e) {
+    // ไฟล์ config ล็อกอยู่หรือสิทธิ์ไม่ถึง (EACCES/ENOSPC ฯลฯ) — สองแฮนเดลอีกตัวห่อแบบนี้อยู่แล้ว
+    // ตัวนี้ไม่มี try/catch มาก่อนเลยหลุดเป็น "Error invoking remote method..." ดิบ ๆ ถึง renderer
+    return { ok: false, error: bsUserError('bs-set-instance', e) };
+  }
 });
 
 // ต่างจากเฟส 1 ที่ push ผลทาง channel เพราะหน้าต่างถอดเป็นคนละหน้าต่างและกดถอดกี่ครั้งก็ได้
@@ -1069,19 +1075,29 @@ ipcMain.handle('bs-grab', async (_e, instanceName) => {
     // ใช้ dump + pull ตามที่วัดมา (2199ms) ไม่ใช่ exec-out cat ที่สั้นกว่าแต่ยังไม่ได้ยิงจริง
     const devFile = `/sdcard/cowork-ui-${token}.xml`;
     const dump = await adb(['-s', serial, 'shell', 'uiautomator', 'dump', devFile], 30);
-    // uiautomator พิมพ์ "ERROR: could not get idle state." แล้ว exit 0 โดยไม่เขียนไฟล์ได้
-    // ⇒ ต้องเห็นว่ามันบอกว่าเขียนลง path ของรอบนี้จริง ห้ามเชื่อ exit code อย่างเดียว
-    const dumpSays = dump.stdout.toString() + '\n' + dump.stderr;
-    if (dump.code !== 0 || !dumpSays.includes(`dumped to: ${devFile}`)) {
-      return { ok: false, error: bsError('dump-failed', dump.stderr || dumpSays.trim() || 'exit ' + dump.code) };
+    const dumpOut = dump.stdout.toString().trim();
+    // ไม่เช็คถ้อยคำ "dumped to:" อีกต่อไป — สำนวนที่ uiautomator พิมพ์ตอนสำเร็จต่างกันไปตามรุ่น/
+    // locale ของ Android แต่ละอิมเมจ และบางรุ่นพิมพ์ path ที่ resolve แล้วไม่ตรงกับ devFile ที่ส่งไป
+    // เดายากพอ ๆ กับเช็คไม่ได้จริง ส่วนไฟล์ค้างจากรอบก่อนถูกกันไว้แล้วด้วยชื่อไม่ซ้ำต่อรอบ (token)
+    // จึงเหลือแค่ exit code พอ — เก็บ stdout ไว้ก่อน เผื่อ pull ล้มเหลวทีหลังแล้วต้องใช้ข้อความนี้
+    if (dump.code !== 0) {
+      return { ok: false, error: bsError('dump-failed', dump.stderr || dumpOut || 'exit ' + dump.code) };
     }
 
     const hostFile = path.join(app.getPath('temp'), `cowork-ui-${token}.xml`);
     let xml = '';
     try {
       const pull = await adb(['-s', serial, 'pull', devFile, hostFile], 15);
-      if (pull.code !== 0) return { ok: false, error: bsError('dump-failed', pull.stderr || 'pull exit ' + pull.code) };
-      xml = fs.readFileSync(hostFile, 'utf8');
+      if (pull.code !== 0) {
+        // แนบ stdout/stderr ของ dump เองด้วย ไม่ใช่แค่ของ pull — ข้อความที่บอกได้ว่าต้องทำอะไรต่อ
+        // เช่น "ERROR: could not get idle state." (uiautomator exit 0 แต่ยังพิมพ์ข้อความนี้ได้)
+        // โผล่ตรงนี้ ไม่ใช่ในผลของ pull ซึ่งมักบอกแค่ว่าไฟล์ปลายทางไม่มี
+        const detail = [pull.stderr || 'pull exit ' + pull.code, dump.stderr || dumpOut].filter(Boolean).join(' | ');
+        return { ok: false, error: bsError('dump-failed', detail) };
+      }
+      // adb รุ่นเก่าบางตัวคืน exit 0 ทั้งที่ pull ไม่ได้ไฟล์จริง — กันด้วย try แล้วปล่อย xml ว่าง
+      // ให้ไปเข้าทาง empty-dump ข้างล่าง ซึ่งบอกผู้ใช้ได้ตรงกว่า catch ชั้นนอกของ handler
+      try { xml = fs.readFileSync(hostFile, 'utf8'); } catch {}
     } finally {
       // เก็บกวาดทุกทางออกรวมทั้งทางที่ throw — เดิมเก็บเฉพาะทางที่สำเร็จ ไฟล์จึงกองใน temp
       // ทุกครั้งที่พลาด · ฝั่งเครื่องไม่ต้องรอผล ชื่อไม่ซ้ำอยู่แล้วจึงไม่กระทบรอบถัดไป

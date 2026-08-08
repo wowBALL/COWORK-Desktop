@@ -362,6 +362,23 @@ test('qiXmlChipsHtml: url ใน attribute ต้องแตกออกมา�
   assert.ok(html.includes('&quot;'), 'อัญประกาศต้องถูกแปลง ไม่ใช่ผ่านไปดิบ ๆ');
 });
 
+// ชิปสองแหล่งใช้คลาสเดียวกันหมด ต่างแค่ไอคอน — payload เก่าที่ไม่มี kind ต้องยังเป็น 🌐
+// ไม่งั้นชิปของหน้าเว็บที่ค้างอยู่ในฟอร์มจะเปลี่ยนหน้าตาเองตอนวาดรอบถัดไป
+test('qiXmlChipsHtml: ชิปจาก BlueStacks ใช้ 📱 ส่วนของหน้าเว็บยังเป็น 🌐', () => {
+  const html = qiXmlChipsHtml([
+    { kind: 'bluestacks', label: 'DEV · Login', xml: '<hierarchy/>', nodes: 18 },
+    { label: 'Booking Settings', url: 'https://x/y', xml: '<hierarchy/>', nodes: 143 },
+  ]);
+  assert.ok(html.includes('📱 DEV · Login'), 'ชิป BlueStacks ต้องขึ้น 📱');
+  assert.ok(html.includes('🌐 Booking Settings'), 'ชิปหน้าเว็บที่ไม่มี kind ต้องยังเป็น 🌐');
+});
+
+test('qiXmlChipsHtml: ชิป BlueStacks ที่ไม่มี label ต้องไม่ตกไปใช้คำว่า "หน้าเว็บ"', () => {
+  const html = qiXmlChipsHtml([{ kind: 'bluestacks', xml: '<hierarchy/>', nodes: 3 }]);
+  assert.ok(html.includes('BlueStacks'));
+  assert.ok(!html.includes('หน้าเว็บ'));
+});
+
 // qiCloseForm อยู่ใน IIFE ที่พึ่ง DOM จริง เรียกตรงจาก node --test ไม่ได้ — ดักที่ระดับซอร์ส
 // แทน เพราะความพลาดที่ต้องกันคือ "ลืมเพิ่มบรรทัดล้าง" ซึ่งอ่านจากซอร์สก็เห็น
 // (ถ้าลืม XML ของ issue ใบก่อนจะติดไปกับใบถัดไปเงียบ ๆ แล้วร่างอ้างหน้าจอผิดหน้า)

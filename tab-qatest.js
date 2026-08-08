@@ -117,7 +117,7 @@
   function qiXmlChipsHtml(dumps) {
     return (dumps || []).map((d, i) => `
       <span class="qi-xml-chip" title="${esc(d.url || '')}">
-        <span class="qi-xml-name">🌐 ${esc(d.label || 'หน้าเว็บ')}</span>
+        <span class="qi-xml-name">${d.kind === 'bluestacks' ? '📱' : '🌐'} ${esc(d.label || (d.kind === 'bluestacks' ? 'BlueStacks' : 'หน้าเว็บ'))}</span>
         <span class="qi-xml-meta">${d.nodes} nodes · ${Math.round(String(d.xml || '').length / 1024)} KB</span>
         <button type="button" class="qi-xml-view" data-i="${i}" title="ดูโครงหน้าจอชุดนี้ก่อนส่งให้โมเดล">👁</button>
         <button type="button" class="qi-xml-drop" data-i="${i}" title="ไม่ส่งชุดนี้ให้โมเดล">×</button>
@@ -168,6 +168,44 @@
         errEl.style.display = 'block';
         errEl.textContent = 'แนบรูปที่แคปมาไม่สำเร็จ: ' + e.message;
       });
+  }
+
+  // ที่เดียวที่แปลง payload เป็นชิป + ไฟล์แนบ — สองเส้นทาง (หน้าเว็บ push ผ่าน channel /
+  // BlueStacks คืนผลทาง invoke) ต้องใช้ตัวนี้ทั้งคู่ ไม่งั้นแก้ที่หนึ่งแล้วลืมอีกที่
+  function qiAcceptGrabPayload(payload) {
+    if (!qiAcceptsGrab(qiFormAlive, payload)) return;
+    qiXmlDumps.push({
+      kind: payload.kind || 'web', label: payload.label, url: payload.url,
+      xml: payload.xml, nodes: payload.nodes,
+    });
+    qiRenderXmlDumps();
+    const status = document.getElementById('qiDraftStatus');
+    status.className = 'set-status ok';
+    status.textContent = `ได้โครงหน้าจอแล้ว (${payload.nodes} nodes)`
+      + (payload.pngDataUrl ? ' + รูป 1 ใบ แนบขึ้น Redmine ให้แล้ว' : ' — แคปรูปไม่ได้ ได้เฉพาะโครง');
+    if (payload.pngDataUrl) qiUploadDataUrl(payload.pngDataUrl, payload.filename);
+  }
+
+  // รายชื่อเครื่อง BlueStacks — รีเฟรชตอนเปิดฟอร์มและตอนกางเมนู เพราะผู้ใช้เปิด-ปิด instance
+  // ระหว่างวัน รายการที่ค้างจากตอนเปิดแอปจะชี้ไปเครื่องที่ปิดไปแล้ว (นับใหม่วัดได้ ~180ms)
+  let qiBsInstances = [];
+  let qiBsPicked = '';
+
+  function qiBsRenderPick() {
+    document.getElementById('qiBsPickName').textContent = qiBsPicked || 'ไม่พบเครื่อง';
+    // ใช้ data-i ไม่ใช่ data-name เพราะชื่อหน้าต่างเป็นค่าที่เราคุมไม่ได้ และ esc() ไม่ escape
+    // เครื่องหมายคำพูด — ใส่ลง attribute ตรง ๆ แล้วชื่อที่มี " จะทำ markup หลุด
+    document.getElementById('qiBsMenu').innerHTML = qiBsInstances.map((inst, i) =>
+      `<button type="button" class="${inst.name === qiBsPicked ? 'qi-bs-menu-on' : ''}" data-i="${i}">${esc(inst.name)}</button>`
+    ).join('') || '<button type="button" disabled>ไม่พบเครื่อง BlueStacks ที่เปิดอยู่</button>';
+  }
+
+  async function qiBsRefresh() {
+    if (!(api && api.bsListInstances)) return;
+    const r = await api.bsListInstances();
+    qiBsInstances = (r && r.ok) ? r.instances : [];
+    qiBsPicked = (r && r.ok) ? r.picked : '';
+    qiBsRenderPick();
   }
 
   // วางรูปในช่องโน้ต = อัปขึ้น Redmine เป็นไฟล์แนบ + เก็บไบต์ไว้ส่งให้โมเดลดู ทำสองอย่างพร้อมกัน
@@ -330,6 +368,7 @@
 
   function qiOpenForm() {
     qiFormAlive = true;
+    qiBsRefresh();   // ไม่ await — ฟอร์มต้องเปิดทันที รายชื่อเครื่องตามมาใน ~180ms
     document.getElementById('qaStage').classList.add('hidden');
     document.getElementById('qaIssueForm').classList.remove('hidden');
     document.getElementById('qiProject').innerHTML =
@@ -1059,16 +1098,48 @@
       document.getElementById('qiXmlViewerBody').innerHTML = '';   // ปล่อย iframe ทิ้ง ไม่ให้ค้างในหน่วยความจำ
     };
     // ลงทะเบียนครั้งเดียวตอน mount ไม่ใช่ตอนเปิดฟอร์ม — ipcRenderer.on สะสม listener ถ้าเรียกซ้ำ
-    api && api.onWebGrab && api.onWebGrab(payload => {
-      if (!qiAcceptsGrab(qiFormAlive, payload)) return;
-      qiXmlDumps.push({ label: payload.label, url: payload.url, xml: payload.xml, nodes: payload.nodes });
-      qiRenderXmlDumps();
-      const status = document.getElementById('qiDraftStatus');
-      status.className = 'set-status ok';
-      status.textContent = `ได้โครงหน้าจอแล้ว (${payload.nodes} nodes)`
-        + (payload.pngDataUrl ? ' + รูป 1 ใบ แนบขึ้น Redmine ให้แล้ว' : ' — แคปรูปไม่ได้ ได้เฉพาะโครง');
-      if (payload.pngDataUrl) qiUploadDataUrl(payload.pngDataUrl, payload.filename);
+    api && api.onWebGrab && api.onWebGrab(qiAcceptGrabPayload);
+    document.getElementById('qiBsPickBtn').onclick = async () => {
+      const menu = document.getElementById('qiBsMenu');
+      if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+      await qiBsRefresh();
+      menu.classList.remove('hidden');
+    };
+    document.getElementById('qiBsMenu').onclick = (e) => {
+      const btn = e.target.closest('button[data-i]');
+      if (!btn) return;
+      const inst = qiBsInstances[Number(btn.dataset.i)];
+      if (!inst) return;
+      qiBsPicked = inst.name;
+      api && api.bsSetInstance && api.bsSetInstance(inst.name);
+      qiBsRenderPick();
+      document.getElementById('qiBsMenu').classList.add('hidden');
+    };
+    // กดที่อื่นแล้วเมนูต้องปิด ไม่งั้นมันค้างทับฟิลด์ที่อยู่ใต้ปุ่ม
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('.qi-bs-split')) return;
+      document.getElementById('qiBsMenu').classList.add('hidden');
     });
+    document.getElementById('qiBsGrabBtn').onclick = async () => {
+      const btn = document.getElementById('qiBsGrabBtn');
+      const status = document.getElementById('qiDraftStatus');
+      document.getElementById('qiBsMenu').classList.add('hidden');
+      status.className = 'set-status';
+      status.textContent = 'กำลังเก็บจาก BlueStacks... (~3 วินาที)';
+      // กดซ้ำระหว่างรอจะยิง adb ซ้อนกันบน serial เดียว ซึ่ง uiautomator dump ไม่ชอบ
+      btn.disabled = true;
+      try {
+        const r = await api.bsGrab(qiBsPicked);
+        if (!r || !r.ok) {
+          status.className = 'set-status err';
+          status.textContent = (r && r.error) || 'เก็บจาก BlueStacks ไม่สำเร็จ';
+          return;
+        }
+        qiAcceptGrabPayload(r.payload);
+      } finally {
+        btn.disabled = false;
+      }
+    };
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====

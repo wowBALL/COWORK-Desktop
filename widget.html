@@ -439,9 +439,14 @@
           <input type="checkbox" id="qiPci" checked> ประเมิน PCI DSS
         </label>
         <button type="button" id="qiDraftBtn" class="set-cancel">🪄 ให้ LLM ช่วยร่าง</button>
-        <!-- เฟส 1 ใส่ปุ่มเดียว เว้นที่ไว้ให้ "📱 ดึงจาก BlueStacks" ของเฟส 2 — ไม่ใส่ปุ่มที่กด
-             ไม่ได้ไว้ก่อน เพราะปุ่มตายสร้างความสับสนมากกว่าช่วยให้เห็นแผน -->
         <button type="button" id="qiWebGrabBtn" class="set-cancel" title="เปิดเบราว์เซอร์ในแอป ไปหน้าที่มีปัญหา แล้วถอดรูป + โครงหน้าจอกลับมา">🌐 ดึงจากหน้าเว็บ</button>
+        <!-- ปุ่มเดียวแบ่งสองส่วน: ซ้ายเก็บทันที ขวากางเมนูเลือกเครื่อง — ชื่อเครื่องต้องอ่านได้
+             ก่อนกด เพราะเก็บผิดเครื่องแล้วได้ XML กับรูปคนละเครื่องโดยไม่มีอะไรฟ้อง -->
+        <span class="qi-bs-split">
+          <button type="button" id="qiBsGrabBtn" class="qi-bs-main" title="เก็บรูป + โครงหน้าจอจากหน้าจอที่เปิดค้างอยู่ใน BlueStacks">📱 ดึงจาก BlueStacks</button>
+          <button type="button" id="qiBsPickBtn" class="qi-bs-pick" title="เลือกเครื่อง BlueStacks"><span id="qiBsPickName">—</span> ▾</button>
+          <div id="qiBsMenu" class="qi-bs-menu hidden"></div>
+        </span>
         <div id="qiDraftStatus" class="set-status"></div>
         <!-- สิ่งที่ dev น่าจะถามกลับ — อยู่ในฟอร์มให้เติมก่อนส่งเท่านั้น ไม่เข้า description
              และไม่ขึ้น Redmine (ตัดสินใจไว้ใน spec 2026-08-05) -->

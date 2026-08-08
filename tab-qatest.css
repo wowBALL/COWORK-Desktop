@@ -148,6 +148,30 @@
 .qi-draft-gaps ul { margin: 6px 0 0; padding-left: 18px; }
 .qi-draft-gaps li { margin: 2px 0; }
 
+/* ปุ่มแบ่งสองส่วน — กรอบเดียวครอบทั้งคู่ คั่นด้วยเส้นเดียว ให้อ่านออกว่าเป็นปุ่มเดียวที่มีสองการกระทำ */
+.qi-bs-split { position: relative; display: inline-flex; align-items: stretch;
+  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.qi-bs-split > button { background: var(--panel-2); border: 0; color: var(--ink);
+  padding: 6px 10px; font: inherit; cursor: pointer; }
+.qi-bs-split > button:hover { background: var(--line); }
+.qi-bs-split > button:disabled { color: var(--dim); cursor: default; background: var(--panel-2); }
+/* ส่วนขวายุบลงไปให้เห็นว่าเป็นตัวเลือกไม่ใช่ปุ่มลงมือ · ชื่อเครื่องเป็นสี accent
+   เพราะเป็นค่าที่ผู้ใช้ต้องอ่านก่อนกด ไม่ใช่ป้ายประดับ */
+.qi-bs-split .qi-bs-pick { background: var(--bg); color: var(--accent);
+  border-left: 1px solid var(--line); font-size: 12.5px; }
+.qi-bs-menu { position: absolute; top: 100%; right: 0; z-index: 20; min-width: 150px;
+  margin-top: 4px; padding: 4px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; }
+/* ประกาศไว้ตรง ๆ ถึงแม้กฎข้างบนจะยังไม่ได้ตั้ง display — ไฟล์นี้ link ทีหลัง <style> ของ
+   widget.html ถ้าวันไหนมีใครเติม display ให้ .qi-bs-menu แล้ว .hidden จะแพ้เงียบ ๆ
+   (บั๊ก Critical ของเฟส 1 เกิดแบบนี้เป๊ะ) */
+.qi-bs-menu.hidden { display: none; }
+.qi-bs-menu button { display: block; width: 100%; text-align: left; padding: 6px 10px;
+  background: none; border: 0; border-radius: 6px; color: var(--ink); font: inherit; cursor: pointer; }
+.qi-bs-menu button:hover { background: var(--panel-2); }
+.qi-bs-menu button:disabled { color: var(--dim); cursor: default; background: none; }
+.qi-bs-menu .qi-bs-menu-on { color: var(--accent); }
+
 /* ===== ชุด UI hierarchy ที่ถอดจากหน้าเว็บ =====
    ทรงชิปแบบ #qiFileList ไม่ใช่รูปย่อแบบ .qi-notes-images เพราะสิ่งที่ต้องยืนยันคือ
    "ถอดมาจากหน้าไหน กี่ node" ไม่ใช่หน้าตาของมัน */

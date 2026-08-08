@@ -70,7 +70,11 @@
   function draw() {
     if (!el) return;
     const v = viewOf(runner, pending, Date.now());
-    el.className = v.hidden ? 'fridaypill hidden' : `fridaypill ${v.cls}`;
+    // 'inert' เป็นคลาสเสริม ไม่ใช่หนึ่งในหกคลาสสถานะ (blocked/starting เป็น inert
+    // เสมอ แต่ failed เป็น inert เฉพาะตอน enabled:false เช่นเปิดไม่สำเร็จระหว่างการ์ดจอ
+    // ไม่ว่าง) -- friday.css ผูก cursor/hover ไว้กับคลาสนี้แทนการแจกแจงทีละสถานะ
+    const inert = !v.hidden && !v.enabled ? ' inert' : '';
+    el.className = v.hidden ? 'fridaypill hidden' : `fridaypill ${v.cls}${inert}`;
     el.innerHTML = v.hidden ? '' : `<span class="d"></span>${v.label}`;
     el.title = v.enabled ? '' : 'กดไม่ได้ตอนนี้';
   }
@@ -82,9 +86,12 @@
       draw();
       if (api && api.startFriday) {
         api.startFriday().then((r) => {
-          // ล้มเหลวเท่านั้นที่ต้องบอก สำเร็จให้ poll รอบถัดไปเป็นคนยืนยัน
+          // ล้มเหลวเท่านั้นที่ต้องบอก สำเร็จปล่อย pending 'starting' ไว้ต่อ --
+          // มันจะหายเองก็ต่อเมื่อ onData เห็น state:'running' จริง (หรือหมดอายุ 15 วิ)
+          // ไม่ใช่ตอน HTTP 201 ตอบกลับมา เพราะ poll ตอน idle ห่างถึง 5 วิ (runnerInterval
+          // ใน main.js) การเคลียร์ pending ตรงนี้เคยทำให้ป้ายโชว์ "off" หลอกอยู่ได้นานถึง
+          // 5 วินาทีหลังกดเปิดสำเร็จจริง แล้วกดซ้ำได้ 409 already_running
           if (!r || !r.ok) pending = { kind: 'failed', at: Date.now(), action: 'start' };
-          else pending = null;
           draw();
         });
       }
@@ -105,9 +112,17 @@
     }
   }
 
-  function mount(node) {
+  // injectedApi เป็นพารามิเตอร์ที่สอง (ทางเลือก) เพื่อให้เทสยิง onClick/onData
+  // ได้จริงโดยไม่ต้องพึ่ง window.cowork -- เส้นทางเบราว์เซอร์เรียก mount(node)
+  // ด้วยอาร์กิวเมนต์เดียวเหมือนเดิมเป๊ะ จึงยังอ่านจาก global.cowork ตามปกติ
+  // เคลียร์ pending/runner ทุกครั้งที่ mount เพื่อกันเทสไฟล์เดียวกันเห็นสถานะเก่า
+  // ข้ามกัน -- ไม่กระทบพฤติกรรมจริงเพราะ mount() ถูกเรียกครั้งเดียวตอนโหลดหน้า
+  // ตอนที่ทั้งสองตัวยังเป็น null อยู่แล้ว
+  function mount(node, injectedApi) {
     el = node || null;
-    api = (global.cowork) || null;
+    api = injectedApi || (global.cowork) || null;
+    runner = null;
+    pending = null;
     if (el) el.onclick = onClick;
     draw();
   }
@@ -125,7 +140,10 @@
   // node --test ค้างรอ event loop
   function onTick() { if (pending) draw(); }
 
-  const core = { viewOf, PENDING_MS, mount };
+  // onClick/onData เดิมไม่ถูก export เลย -- ทำให้ Finding 1 (else pending = null
+  // ทำลาย starting) ไม่มีเทสไหนจับได้ทั้งที่ viewOf ถูกเทสละเอียดมาก export ทั้งคู่
+  // ไว้ที่นี่เพื่อให้เทสยิง state machine ของการคลิกจริงได้ผ่าน mount(node, fakeApi)
+  const core = { viewOf, PENDING_MS, mount, onClick, onData };
 
   global.COWORK = global.COWORK || {};
   global.COWORK.tabs = global.COWORK.tabs || {};

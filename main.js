@@ -1504,7 +1504,11 @@ ipcMain.handle('friday-stop', async () => {
   try {
     const res = await fetch(`http://127.0.0.1:${runnerPort}/api/companion/stop`, {
       method: 'POST',
-      signal: AbortSignal.timeout(5000),
+      // 12000 ไม่ใช่ 5000 เหมือนพี่น้อง -- ฝั่งเซิร์ฟเวอร์ถือ lock ระหว่างฆ่า child
+      // ได้นานสุดถึง 10 วิ (terminate grace 5 วิ + kill grace 5 วิ) คำสั่งปิดที่ยิงเข้า
+      // ไปตอนนั้นพอดีเลยต้องรอได้นานกว่า 10 วิ ไม่งั้น timeout ที่ 5 วิจะตัดกลางคัน
+      // แล้วเรนเดอเรอร์เห็น {error:'unreachable'} ทั้งที่การปิดกำลังจะสำเร็จจริง
+      signal: AbortSignal.timeout(12000),
     });
     // อ่าน body เหมือน friday-start และ runner-stop ที่อยู่ติดกัน -- route นี้ตอบ 200
     // เสมอในเวอร์ชันปัจจุบัน แต่ถ้าเจอ service รุ่นเก่าที่ยังไม่มีทางนี้ ข้อความจริงจาก

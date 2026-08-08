@@ -257,11 +257,12 @@
 <link rel="stylesheet" href="tab-testingroom.css">
 <link rel="stylesheet" href="tab-grafana.css">
 <link rel="stylesheet" href="tab-workspace.css">
+<link rel="stylesheet" href="friday.css">
 </head>
 <body>
   <div class="shell">
     <div class="bar">
-      <span class="title">◈ COWORK<span id="appVer" class="ver"></span><span id="mrunLive" class="mrunlive hidden"></span></span>
+      <span class="title">◈ COWORK<span id="appVer" class="ver"></span><span id="mrunLive" class="mrunlive hidden"></span><span id="fridayPill" class="fridaypill hidden"></span></span>
       <div class="ctrls">
         <button id="themeBtn" title="สลับ Light Mode">☀</button>
         <button id="settingsBtn" title="ตั้งค่า Redmine">⚙</button>
@@ -678,6 +679,7 @@
 <!-- แปลง failure.xml เป็นวิวเวอร์ interactive (พอร์ตจาก uidump2html.py) — แยกไฟล์เพราะเทมเพลตยาว -->
 <script src="uidump.js"></script>
 <script src="meetingrun.js"></script>
+<script src="friday.js"></script>
 <!-- โมดูลแท็บ — ลงทะเบียนไว้ที่ COWORK.tabs.* เฉย ๆ เปลือกเป็นคนเรียก mount() ท้ายไฟล์ -->
 <script src="finishtest.js"></script>
 <script src="tab-redmine.js"></script>
@@ -930,6 +932,16 @@
     const card=mod.settingsCard && document.getElementById(mod.settingsCard);
     if(card) viewS.insertBefore(card, document.getElementById('setCancel'));
   });
+  // ป้าย Friday เป็นของเปลือก ไม่ใช่ของแท็บไหน จึง mount ตรงนี้แทนที่จะอยู่ในลูป TABS
+  // (เหมือน loadRefreshSetting ของการ์ด "ทั่วไป") · อยู่นอกลูปโดยเจตนา เพราะลูปนั้น
+  // ไม่มี try/catch -- โมดูลนี้พังต้องไม่ทำให้แท็บที่เหลือไม่ถูก mount
+  const friday = window.COWORK.tabs.friday;
+  if (friday) {
+    friday.mount(document.getElementById('fridayPill'));
+    api && api.onRunnerState && api.onRunnerState(s => friday.onData(s));
+    api && api.getRunnerState && api.getRunnerState().then(s => friday.onData(s));
+  }
+
   // ธีมครั้งแรกต้องมาหลัง mount ครบทุกโมดูล — applyTheme วน onTheme ของทุกแท็บ
   // ถ้าเรียกก่อน จะยิงเข้าโมดูลที่ยังไม่พร้อม (ทั้งไฟล์นี้รันแบบ synchronous จอจึงไม่กระพริบ)
   applyTheme(document.documentElement.dataset.theme==='sand'?'sand':'carbon');

@@ -71,3 +71,18 @@ test('CHANGELOG มีหัวข้อของเวอร์ชันปั�
   const cl = fs.readFileSync(path.join(REPO, 'CHANGELOG.md'), 'utf8');
   assert.ok(cl.includes('## v' + pkg.version), 'ไม่มี ## v' + pkg.version + ' ใน CHANGELOG.md');
 });
+
+// เทสสองตัวบนไล่จาก require() กับแท็ก <script src> เท่านั้น — ไฟล์ที่ main โหลดด้วย
+// path.join(__dirname, ...) หรือ loadFile() มองไม่เห็น (preload-webgrab.js กับ webgrab.html
+// เข้าข่ายนี้เต็ม ๆ) ถ้าไม่ดักตรงนี้ ปุ่ม "ดึงจากหน้าเว็บ" จะตายเฉพาะในตัวติดตั้ง
+test('build.files มีไฟล์ที่ main โหลดด้วย path/loadFile ไม่ใช่ require', () => {
+  const main = fs.readFileSync(path.join(REPO, 'main.js'), 'utf8');
+  const found = new Set();
+  for (const m of main.matchAll(/__dirname,\s*'([^']+\.(?:js|html|css))'/g)) found.add(m[1]);
+  for (const m of main.matchAll(/loadFile\(\s*'([^']+)'/g)) found.add(m[1]);
+  assert.ok(found.size >= 2, 'ดึง ref ไม่ออก — regex พัง ไม่ใช่ว่า main ไม่โหลดไฟล์อะไรเลย');
+  const missing = [...found].filter(f => !has(f));
+  assert.deepStrictEqual(missing, [], 'ไฟล์เหล่านี้จะหายจากตัวติดตั้ง: ' + missing.join(' '));
+  const ghost = [...found].filter(f => !fs.existsSync(path.join(REPO, f)));
+  assert.deepStrictEqual(ghost, [], 'อ้างถึงไฟล์ที่ไม่มี: ' + ghost.join(' '));
+});

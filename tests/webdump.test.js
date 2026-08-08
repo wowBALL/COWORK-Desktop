@@ -225,9 +225,10 @@ test('injectableSource: รันเองได้ในบริบทว่�
   assert.strictEqual(out.ok, true);
   assert.ok(out.xml.includes('<hierarchy'), out.xml);
   assert.ok(out.xml.includes('text="ถอดได้"'), out.xml);
-  // ตรวจสอบว่าสาขา iframe ทำงานในบริบท vm จริง ๆ โดยเห็น description ที่มี "อ่านไม่ได้"
-  assert.ok(out.xml.includes('iframe'), 'fixture ต้องมี iframe element');
-  assert.ok(out.xml.includes('อ่านไม่ได้'), 'iframe description ต้องมี "อ่านไม่ได้" เพื่อให้โมเดลไม่งูเงึก');
+  // ต้องมี iframe ใน fixture ด้วย ไม่งั้นสาขา iframe ของ collectTree ไม่เคยถูกรันในกล่อง vm เลย
+  // แล้วด่านนี้จะเขียวทั้งที่ค่าที่สาขานั้นใช้อาจถูกย้ายออกไปนอกชุดฉีดไปแล้ว
+  assert.ok(out.xml.includes('class="iframe"'), 'สาขา iframe ต้องถูกรันจริงในกล่อง vm');
+  assert.ok(out.xml.includes('อ่านไม่ได้'), 'ข้อความของสาขา iframe ต้องรอดมาถึงผลลัพธ์');
 });
 
 test('dumpPage: คืนข้อผิดพลาดเมื่อเนื้อหามองไม่เห็นทั้งหน้า', () => {

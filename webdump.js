@@ -66,9 +66,6 @@ function collectTree(document, window) {
   function visible(st, box, el) {
     if (!box || box[2] - box[0] <= 0 || box[3] - box[1] <= 0) return false;
     if (st.display === 'none' || st.visibility === 'hidden') return false;
-    // aria-hidden="true" คือหน้าเว็บบอกตรง ๆ ว่า element นี้ไม่ควรถูกมองเห็น (เช่น ไอคอน
-    // ตกแต่งที่ซ้ำกับ label ข้าง ๆ) ไม่เช็คไว้จะหลุดเข้าไปเป็น "สิ่งที่อยู่บนจอ" ทั้งที่ผู้ใช้ไม่เห็น
-    if (String(el.getAttribute('aria-hidden') || '').toLowerCase() === 'true') return false;
     // นอกขอบเอกสารทั้งกล่อง = ซ่อนด้วยตำแหน่งถาวร ไม่ใช่แค่ยังไม่เลื่อนไปเจอ
     if (box[2] <= 0 || box[3] <= 0 || box[0] >= docW || box[1] >= docH) return false;
     return true;
@@ -131,6 +128,13 @@ function collectTree(document, window) {
     // เห็นจริง ๆ ด้วย" จึงต้องตัดทั้งกิ่งทิ้งตรงนี้ ไม่ใช่ยกลูกขึ้นไปแทนเหมือน case อื่น
     var effOpacity = (parentOpacity == null ? 1 : parentOpacity) * ownOpacity;
     if (effOpacity === 0) return [];
+
+    // aria-hidden="true" ตัดทั้งกิ่ง ไม่ใช่ยกลูกขึ้นมาแทนแบบเหตุผลอื่น — ตามสเปก ARIA มันซ่อน
+    // ทั้งซับทรีจาก assistive tech ไม่ใช่แค่ตัวเอง (แพทเทิร์นปกติคือครอบ wrapper ไว้ชั้นเดียว
+    // แล้วของข้างในทั้งก้อนถือว่าไม่ใช่เนื้อหา เช่น ไอคอนตกแต่งหรือของที่ซ้ำกับ label ข้าง ๆ)
+    // วัดจริงด้วย Electron 2026-08-08: ตอนเช็คข้อนี้ไว้ใน visible() ปุ่มที่อยู่ใน
+    // <div aria-hidden="true"> ยังหลุดออกมาอยู่ เพราะ visible() คืน false แล้ว walk ยกลูกขึ้นไป
+    if (String(el.getAttribute('aria-hidden') || '').toLowerCase() === 'true') return [];
 
     // <svg>...</svg> เก็บแค่ตัว element เอง ไม่เดินลงไปใน <path>/<g>/<circle> ข้างในเลย เพราะ
     // เส้นทางพวกนั้นไม่มีข้อความหรือความหมายให้โมเดลอ่าน มีแต่ทำให้ node บวมจากไอคอนเพียว ๆ

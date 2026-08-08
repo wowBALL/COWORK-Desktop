@@ -240,12 +240,18 @@ test('collectTree: opacity:0 ไม่ inherit ตามสเปก แต่�
   assert.strictEqual(root.children[0].children.length, 0, 'opacity:0 จากพ่อต้องตัดทั้งกิ่ง ไม่ใช่ยกลูกขึ้นมา');
 });
 
-test('collectTree: aria-hidden="true" ต้องถือว่ามองไม่เห็น (แต่ยกลูกขึ้นมาเหมือน case มองไม่เห็นอื่น ๆ)', () => {
-  const child = el('span', { text: 'ลูกยังอยู่' });
+// ต่างจาก case มองไม่เห็นอื่น ๆ ที่ยกลูกขึ้นมา — ARIA นิยามว่า aria-hidden ซ่อนทั้งซับทรี
+// และแพทเทิร์นจริงคือครอบ wrapper ไว้ชั้นเดียวแล้วของข้างในทั้งก้อนไม่ใช่เนื้อหา
+// เทสเดิมวาง attribute ไว้แล้วยืนยันว่าลูกต้องรอด ซึ่งกลับด้านกับที่ควรเป็น และไม่มีใครจับได้
+// จนเอาไปยิงกับ Chromium จริงผ่าน Electron แล้วเห็นปุ่มโผล่ออกมาใน XML
+test('collectTree: aria-hidden="true" ตัดทั้งกิ่ง ลูกต้องหายไปด้วย ไม่ใช่ถูกยกขึ้นมา', () => {
+  const child = el('button', { text: 'ปุ่มที่ screen reader ไม่เห็น' });
   const decorative = el('div', { attrs: { 'aria-hidden': 'true' }, children: [child] });
-  const root = collectTree(fakeDoc(el('body', { children: [decorative] })), fakeWin());
-  assert.strictEqual(root.children[0].children.length, 1, 'ลูกของ aria-hidden ต้องถูกยกขึ้นมา ไม่ใช่หายไปด้วย');
-  assert.strictEqual(root.children[0].children[0].text, 'ลูกยังอยู่');
+  const sibling = el('p', { text: 'เนื้อหาจริง' });
+  const root = collectTree(fakeDoc(el('body', { children: [decorative, sibling] })), fakeWin());
+  const kids = root.children[0].children;
+  assert.strictEqual(kids.length, 1, 'เหลือเฉพาะพี่น้องที่ไม่ได้ถูกซ่อน');
+  assert.strictEqual(kids[0].text, 'เนื้อหาจริง');
 });
 
 test('collectTree: element ที่ถูกเลื่อนพ้นเอกสารถาวร (เช่น left:-9999px) ต้องถือว่ามองไม่เห็น', () => {

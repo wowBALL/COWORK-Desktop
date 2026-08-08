@@ -216,10 +216,31 @@ test('countNodes: นับทั้งต้นไม้ ไม่ใช่แ�
 // ถ้ามีใครเผลอให้ฟังก์ชันในชุดอ้าง constant ระดับโมดูล เทสอื่นจะยังเขียวหมด แต่ของจริงจะพัง
 // ตอนกดปุ่มถอด — เทสนี้คือด่านเดียวที่จับได้
 test('injectableSource: รันเองได้ในบริบทว่าง ไม่พึ่งอะไรนอกชุด', () => {
-  const body = el('body', { children: [el('button', { text: 'ถอดได้' })] });
+  const body = el('body', { children: [
+    el('button', { text: 'ถอดได้' }),
+    el('iframe', { attrs: { id: 'pay' } }),
+  ] });
   const ctx = { document: fakeDoc(body, 'T'), window: fakeWin() };
   const out = vm.runInNewContext(injectableSource() + '\n;dumpPage(document, window)', ctx);
   assert.strictEqual(out.ok, true);
   assert.ok(out.xml.includes('<hierarchy'), out.xml);
   assert.ok(out.xml.includes('text="ถอดได้"'), out.xml);
+  // ตรวจสอบว่าสาขา iframe ทำงานในบริบท vm จริง ๆ โดยเห็น description ที่มี "อ่านไม่ได้"
+  assert.ok(out.xml.includes('iframe'), 'fixture ต้องมี iframe element');
+  assert.ok(out.xml.includes('อ่านไม่ได้'), 'iframe description ต้องมี "อ่านไม่ได้" เพื่อให้โมเดลไม่งูเงึก');
+});
+
+test('dumpPage: คืนข้อผิดพลาดเมื่อเนื้อหามองไม่เห็นทั้งหน้า', () => {
+  // สร้างหน้าที่ไม่มี element มองเห็นได้ => walk(root) คืน [] => collectTree คืน null => dumpPage คืน error
+  const invisibleHtml = el('html', {
+    rect: { left: 0, top: 0, right: 1280, bottom: 900, width: 1280, height: 900 },
+    style: { display: 'none' },
+    children: [el('head'), el('body', { text: 'หนีไม่ได้', style: { display: 'none' } })]
+  });
+  invisibleHtml.scrollWidth = 1280;
+  invisibleHtml.scrollHeight = 900;
+  const doc = { documentElement: invisibleHtml, title: 'Hidden' };
+  const out = dumpPage(doc, fakeWin());
+  assert.strictEqual(out.ok, false);
+  assert.strictEqual(out.error, 'ไม่พบ element ที่มองเห็นได้ในหน้านี้');
 });

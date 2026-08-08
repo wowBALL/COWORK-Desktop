@@ -16,7 +16,7 @@
 .feed{display:flex;flex-direction:column;gap:2px}
 .day{margin-bottom:6px}
 /* .dhead เป็น <summary> ของ <details class="day"> — ตัดสามเหลี่ยม default ของเบราว์เซอร์
- * ทิ้งทั้งสองสาย (list-style กับ ::-webkit-details-marker) แล้ววาด ▸ ของเราเองที่หมุนได้ */
+ * ทิ้งทั้งสองสาย (list-style กับ ::-webkit-details-marker) แล้ววาดลูกศรของเราเองแทน */
 .day>.dhead{display:flex;align-items:center;gap:9px;margin:6px 0;padding:7px 10px;cursor:pointer;
   list-style:none;background:var(--panel);border:1px solid var(--line-soft);border-radius:9px}
 .day>.dhead::-webkit-details-marker{display:none}

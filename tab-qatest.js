@@ -30,6 +30,12 @@
   // แล้วติดไปกับ issue ตัวถัดไปเงียบ ๆ — เช็ค class hidden แทนไม่ได้ เพราะขั้นทานก่อนส่ง
   // ก็ซ่อนฟอร์มเหมือนกันทั้งที่เซสชันยังไม่จบ
   let qiFormAlive = false;
+  // qiFormAlive เป็นบูลีน จึงตอบได้แค่ "ตอนนี้มีฟอร์มเปิดอยู่ไหม" ไม่ใช่ "ยังเป็นฟอร์มใบเดิม
+  // ที่สั่งงานนี้ไว้ไหม" — กดเก็บจาก BlueStacks (รอ ~3 วินาที) แล้วยกเลิกฟอร์มและกด "+ งานใหม่"
+  // ทัน มันกลับเป็น true อีกครั้ง หลักฐานของตั๋วใบก่อน (รูปที่อัปขึ้น Redmine + XML) จึงไหลเข้า
+  // ใบใหม่เงียบ ๆ ซึ่งคือความผิดพลาดชนิดที่ฟีเจอร์นี้ทั้งฟีเจอร์มีไว้เพื่อกัน เลขรุ่นนี้เดินหน้า
+  // อย่างเดียวทุกครั้งที่เปิดฟอร์ม จับค่าไว้ก่อน await แล้วเทียบหลัง await จึงแยกสองใบออกจากกันได้
+  let qiFormGen = 0;
   // รายชื่อโปรเจกต์จริงมาจาก payload ของแท็บ Redmine (tasks-update) ไม่ใช่ qaData ของแท็บนี้ —
   // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
   // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
@@ -193,29 +199,48 @@
 
   function qiBsRenderPick() {
     document.getElementById('qiBsPickName').textContent = qiBsPicked || 'ไม่พบเครื่อง';
-    // ใช้ data-i ไม่ใช่ data-name เพราะเลขลำดับไม่ได้มาจากภายนอกเลยสักนิด (esc() แปลง "
-    // ให้อยู่แล้ว ดู util.js — ชื่อเครื่องใส่ attribute ได้ ไม่ใช่เหตุผลที่ไม่ใช้) และมันมัดเมนู
-    // ไว้กับอาร์เรย์ชุดเดียวกับที่วาด HTML รอบนั้น ตอนคลิกจึงหยิบ object ตัวจริงกลับมาได้
+    // ใช้ data-i ไม่ใช่ data-name เพราะเลขลำดับไม่ได้มาจากภายนอกเลยสักนิด ส่วนชื่อหน้าต่าง
+    // emulator ห้ามไปโผล่ใน HTML attribute เด็ดขาด (กฎของโปรเจกต์นี้ — esc() ไม่ใช่ใบอนุญาต)
+    // และ index ยังมัดเมนูไว้กับอาร์เรย์ชุดเดียวกับที่วาด HTML รอบนั้น ตอนคลิกจึงหยิบ object จริงกลับมาได้
     // ไม่ต้องไล่หาด้วยชื่อที่อาจซ้ำกันหรือเปลี่ยนไปแล้วระหว่างรอบรีเฟรช
     document.getElementById('qiBsMenu').innerHTML = qiBsInstances.map((inst, i) =>
       `<button type="button" class="${inst.name === qiBsPicked ? 'qi-bs-menu-on' : ''}" data-i="${i}">${esc(inst.name)}</button>`
     ).join('') || '<button type="button" disabled>ไม่พบเครื่อง BlueStacks ที่เปิดอยู่</button>';
   }
 
-  async function qiBsRefresh() {
-    // ประกาศ api ในตัวเองเหมือนทุกฟังก์ชันในไฟล์นี้ — ตัวนี้ไม่มีใคร await ถ้าอ้าง api ลอย ๆ
-    // แล้ววันไหน widget.html เปลี่ยนวิธีโหลดสคริปต์ มันจะกลายเป็น ReferenceError ที่เงียบสนิท
+  // showError แยกรอบที่ผู้ใช้กดเอง (ปุ่ม ▾) ออกจากรอบอัตโนมัติตอนเปิดฟอร์ม — รอบอัตโนมัติต้อง
+  // เงียบสนิทเมื่อ ok:false เพราะ "ไม่ได้เปิด BlueStacks / ไม่ได้ติดตั้ง" คือสถานะปกติของผู้ใช้
+  // ส่วนใหญ่ ป้ายแดงที่บอกให้กดใหม่จึงไปโผล่ทุกครั้งที่กด "+ งานใหม่" ทั้งที่ยังไม่ได้กดอะไรเลย
+  // และรอบนั้นกินเวลาหลายร้อย ms (main ไล่ถาม desktopCapturer ทุกหน้าต่าง) จึงชิงเขียนทับสถานะ
+  // ของงานอื่นที่ผู้ใช้เพิ่งสั่งได้ — เคสจริงคือกด 🪄 ระหว่างรอ แล้วบรรทัดนี้ลบปุ่ม #qiSkipDraft
+  // ที่ qiDraft() เพิ่งวางไว้ ซึ่ง onclick ของมันคือทางเดียวที่จะยกเลิกการร่าง
+  async function qiBsRefresh(showError) {
+    const gen = qiFormGen;
+    // ประกาศ api ในตัวเองเหมือนทุกฟังก์ชันในไฟล์นี้ — รอบเปิดฟอร์มไม่มีใคร await (รอบกด ▾ await)
+    // ถ้าอ้าง api ลอย ๆ แล้ววันไหน widget.html เปลี่ยนวิธีโหลดสคริปต์ มันจะกลายเป็น
+    // ReferenceError ที่เงียบสนิท
     const api = shell().api;
-    // ต้องวาดเมนูก่อนถอย ไม่งั้นกล่องที่กางออกมาเป็นกล่องเปล่า ๆ ไม่บอกอะไรผู้ใช้เลย
-    if (!(api && api.bsListInstances)) { qiBsRenderPick(); return; }
-    const r = await api.bsListInstances();
+    let r;
+    if (!(api && api.bsListInstances)) {
+      r = { ok: false, error: 'ช่องทางคุยกับ BlueStacks ไม่พร้อมใช้งาน' };
+    } else {
+      try {
+        r = await api.bsListInstances();
+      } catch (e) {
+        // reject ไม่ใช่แค่ ok:false — ไม่ดักไว้แล้วรอบเปิดฟอร์มกลายเป็น unhandled rejection
+        // ส่วนรอบกด ▾ จะตายก่อนถึงบรรทัดกางเมนู ปุ่มขวากดแล้วไม่มีอะไรขึ้น ซึ่งเป็นอาการเดียว
+        // กับบั๊ก Critical ที่เพิ่งแก้ไปรอบก่อน
+        r = { ok: false, error: 'อ่านรายชื่อเครื่อง BlueStacks ไม่สำเร็จ: ' + ((e && e.message) || e) };
+      }
+    }
     qiBsInstances = (r && r.ok) ? r.instances : [];
     qiBsPicked = (r && r.ok) ? r.picked : '';
+    // ต้องวาดเมนูทุกทางรวมทั้งทางที่ล้มเหลว ไม่งั้นกล่องที่กางออกมาเป็นกล่องเปล่า ๆ ไม่บอกอะไรเลย
     qiBsRenderPick();
     // ป้ายในปุ่มบอกได้แค่ "ไม่พบเครื่อง" ซึ่งชี้ผิดทางเมื่อความจริงคือ adb ต่อไม่ได้ —
     // ข้อความจาก main เป็นไทยและเขียนให้ผู้ใช้อ่านอยู่แล้ว จึงโชว์ทั้งดุ้นไม่ห่อไม่เติมคำนำหน้า
-    // qiFormAlive กันรอบรีเฟรชเบื้องหลังไม่ให้ไปเขียนทับสถานะของฟอร์มที่ปิดไปแล้ว
-    if (r && !r.ok && r.error && qiFormAlive) {
+    // เช็ค gen คู่กับ qiFormAlive กันผลที่กลับมาช้าไม่ให้เขียนทับฟอร์มที่ปิดไปแล้วหรือใบใหม่
+    if (showError && r && !r.ok && r.error && qiFormAlive && gen === qiFormGen) {
       const status = document.getElementById('qiDraftStatus');
       status.className = 'set-status err';
       status.textContent = r.error;
@@ -382,7 +407,9 @@
 
   function qiOpenForm() {
     qiFormAlive = true;
-    qiBsRefresh();   // ไม่ await — ฟอร์มต้องเปิดทันที รายชื่อเครื่องตามมาใน ~180ms
+    qiFormGen++;     // ใบใหม่ = รุ่นใหม่ ผลของใบก่อนที่ยังค้างอยู่ต้องตกรุ่นทันทีตรงนี้
+    // ไม่ await — ฟอร์มต้องเปิดทันที รายชื่อเครื่องตามมาใน ~180ms · false = ห้ามฟ้อง error
+    qiBsRefresh(false);
     document.getElementById('qaStage').classList.add('hidden');
     document.getElementById('qaIssueForm').classList.remove('hidden');
     document.getElementById('qiProject').innerHTML =
@@ -1116,7 +1143,7 @@
     document.getElementById('qiBsPickBtn').onclick = async () => {
       const menu = document.getElementById('qiBsMenu');
       if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
-      await qiBsRefresh();
+      await qiBsRefresh(true);   // ผู้ใช้กดเอง = รอบเดียวที่ error มีที่มาให้ผู้ใช้เข้าใจ
       menu.classList.remove('hidden');
     };
     document.getElementById('qiBsMenu').onclick = (e) => {
@@ -1137,6 +1164,8 @@
     document.getElementById('qiBsGrabBtn').onclick = async () => {
       const btn = document.getElementById('qiBsGrabBtn');
       const status = document.getElementById('qiDraftStatus');
+      // จับรุ่นของฟอร์มไว้ก่อนเข้า await — ผลที่กลับมาต้องเป็นของใบนี้เท่านั้น
+      const gen = qiFormGen;
       document.getElementById('qiBsMenu').classList.add('hidden');
       status.className = 'set-status';
       status.textContent = 'กำลังเก็บจาก BlueStacks... (~3 วินาที)';
@@ -1146,20 +1175,20 @@
         // guard แบบเดียวกับ qiBsRefresh — ไม่มีสะพานก็ต้องบอก ไม่ใช่ปล่อย TypeError ลอย
         if (!(api && api.bsGrab)) throw new Error('ช่องทางคุยกับ BlueStacks ไม่พร้อมใช้งาน');
         const r = await api.bsGrab(qiBsPicked);
+        // ผลอาจมาถึงหลังผู้ใช้ปิดฟอร์ม หรือปิดแล้วเปิดใบใหม่ทัน (รอ ~3 วินาที) — qiFormAlive
+        // อย่างเดียวปล่อยเคสหลังผ่าน เพราะมันกลับเป็น true ให้ใบใหม่ ต้องเทียบรุ่นด้วย
+        if (!qiFormAlive || gen !== qiFormGen) return;
         if (!r || !r.ok) {
-          // ผลอาจมาถึงหลังผู้ใช้ปิดฟอร์มไปแล้ว (รอ ~3 วินาที) — qiOpenForm ไม่ล้างบรรทัดนี้
-          // ข้อความจึงค้างไปโผล่ในตั๋วใบถัดไป เงื่อนไขเดียวกับที่ qiAcceptsGrab ใช้ฝั่งสำเร็จ
-          if (qiFormAlive) {
-            status.className = 'set-status err';
-            status.textContent = (r && r.error) || 'เก็บจาก BlueStacks ไม่สำเร็จ';
-          }
+          // qiOpenForm ไม่ล้างบรรทัดสถานะ ข้อความจึงค้างไปโผล่ในตั๋วใบถัดไปถ้าไม่กันตรงนี้
+          status.className = 'set-status err';
+          status.textContent = (r && r.error) || 'เก็บจาก BlueStacks ไม่สำเร็จ';
           return;
         }
         qiAcceptGrabPayload(r.payload);
       } catch (e) {
         // ไม่มี catch แล้ว finally จะปลดปุ่มให้กดใหม่ได้ก็จริง แต่สถานะค้างที่ "กำลังเก็บ..."
         // ตลอดกาล ผู้ใช้จึงนั่งรอผลที่ไม่มีวันมา
-        if (qiFormAlive) {
+        if (qiFormAlive && gen === qiFormGen) {
           status.className = 'set-status err';
           status.textContent = 'เก็บจาก BlueStacks ไม่สำเร็จ: ' + ((e && e.message) || e);
         }

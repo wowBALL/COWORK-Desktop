@@ -405,3 +405,35 @@ test('qiAcceptsGrab: ผลที่ไม่มี xml ไม่รับ แ�
   assert.strictEqual(qiAcceptsGrab(true, { label: 'ว่าง', nodes: 0 }), false);
   assert.strictEqual(qiAcceptsGrab(true, null), false);
 });
+
+// ---- กับดัก CSS ของปุ่มแบ่งสองส่วน (ด่านอ่านซอร์ส แบบเดียวกับ qiCloseForm ข้างบน) ----
+// ฟีเจอร์นี้ผลิตบั๊ก Critical มาแล้วสองตัว และทั้งสองตัวเป็น CSS ที่ทำให้เมนู "หายไปเฉย ๆ"
+// โดยที่ JS ถูกหมดทุกบรรทัด — เทส DOM จับไม่ได้เลยเพราะ node --test ไม่คำนวณ style
+// ตอนนี้กันไว้ด้วยคอมเมนต์ใน tab-qatest.css อย่างเดียว ซึ่งกันได้เฉพาะคนที่บังเอิญอ่านมัน
+function qatestCssSource() {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  return fs.readFileSync(path.join(__dirname, '..', 'tab-qatest.css'), 'utf8');
+}
+
+test('tab-qatest.css: .qi-bs-split ต้องไม่มี overflow', () => {
+  const m = qatestCssSource().match(/\.qi-bs-split\s*\{([^}]*)\}/);
+  assert.ok(m, 'หากฎ .qi-bs-split ไม่เจอ — ถ้าเปลี่ยนชื่อคลาสแล้ว ให้ย้ายด่านนี้ตามไป อย่าลบทิ้ง '
+    + 'เพราะกับดักที่มันกันอยู่ยังอยู่ที่เดิม');
+  assert.ok(!/overflow/.test(m[1]),
+    '.qi-bs-split มี overflow: กล่องนี้เป็น containing block ของ .qi-bs-menu (จาก position: relative '
+    + 'ที่ต้องคงไว้เพื่อให้เมนูเกาะปุ่ม) และเมนูวางที่ top: 100% ซึ่งอยู่นอกกล่องพอดี overflow จึง clip '
+    + 'มันหายทั้งใบ อาการคือกดปุ่ม ▾ แล้วไม่มีอะไรขึ้นเลย (บั๊ก Critical ของ task 4) — '
+    + 'ถ้าต้องการมุมโค้ง ให้ใส่ border-radius ที่ปุ่มลูกแทน อย่าใช้ overflow clip');
+});
+
+test('tab-qatest.css: .qi-bs-menu.hidden ต้องประกาศ display: none ของตัวเอง', () => {
+  const m = qatestCssSource().match(/\.qi-bs-menu\.hidden\s*\{([^}]*)\}/);
+  assert.ok(m, 'ไม่มีกฎ .qi-bs-menu.hidden แล้ว: tab-qatest.css ถูก <link> หลัง <style> ที่นิยาม .hidden '
+    + 'ใน widget.html วันไหนมีใครเติม display ให้ .qi-bs-menu กฎนั้นจะชนะ .hidden ที่ specificity เท่ากัน '
+    + 'แต่มาก่อน แล้วเมนูจะกางค้างทับฟิลด์ตลอดเวลาโดยไม่มี error ใด ๆ (บั๊ก Critical ของเฟส 1 เป็นแบบนี้เป๊ะ) '
+    + 'กฎนี้จึงต้องอยู่ถาวร ไม่ใช่ของซ้ำซ้อนที่ลบได้');
+  assert.ok(/display\s*:\s*none/.test(m[1]),
+    'กฎ .qi-bs-menu.hidden มีอยู่แต่ไม่ได้ตั้ง display: none — การซ่อนเมนูทั้งหมดในไฟล์นี้ทำผ่าน '
+    + 'classList.add(\'hidden\') ถ้ากฎนี้ไม่ซ่อนจริง เมนูจะกางค้างทับฟิลด์ที่อยู่ใต้ปุ่ม');
+});

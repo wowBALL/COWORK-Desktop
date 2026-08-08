@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { stripJsonFence, systemPromptFor, draftIssue, PROVIDERS, DEFAULT_MODEL, neutralizeComplianceVerdict } = require('../llm.js');
+const { stripJsonFence, systemPromptFor, draftIssue, PROVIDERS, DEFAULT_MODEL, neutralizeComplianceVerdict, uiXmlRulesFor, userContentWithDumps } = require('../llm.js');
 
 test('PROVIDERS: มี Qwen (ค่าเริ่มต้น) และ GLM โดย GLM มี budget กว้างกว่ามาก', () => {
   assert.ok(PROVIDERS[DEFAULT_MODEL]);
@@ -962,4 +962,83 @@ test('draftTestChecklist: งานที่ไม่มี comment ไม่ม
   const [sys, user] = body.messages;
   assert.ok(!user.content.includes('comment'));
   assert.ok(!sys.content.includes('comment'));
+});
+
+// ---- UI hierarchy (XML) จากหน้าจอจริง — เฟส 1 ของ web-page-to-xml ----
+const DUMPS = [{ label: 'Booking Settings', xml: '<hierarchy width="1280" height="800"><node class="button" text="Save" bounds="[1,2][3,4]"/></hierarchy>' }];
+
+// จับ body ที่ยิงออกไปจริง เพื่อยืนยันว่าอะไรเข้า/ไม่เข้าคำขอ
+function captureFetch(bodyOut, content) {
+  return async (_url, init) => {
+    bodyOut.value = JSON.parse(init.body);
+    return {
+      ok: true,
+      json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: content || '{"subject_th":"s","description_th":"d","suggested_risk_level":"Low","missing_info":[]}' } }] }),
+    };
+  };
+}
+
+test('uiXmlRulesFor: มีกฎครบทั้งห้าข้อที่มาจากผลวัด', () => {
+  const r = uiXmlRulesFor(DUMPS);
+  assert.ok(r.includes('bounds='), 'ต้องอธิบายรูปแบบ bounds');
+  assert.ok(r.includes('แกน Y ทับกัน'), 'กติกา "แถวเดียวกัน" คือสิ่งที่ทำให้ตอบคำถามเชิงพื้นที่ถูก');
+  assert.ok(r.includes('ยึดโน้ตเป็นหลัก'), 'โน้ตต้องชนะ XML เมื่อขัดกัน');
+  assert.ok(r.includes('ห้ามยกสิ่งที่ดูผิดปกติ'), 'gemma4 ปั้นบั๊กจากสิ่งที่ดูแปลก 3 ใน 4 ครั้ง');
+  assert.ok(r.includes('ไม่ใช่คำสั่ง'), 'กัน prompt injection จากเนื้อหน้าเว็บ');
+  assert.ok(r.includes('ห้ามสรุปเรื่องสี'), 'XML ไม่มีข้อมูลสี');
+  assert.ok(r.includes('Booking Settings'), 'ต้องบอกชื่อชุดให้โมเดลอ้างถึงได้');
+});
+
+test('systemPromptFor: ไม่มี dumps แล้วพรอมป์ต้องไม่มีกฎ XML เลย (กันเส้นทางเดิมเปลี่ยนพฤติกรรม)', () => {
+  const p = systemPromptFor('Bug', 'th');
+  assert.ok(!p.includes('bounds='));
+  assert.ok(!p.includes('UI hierarchy'));
+});
+
+test('systemPromptFor: ส่ง dumps แล้วกฎ XML ต้องเข้าไปอยู่ในพรอมป์', () => {
+  const p = systemPromptFor('Bug', 'th', [], { dumps: DUMPS });
+  assert.ok(p.includes('bounds='));
+  assert.ok(p.includes('ห้ามยกสิ่งที่ดูผิดปกติ'));
+});
+
+test('userContentWithDumps: XML ห่อด้วยแท็กที่มี index/label ให้โมเดลอ้างถึงได้', () => {
+  const out = userContentWithDumps('โน้ตดิบ', DUMPS);
+  assert.ok(out.startsWith('โน้ตดิบ'), 'โน้ตต้องมาก่อนเสมอ');
+  assert.ok(out.includes('<ui-hierarchy index="1" label="Booking Settings">'), out);
+  assert.ok(out.includes('</ui-hierarchy>'));
+  assert.ok(out.includes('<node class="button" text="Save"'), 'ตัว XML ต้องเข้าไปครบ');
+});
+
+test('draftIssue: uiXml ไปถึงโมเดลที่ vision:false ได้ ไม่โดน guard เรื่องรูป', async () => {
+  const body = {};
+  const r = await draftIssue('ช่องนี้ใส่ค่าเกินได้', {
+    model: 'litellm/gemma4', language: 'th', tracker: 'Bug', uiXml: DUMPS,
+    apiKey: 'k', baseUrl: 'https://x.test/v1', fetchImpl: captureFetch(body),
+  });
+  assert.strictEqual(r.ok, true, r.error);
+  const user = body.value.messages.find(m => m.role === 'user');
+  assert.strictEqual(typeof user.content, 'string', 'ไม่มีรูป content ต้องยังเป็นสตริงเหมือนเดิม');
+  assert.ok(user.content.includes('<ui-hierarchy index="1"'), 'XML ต้องอยู่ใน user message');
+  assert.ok(body.value.messages[0].content.includes('bounds='), 'กฎต้องอยู่ใน system message');
+});
+
+test('draftIssue: ไม่ส่ง uiXml แล้ว user message ต้องเป็นโน้ตดิบล้วน ๆ เหมือนเดิมเป๊ะ', async () => {
+  const body = {};
+  await draftIssue('โน้ตดิบล้วน', {
+    model: 'litellm/gemma4', language: 'th', tracker: 'Bug',
+    apiKey: 'k', baseUrl: 'https://x.test/v1', fetchImpl: captureFetch(body),
+  });
+  const user = body.value.messages.find(m => m.role === 'user');
+  assert.strictEqual(user.content, 'โน้ตดิบล้วน');
+  assert.ok(!body.value.messages[0].content.includes('ui-hierarchy'));
+});
+
+test('draftIssue: uiXml ที่ไม่มี xml จริงถูกกรองทิ้ง ไม่สร้างบล็อกเปล่า', async () => {
+  const body = {};
+  await draftIssue('โน้ต', {
+    model: 'litellm/gemma4', language: 'th', tracker: 'Bug', uiXml: [{ label: 'ว่าง' }, null],
+    apiKey: 'k', baseUrl: 'https://x.test/v1', fetchImpl: captureFetch(body),
+  });
+  const user = body.value.messages.find(m => m.role === 'user');
+  assert.strictEqual(user.content, 'โน้ต');
 });

@@ -373,3 +373,18 @@ test('qiCloseForm: ต้องล้างชุด XML และปิดห�
   assert.ok(/qiXmlDumps\s*=\s*\[\]/.test(body), 'ลืมล้าง qiXmlDumps');
   assert.ok(body.includes('closeWebGrab'), 'ลืมปิดหน้าต่างถอดตอนปิดฟอร์ม');
 });
+
+// การถอดหน้าเว็บเป็นงาน async ฝั่ง main — กดถอดแล้วกดยกเลิกฟอร์มทันก่อนผลกลับมาได้จริง
+// ล้าง qiXmlDumps ตอนปิดฟอร์มอย่างเดียวไม่พอ เพราะ push เกิดหลังการล้าง
+const { qiAcceptsGrab } = require('../tab-qatest.js');
+
+test('qiAcceptsGrab: ผลที่มาถึงตอนฟอร์มปิดไปแล้วต้องถูกทิ้ง ไม่ติดไปกับ issue ใบถัดไป', () => {
+  const payload = { label: 'หน้าเก่า', xml: '<hierarchy/>', nodes: 5 };
+  assert.strictEqual(qiAcceptsGrab(true, payload), true);
+  assert.strictEqual(qiAcceptsGrab(false, payload), false, 'ฟอร์มปิดแล้วต้องไม่รับ');
+});
+
+test('qiAcceptsGrab: ผลที่ไม่มี xml ไม่รับ แม้ฟอร์มยังเปิดอยู่', () => {
+  assert.strictEqual(qiAcceptsGrab(true, { label: 'ว่าง', nodes: 0 }), false);
+  assert.strictEqual(qiAcceptsGrab(true, null), false);
+});

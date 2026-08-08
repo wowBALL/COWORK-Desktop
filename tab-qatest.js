@@ -25,6 +25,11 @@
   let qiDraftImages = [];     // [{filename, dataUrl, pending}]
   // ชุด UI hierarchy ที่ถอดจากหน้าเว็บ — [{label, url, xml, nodes}] เก็บใน renderer เท่านั้น
   let qiXmlDumps = [];
+  // การถอดหน้าเว็บเป็นงาน async ฝั่ง main (executeJavaScript + capturePage) ผู้ใช้กดถอดแล้ว
+  // กดยกเลิกฟอร์มทันก่อนผลจะกลับมาได้ ถ้าไม่มีธงนี้ ผลจะไหลลง qiXmlDumps ที่เพิ่งถูกล้าง
+  // แล้วติดไปกับ issue ตัวถัดไปเงียบ ๆ — เช็ค class hidden แทนไม่ได้ เพราะขั้นทานก่อนส่ง
+  // ก็ซ่อนฟอร์มเหมือนกันทั้งที่เซสชันยังไม่จบ
+  let qiFormAlive = false;
   // รายชื่อโปรเจกต์จริงมาจาก payload ของแท็บ Redmine (tasks-update) ไม่ใช่ qaData ของแท็บนี้ —
   // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
   // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
@@ -119,6 +124,12 @@
       </span>`).join('');
   }
 
+  // ผลที่มาถึงตอนฟอร์มปิดไปแล้วต้องถูกทิ้ง ไม่ใช่เก็บไว้ — ของที่ถอดจากหน้าจอของ issue ก่อน
+  // หลุดไปอยู่ในร่างของ issue ถัดไปคือความผิดพลาดที่ผู้ใช้มองไม่เห็นและตรวจย้อนไม่ได้
+  function qiAcceptsGrab(formAlive, payload) {
+    return !!(formAlive && payload && payload.xml);
+  }
+
   function qiRenderXmlDumps() {
     document.getElementById('qiXmlDumps').innerHTML = qiXmlChipsHtml(qiXmlDumps);
   }
@@ -149,7 +160,14 @@
   function qiUploadDataUrl(dataUrl, filename) {
     return fetch(dataUrl)
       .then(r => r.blob())
-      .then(blob => qiUploadFile(blob, filename));
+      .then(blob => qiUploadFile(blob, filename))
+      // qiUploadFile ดักเฉพาะความล้มเหลวในสายของมันเอง สองขั้นก่อนหน้าไม่มีใครดัก —
+      // ทุกทางแนบไฟล์ในไฟล์นี้รายงานลง #qiFormError เส้นนี้ต้องไม่เงียบอยู่ทางเดียว
+      .catch(e => {
+        const errEl = document.getElementById('qiFormError');
+        errEl.style.display = 'block';
+        errEl.textContent = 'แนบรูปที่แคปมาไม่สำเร็จ: ' + e.message;
+      });
   }
 
   // วางรูปในช่องโน้ต = อัปขึ้น Redmine เป็นไฟล์แนบ + เก็บไบต์ไว้ส่งให้โมเดลดู ทำสองอย่างพร้อมกัน
@@ -311,6 +329,7 @@
   }
 
   function qiOpenForm() {
+    qiFormAlive = true;
     document.getElementById('qaStage').classList.add('hidden');
     document.getElementById('qaIssueForm').classList.remove('hidden');
     document.getElementById('qiProject').innerHTML =
@@ -318,6 +337,7 @@
     qiLoadMetaForSelection();
   }
   function qiCloseForm() {
+    qiFormAlive = false;
     document.getElementById('qaIssueForm').classList.add('hidden');
     document.getElementById('qaStage').classList.remove('hidden');
     qiUploads = [];
@@ -1040,7 +1060,7 @@
     };
     // ลงทะเบียนครั้งเดียวตอน mount ไม่ใช่ตอนเปิดฟอร์ม — ipcRenderer.on สะสม listener ถ้าเรียกซ้ำ
     api && api.onWebGrab && api.onWebGrab(payload => {
-      if (!payload || !payload.xml) return;
+      if (!qiAcceptsGrab(qiFormAlive, payload)) return;
       qiXmlDumps.push({ label: payload.label, url: payload.url, xml: payload.xml, nodes: payload.nodes });
       qiRenderXmlDumps();
       const status = document.getElementById('qiDraftStatus');
@@ -1121,6 +1141,7 @@
       buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName, qiIsImageDataUrlText,
       qiImageTokens, qiFitPlan, QI_IMAGE_TOKEN_LIMIT, qiFitImagesToBudget,
       qiFitNotice, QI_SAFE_FIT_SCALE, qiCustomFieldsHtml, QI_CUSTOM_FIELD_DEFAULTS, qiXmlChipsHtml,
+      qiAcceptsGrab,
     };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

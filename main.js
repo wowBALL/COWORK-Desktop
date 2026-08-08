@@ -1485,6 +1485,31 @@ ipcMain.handle('runner-stop', async () => {
     return { error: body.error || `http_${res.status}` };
   } catch { return { error: 'unreachable' }; }
 });
+// Friday — รูปคำตอบเดียวกับ runner-start/runner-stop เป๊ะ ({ok} หรือ {error})
+// เพราะ renderer ตัวเดิมอ่านทั้งสองแบบด้วยเงื่อนไขเดียวกัน
+ipcMain.handle('friday-start', async () => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${runnerPort}/api/companion/start`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(5000),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 201) return { ok: true };
+    // 409 gpu_busy / already_running และ 503 not_configured ปล่อยให้ poll รอบถัดไป
+    // รายงานความจริง แทนที่จะให้ renderer เดาแทน -- หลักเดียวกับ runner-start
+    return { error: body.error || `http_${res.status}` };
+  } catch { return { error: 'unreachable' }; }
+});
+ipcMain.handle('friday-stop', async () => {
+  try {
+    const res = await fetch(`http://127.0.0.1:${runnerPort}/api/companion/stop`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.status === 200) return { ok: true };
+    return { error: `http_${res.status}` };
+  } catch { return { error: 'unreachable' }; }
+});
 ipcMain.handle('get-runner-config', () => ({
   port: runnerPort, model: runnerModel, profile: runnerProfile, engine: runnerEngine, seen: runnerSeen,
 }));

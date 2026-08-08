@@ -78,5 +78,9 @@ contextBridge.exposeInMainWorld('cowork', {
   startMeeting: (model, name, profile, engine) => ipcRenderer.invoke('runner-start', model, name, profile, engine),
   stopMeeting: () => ipcRenderer.invoke('runner-stop'),
   getRunnerConfig: () => ipcRenderer.invoke('get-runner-config'),
-  saveRunnerConfig: (cfg) => ipcRenderer.invoke('save-runner-config', cfg)
+  saveRunnerConfig: (cfg) => ipcRenderer.invoke('save-runner-config', cfg),
+  // Friday — โปรเซสข้างเคียงที่ meeting-notes เป็นคนเปิด/ปิดให้ renderer ไม่ยิง HTTP เอง
+  // สถานะมากับ onRunnerState อยู่แล้ว จึงไม่มี getFridayState แยก
+  startFriday: () => ipcRenderer.invoke('friday-start'),
+  stopFriday: () => ipcRenderer.invoke('friday-stop')
 });

@@ -49,4 +49,116 @@ function treeToXml(root, meta) {
     + render(root, '  ') + '\n</hierarchy>\n';
 }
 
-module.exports = { xmlEscape, treeToXml };
+function collectTree(document, window) {
+  // tag ที่ไม่มีวันเป็นสิ่งที่ผู้ใช้เห็น — ตัดตั้งแต่ต้นทางไม่ให้โค้ด JS/CSS หลุดเข้าไปเป็น text
+  var SKIP = { SCRIPT: 1, STYLE: 1, HEAD: 1, META: 1, LINK: 1, TITLE: 1, NOSCRIPT: 1, TEMPLATE: 1, BR: 1 };
+  var sx = window.scrollX || 0;
+  var sy = window.scrollY || 0;
+
+  function visible(st, r) {
+    if (!r || r.width <= 0 || r.height <= 0) return false;
+    if (st.display === 'none' || st.visibility === 'hidden') return false;
+    return parseFloat(st.opacity) !== 0;
+  }
+  // เฉพาะ text node ที่เป็นลูกตรงเท่านั้น — ถ้าใช้ textContent ข้อความของลูกจะถูกลากขึ้นไปซ้ำ
+  // ทุกชั้นจนไฟล์บวมหลายเท่า และโมเดลเห็นข้อความเดียวกันสิบรอบจนสับสนว่ามีของซ้ำจริงบนจอ
+  function ownText(el) {
+    var tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+      return String(el.value == null ? '' : el.value).trim();
+    }
+    var out = '';
+    var kids = el.childNodes || [];
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i].nodeType === 3) out += kids[i].nodeValue;
+    }
+    return out.replace(/\s+/g, ' ').trim();
+  }
+  function descOf(el) {
+    return String(el.getAttribute('aria-label') || el.getAttribute('title')
+      || el.getAttribute('alt') || el.getAttribute('placeholder') || '').trim();
+  }
+  function ridOf(el) {
+    return String(el.getAttribute('id') || el.getAttribute('name')
+      || el.getAttribute('data-testid') || '').trim();
+  }
+  function clsOf(el) {
+    var role = String(el.getAttribute('role') || '').trim().toLowerCase();
+    return el.tagName.toLowerCase() + (role ? '[' + role + ']' : '');
+  }
+  // ไม่เดาจากชื่อคลาส CSS เพราะแต่ละเว็บตั้งชื่อคนละแบบ ใช้เฉพาะสัญญาณที่เบราว์เซอร์รับรอง
+  function clickableOf(el, st) {
+    var tag = el.tagName;
+    if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'INPUT') return true;
+    if (tag === 'A' && el.getAttribute('href')) return true;
+    var role = String(el.getAttribute('role') || '').toLowerCase();
+    if (role === 'button' || role === 'link' || role === 'tab' || role === 'checkbox' || role === 'menuitem') return true;
+    if (el.getAttribute('onclick')) return true;
+    return st.cursor === 'pointer';
+  }
+  function scrollableOf(el, st) {
+    return el.scrollHeight > el.clientHeight + 1 && st.overflowY !== 'visible';
+  }
+  function boxOf(r) {
+    return [Math.round(r.left + sx), Math.round(r.top + sy),
+      Math.round(r.right + sx), Math.round(r.bottom + sy)];
+  }
+  // คืน array เสมอ (ไม่ใช่ node เดียว) เพราะ node ที่มองไม่เห็นต้องคืน "ลูกของมัน" ขึ้นไปแทนตัวเอง
+  // ตัดทั้งกิ่งจะทำให้เนื้อหาที่อยู่ในกล่องขนาดศูนย์ (pattern ปกติของ dropdown/accordion) หายหมด
+  function walk(el) {
+    if (!el || !el.tagName || SKIP[el.tagName]) return [];
+    var kids = [];
+    var ch = el.children || [];
+    for (var i = 0; i < ch.length; i++) kids = kids.concat(walk(ch[i]));
+    var st = window.getComputedStyle(el);
+    var r = el.getBoundingClientRect();
+    if (!visible(st, r)) return kids;
+    if (el.tagName === 'IFRAME') {
+      return [{
+        cls: 'iframe', rid: ridOf(el), text: '',
+        desc: descOf(el) || 'iframe — เนื้อหาข้าม origin อ่านไม่ได้',
+        bounds: boxOf(r), clickable: false, scrollable: false, children: [],
+      }];
+    }
+    return [{
+      cls: clsOf(el), rid: ridOf(el), text: ownText(el), desc: descOf(el),
+      bounds: boxOf(r), clickable: clickableOf(el, st), scrollable: scrollableOf(el, st),
+      children: kids,
+    }];
+  }
+  return walk(document.documentElement)[0] || null;
+}
+
+function countNodes(root) {
+  if (!root) return 0;
+  var total = 1;
+  var kids = root.children || [];
+  for (var i = 0; i < kids.length; i++) total += countNodes(kids[i]);
+  return total;
+}
+
+function dumpPage(document, window) {
+  var root = collectTree(document, window);
+  if (!root) return { ok: false, error: 'ไม่พบ element ที่มองเห็นได้ในหน้านี้' };
+  var de = document.documentElement;
+  var meta = {
+    width: Math.round(Math.max(de.scrollWidth || 0, window.innerWidth || 0)),
+    height: Math.round(Math.max(de.scrollHeight || 0, window.innerHeight || 0)),
+    url: String((window.location && window.location.href) || ''),
+    title: String(document.title || ''),
+  };
+  return {
+    ok: true, xml: treeToXml(root, meta), title: meta.title, url: meta.url,
+    nodes: countNodes(root), width: meta.width, height: meta.height,
+  };
+}
+
+// ชุดโค้ดที่ส่งไปรันในหน้าเป้าหมายผ่าน webContents.executeJavaScript()
+// ต้องรวมทุกฟังก์ชันที่ dumpPage เรียกถึง มิฉะนั้นจะพังเฉพาะตอนรันจริง (ดูเทส vm ในชุดเทส)
+function injectableSource() {
+  return [xmlEscape, treeToXml, collectTree, countNodes, dumpPage]
+    .map(function (f) { return f.toString(); })
+    .join('\n\n');
+}
+
+module.exports = { xmlEscape, treeToXml, collectTree, countNodes, dumpPage, injectableSource };

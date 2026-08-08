@@ -1042,3 +1042,25 @@ test('draftIssue: uiXml ที่ไม่มี xml จริงถูกกร
   const user = body.value.messages.find(m => m.role === 'user');
   assert.strictEqual(user.content, 'โน้ต');
 });
+
+test('uiXmlRulesFor: ชุดที่ไม่มี label ต้องไม่กลายเป็น "undefined" ในพรอมป์', () => {
+  assert.ok(uiXmlRulesFor([{ xml: '<hierarchy/>' }]).includes('ชุดที่ 1 = (ไม่มีชื่อ)'));
+});
+
+// ทางเดียวที่เอาของใหม่มาต่อกับของเดิม — โมเดลที่รับรูปได้ ผู้ใช้แนบทั้งรูปจากฝ่ายขายและ XML
+// ที่ถอดเอง ทั้งสองอย่างต้องรอดไปถึงคำขอ ไม่ใช่อย่างใดอย่างหนึ่งเบียดอีกอย่างหาย
+test('draftIssue: ส่งรูปพร้อม uiXml บนโมเดลที่รับรูปได้ ต้องไปถึงครบทั้งคู่', async () => {
+  const body = {};
+  const r = await draftIssue('จอนี้ค่าไม่ตรง', {
+    model: 'Qwen/Qwen3.6-35B-A3B', language: 'th', tracker: 'Bug', uiXml: DUMPS,
+    images: [{ dataUrl: 'data:image/png;base64,AAAA', width: 320, height: 240 }],
+    apiKey: 'k', baseUrl: 'https://x.test/v1', fetchImpl: captureFetch(body),
+  });
+  assert.strictEqual(r.ok, true, r.error);
+  const user = body.value.messages.find(m => m.role === 'user');
+  assert.ok(Array.isArray(user.content), 'มีรูปแล้ว content ต้องเป็น array ตามรูปแบบเดิม');
+  const text = user.content.filter(p => p.type === 'text').map(p => p.text).join('');
+  assert.ok(text.includes('จอนี้ค่าไม่ตรง'), 'โน้ตต้องยังอยู่');
+  assert.ok(text.includes('<ui-hierarchy index="1"'), 'XML ต้องไม่ถูกรูปเบียดหาย');
+  assert.ok(user.content.some(p => p.type === 'image_url'), 'รูปต้องยังถูกส่งไป');
+});

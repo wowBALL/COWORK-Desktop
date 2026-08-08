@@ -877,17 +877,19 @@ function openWebGrab() {
       .catch(err => webGrabStatus({ text: 'เปิด URL ที่จำไว้ไม่สำเร็จ: ' + err.message, kind: 'err', busy: false }));
   });
   webGrabWin.on('closed', () => {
-    // BaseWindow ไม่นำ WebContentsView ลูกมันตายไปด้วยตัว (ต่างจาก BrowserWindow)
-    // ถ้าไม่ทำความสะอาดด้วยตัวเอง webContents เก่าจะวิ่งต่ออยู่ และ syncUrl ของมันจะส่ง URL
-    // ไปยัง toolbar ของเซสชันใหม่ เมื่อเปิดอีกครั้ง
-    if (webGrabPage && !webGrabPage.isDestroyed()) {
-      webGrabPage.webContents.removeListener('did-navigate', syncUrl);
-      webGrabPage.webContents.removeListener('did-navigate-in-page', syncUrl);
-      webGrabPage.webContents.close();
+    // BaseWindow ไม่ลาก WebContentsView ลูกไปตายด้วย (ต่างจาก BrowserWindow ที่ตายพร้อมกัน)
+    // ถ้าไม่เก็บเอง หน้าเว็บเก่ายังรันต่อ แล้ว syncUrl ของมันจะยิง URL ไปโผล่ในช่องของ
+    // toolbar เซสชันใหม่ตอนเปิดครั้งถัดไป — และทุกรอบเปิด/ปิดทิ้งโปรเซส renderer ค้างไว้
+    // isDestroyed() อยู่บน webContents ไม่ใช่บนตัว View — เรียกผิดที่จะโยนตอนปิดหน้าต่างพอดี
+    const wcOf = (v) => (v && v.webContents && !v.webContents.isDestroyed() ? v.webContents : null);
+    const pageWc = wcOf(webGrabPage);
+    if (pageWc) {
+      pageWc.removeListener('did-navigate', syncUrl);
+      pageWc.removeListener('did-navigate-in-page', syncUrl);
+      pageWc.close();
     }
-    if (webGrabBar && !webGrabBar.isDestroyed()) {
-      webGrabBar.webContents.close();
-    }
+    const barWc = wcOf(webGrabBar);
+    if (barWc) barWc.close();
     webGrabWin = null;
     webGrabBar = null;
     webGrabPage = null;

@@ -182,6 +182,30 @@ test('เลือกแท็ก when/* ไว้ แล้วข้อมู�
   assert.match(walk(remaining[0]).map(e=>e.innerHTML).join(''), /push ต้องขอทุกครั้ง/);
 });
 
+test('ฟีดบันทึกรายวันพับได้รายวัน และย่อไว้ทุกวันเป็นค่าเริ่มต้น', () => {
+  const data=sampleData();
+  data.daily=[
+    { date:'2026-08-07', file:'daily/2026/08/2026-08-07.md', entries:[
+      { project:'COWORK Desktop', text:'ทำ Testing Room จนจบทุกเฟส' },
+      { project:'COWORK Desktop', text:'ปล่อย v1.10.0' },
+      { project:'test-case', text:'push qa-log-reporter.js' },
+    ]},
+    { date:'2026-08-06', file:'daily/2026/08/2026-08-06.md', entries:[
+      { project:'Zinga', text:'แก้ wallet' },
+    ]},
+  ];
+  tab.onData(data);
+  const days=walk(byId.wsFeed).filter(e=>e.tagName==='details');
+  assert.strictEqual(days.length, 2);
+  // ไม่ตั้ง .open เลย = เบราว์เซอร์ render เป็นย่อ ถ้าใครเผลอใส่ open ทีหลังเทสต์นี้จะจับได้
+  days.forEach(d=>assert.notStrictEqual(d.open, true, 'ทุกวันต้องเริ่มที่ย่อไว้'));
+  const heads=walk(byId.wsFeed).filter(e=>e.tagName==='summary');
+  assert.strictEqual(heads.length, 2);
+  assert.match(heads[0].innerHTML, /2026-08-07/);
+  // หัวข้อที่ย่อไว้ต้องบอกปริมาณข้างในให้ครบ ไม่งั้นไม่มีทางรู้ว่าควรกางวันไหน
+  assert.match(heads[0].innerHTML, /2 โปรเจกต์ · 3 รายการ/);
+});
+
 test('แผงรายละเอียดโปรเจกต์อัปเดตตามข้อมูลรอบใหม่ และปิดกลับไปรายการถ้าโปรเจกต์นั้นหายไป', () => {
   const data=sampleData();
   tab.onData(data);

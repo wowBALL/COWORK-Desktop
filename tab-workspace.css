@@ -15,7 +15,17 @@
 
 .feed{display:flex;flex-direction:column;gap:2px}
 .day{margin-bottom:6px}
-.day .dhead{display:flex;align-items:center;gap:9px;margin:6px 0 8px}
+/* .dhead เป็น <summary> ของ <details class="day"> — ตัดสามเหลี่ยม default ของเบราว์เซอร์
+ * ทิ้งทั้งสองสาย (list-style กับ ::-webkit-details-marker) แล้ววาด ▸ ของเราเองที่หมุนได้ */
+.day>.dhead{display:flex;align-items:center;gap:9px;margin:6px 0;padding:7px 10px;cursor:pointer;
+  list-style:none;background:var(--panel);border:1px solid var(--line-soft);border-radius:9px}
+.day>.dhead::-webkit-details-marker{display:none}
+.day>.dhead:hover{border-color:var(--accent)}
+/* สลับตัวอักษรแทนการ rotate ตัวเดิม — transform บน ::before ของ <summary> ไม่ถูก apply
+ * ใน Chromium ที่ Electron ใช้ (คำนวณออกมาเป็น identity matrix) เปลี่ยน content เอาชัวร์กว่า */
+.day>.dhead::before{content:'▸';display:inline-block;width:8px;font-size:10px;color:var(--dim)}
+.day[open]>.dhead::before{content:'▾'}
+.day[open]>.dhead{margin-bottom:10px}
 .day .ddate{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent)}
 .day .dsub{font-size:10px;color:var(--dim)}
 .entry{display:flex;gap:11px;padding:2px 0 12px;cursor:pointer}

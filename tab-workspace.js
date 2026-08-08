@@ -115,9 +115,15 @@
     el.innerHTML='';
     dates.forEach(date=>{
       const projs=byDate.get(date);
-      const day=document.createElement('div'); day.className='day';
-      day.innerHTML=`<div class="dhead"><span class="ddate">${esc(date)}</span>
-        <span class="dsub">${projs.size} โปรเจกต์อัปเดต</span></div>`;
+      // <details> ไม่ใช่ <div> — ทุกวันเริ่มที่ "ย่อไว้" (ไม่ใส่ attribute open) แล้วปล่อยให้
+      // เบราว์เซอร์คุมการกางเอง สถานะที่ user กางไว้จะอยู่รอดข้ามการรีเฟรชด้วย เพราะ
+      // renderWsFeed เขียนทับ #wsFeed ทั้งก้อนเฉพาะตอนข้อมูลเปลี่ยนรอบใหม่เท่านั้น
+      const day=document.createElement('details'); day.className='day';
+      const head=document.createElement('summary'); head.className='dhead';
+      let nItems=0; projs.forEach(items=>{ nItems+=items.length; });
+      head.innerHTML=`<span class="ddate">${esc(date)}</span>
+        <span class="dsub">${projs.size} โปรเจกต์ · ${nItems} รายการ</span>`;
+      day.appendChild(head);
       projs.forEach((items,project)=>{
         const en=document.createElement('div'); en.className='entry';
         en.style.setProperty('--pc',hueOf(project));

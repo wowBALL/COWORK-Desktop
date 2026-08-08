@@ -361,3 +361,15 @@ test('qiXmlChipsHtml: url ใน attribute ต้องแตกออกมา�
   assert.ok(!html.includes('onmouseover="alert'), html);
   assert.ok(html.includes('&quot;'), 'อัญประกาศต้องถูกแปลง ไม่ใช่ผ่านไปดิบ ๆ');
 });
+
+// qiCloseForm อยู่ใน IIFE ที่พึ่ง DOM จริง เรียกตรงจาก node --test ไม่ได้ — ดักที่ระดับซอร์ส
+// แทน เพราะความพลาดที่ต้องกันคือ "ลืมเพิ่มบรรทัดล้าง" ซึ่งอ่านจากซอร์สก็เห็น
+// (ถ้าลืม XML ของ issue ใบก่อนจะติดไปกับใบถัดไปเงียบ ๆ แล้วร่างอ้างหน้าจอผิดหน้า)
+test('qiCloseForm: ต้องล้างชุด XML และปิดหน้าต่างถอดด้วย', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'tab-qatest.js'), 'utf8');
+  const body = src.slice(src.indexOf('function qiCloseForm()'), src.indexOf('function qiLoadMetaForSelection'));
+  assert.ok(/qiXmlDumps\s*=\s*\[\]/.test(body), 'ลืมล้าง qiXmlDumps');
+  assert.ok(body.includes('closeWebGrab'), 'ลืมปิดหน้าต่างถอดตอนปิดฟอร์ม');
+});

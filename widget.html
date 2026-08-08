@@ -439,10 +439,16 @@
           <input type="checkbox" id="qiPci" checked> ประเมิน PCI DSS
         </label>
         <button type="button" id="qiDraftBtn" class="set-cancel">🪄 ให้ LLM ช่วยร่าง</button>
+        <!-- เฟส 1 ใส่ปุ่มเดียว เว้นที่ไว้ให้ "📱 ดึงจาก BlueStacks" ของเฟส 2 — ไม่ใส่ปุ่มที่กด
+             ไม่ได้ไว้ก่อน เพราะปุ่มตายสร้างความสับสนมากกว่าช่วยให้เห็นแผน -->
+        <button type="button" id="qiWebGrabBtn" class="set-cancel" title="เปิดเบราว์เซอร์ในแอป ไปหน้าที่มีปัญหา แล้วถอดรูป + โครงหน้าจอกลับมา">🌐 ดึงจากหน้าเว็บ</button>
         <div id="qiDraftStatus" class="set-status"></div>
         <!-- สิ่งที่ dev น่าจะถามกลับ — อยู่ในฟอร์มให้เติมก่อนส่งเท่านั้น ไม่เข้า description
              และไม่ขึ้น Redmine (ตัดสินใจไว้ใน spec 2026-08-05) -->
         <div id="qiDraftGaps" class="qi-draft-gaps"></div>
+        <!-- โครงหน้าจอที่ถอดมา — ไม่ใช่รูปย่อเหมือน #qiNotesImages เพราะดูด้วยตาเปล่าไม่รู้เรื่อง
+             ต้องกด 👁 เปิดวิวเวอร์ตัวเดียวกับแท็บ QA แทน -->
+        <div id="qiXmlDumps" class="qi-xml-dumps"></div>
 
         <div class="row-label">หัวข้อ (Subject)</div>
         <input id="qiSubject" class="search" type="text">
@@ -469,6 +475,14 @@
 
         <div id="qiFormError" class="set-status err" style="display:none"></div>
         <div class="set-actions"><button type="button" id="qiPreviewBtn" class="set-save">พรีวิว →</button></div>
+      <!-- จุดตรวจก่อนส่ง: ให้เห็นด้วยตาว่าโครงที่จะส่งให้โมเดลคือของหน้านั้นจริง -->
+      <div id="qiXmlViewer" class="qi-xml-viewer hidden">
+        <div class="qi-xml-viewer-head">
+          <span id="qiXmlViewerTitle"></span>
+          <button type="button" id="qiXmlViewerClose" class="set-cancel">ปิด</button>
+        </div>
+        <div id="qiXmlViewerBody"></div>
+      </div>
       </div>
 
       <!-- หน้า review — ต้องกด "ยืนยันสร้าง" จากตรงนี้เท่านั้นถึงจะ POST จริง -->

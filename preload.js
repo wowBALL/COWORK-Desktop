@@ -57,6 +57,10 @@ contextBridge.exposeInMainWorld('cowork', {
   getIssueFormMeta: (projectId, trackerName) => ipcRenderer.invoke('get-issue-form-meta', projectId, trackerName),
   getProjectMembers: (projectId) => ipcRenderer.invoke('get-project-members', projectId),
   draftIssueText: (rawNotes, opts) => ipcRenderer.invoke('draft-issue-text', rawNotes, opts),
+  // ถอดหน้าเว็บเป็นรูป + UI hierarchy — main เป็นคนเปิดหน้าต่างและส่งผลกลับมาทาง onWebGrab
+  openWebGrab: () => ipcRenderer.invoke('open-web-grab'),
+  closeWebGrab: () => ipcRenderer.send('close-web-grab'),
+  onWebGrab: (cb) => ipcRenderer.on('web-grab-result', (_e, payload) => cb(payload)),
   getLlmConfig: () => ipcRenderer.invoke('get-llm-config'),
   saveLlmConfig: (cfg) => ipcRenderer.invoke('save-llm-config', cfg),
   uploadIssueAttachment: (fileBuffer, filename) => ipcRenderer.invoke('upload-issue-attachment', fileBuffer, filename),

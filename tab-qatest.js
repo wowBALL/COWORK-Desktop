@@ -23,6 +23,8 @@
   // ไม่ใช่ชุดเดียวกับ qiUploads: qiUploads คือไฟล์แนบของ issue (ทุกใบ ไม่ว่ามาจากทางไหน)
   // ส่วนตรงนี้คือ "ใบที่จะส่งให้โมเดลดู" ซึ่งผู้ใช้เอาออกทีละใบได้โดยไฟล์แนบยังอยู่
   let qiDraftImages = [];     // [{filename, dataUrl, pending}]
+  // ชุด UI hierarchy ที่ถอดจากหน้าเว็บ — [{label, url, xml, nodes}] เก็บใน renderer เท่านั้น
+  let qiXmlDumps = [];
   // รายชื่อโปรเจกต์จริงมาจาก payload ของแท็บ Redmine (tasks-update) ไม่ใช่ qaData ของแท็บนี้ —
   // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
   // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
@@ -115,6 +117,39 @@
         <button type="button" class="qi-xml-view" data-i="${i}" title="ดูโครงหน้าจอชุดนี้ก่อนส่งให้โมเดล">👁</button>
         <button type="button" class="qi-xml-drop" data-i="${i}" title="ไม่ส่งชุดนี้ให้โมเดล">×</button>
       </span>`).join('');
+  }
+
+  function qiRenderXmlDumps() {
+    document.getElementById('qiXmlDumps').innerHTML = qiXmlChipsHtml(qiXmlDumps);
+  }
+
+  // ใช้วิวเวอร์ตัวเดียวกับแท็บ UI hierarchy ของหน้าอ่านรัน — sandbox="allow-scripts" ไม่มี
+  // allow-same-origin วิวเวอร์จึงรัน JS ตัวเองได้แต่แตะ DOM/ข้อมูลของแอปไม่ได้
+  function qiOpenXmlViewer(i) {
+    const d = qiXmlDumps[i];
+    if (!d) return;
+    const body = document.getElementById('qiXmlViewerBody');
+    document.getElementById('qiXmlViewerTitle').textContent = `${d.label} · ${d.nodes} nodes · ${d.url || ''}`;
+    try {
+      const html = uidumpHtml(d.xml, { label: d.label, palette: qaViewerPalette() });
+      const f = document.createElement('iframe');
+      f.className = 'qa-ui';
+      f.setAttribute('sandbox', 'allow-scripts');
+      f.srcdoc = html;
+      body.innerHTML = '';
+      body.appendChild(f);
+    } catch (e) {
+      body.innerHTML = `<div class="empty">แปลง XML ไม่สำเร็จ: ${esc(e.message)}</div>`;
+    }
+    document.getElementById('qiXmlViewer').classList.remove('hidden');
+  }
+
+  // รูปที่ถอดมาเข้าเส้นทางไฟล์แนบเดิมทั้งหมด (ไม่เข้า qiDraftImages) — ถ้าเข้า พอผู้ใช้เลือก
+  // gemma4 แอปจะฟ้อง "โมเดลไม่รับรูป" แล้วร่างไม่ได้เลย ทั้งที่ตั้งใจให้รูปเป็นของคนดูใน Redmine
+  function qiUploadDataUrl(dataUrl, filename) {
+    return fetch(dataUrl)
+      .then(r => r.blob())
+      .then(blob => qiUploadFile(blob, filename));
   }
 
   // วางรูปในช่องโน้ต = อัปขึ้น Redmine เป็นไฟล์แนบ + เก็บไบต์ไว้ส่งให้โมเดลดู ทำสองอย่างพร้อมกัน
@@ -287,6 +322,9 @@
     document.getElementById('qaStage').classList.remove('hidden');
     qiUploads = [];
     qiDraftImages = [];
+    qiXmlDumps = [];
+    document.getElementById('qiXmlDumps').innerHTML = '';
+    document.getElementById('qiXmlViewer').classList.add('hidden');
     document.getElementById('qiFileList').innerHTML = '';
     document.getElementById('qiNotesImages').innerHTML = '';
     qiSyncDraftBtnLabel();
@@ -305,6 +343,9 @@
     document.getElementById('qiCustomFields').innerHTML = '';
     document.getElementById('qiReviewError').style.display = 'none';
     document.querySelectorAll('.qi-field-error').forEach(el => el.classList.remove('qi-field-error'));
+    // ปิดหน้าต่างถอดตามไปด้วย ไม่งั้นมันลอยอยู่แล้วส่งผลเข้าฟอร์มที่ปิดไปแล้ว
+    const api = shell().api;
+    if (api && api.closeWebGrab) api.closeWebGrab();
     qiMeta = null;
     qiMembers = [];
   }
@@ -349,8 +390,8 @@
       status.className = 'set-status err';
       // รูปอย่างเดียวไม่พอโดยตั้งใจ ไม่ใช่ข้อจำกัดทางเทคนิค — โมเดลดูสกรีนช็อตแล้วบอกได้แค่ว่า
       // "จอนี้หน้าตาแบบนี้" ไม่รู้ว่าอะไรผิด จนกว่าจะมีคนบอก (วัดมาแล้ว ดู spec 2026-08-05)
-      status.textContent = qiDraftImages.length
-        ? 'พิมพ์โน้ตดิบก่อน — รูปอย่างเดียวไม่พอ โมเดลไม่รู้ว่าอะไรในภาพคือสิ่งที่ผิด'
+      status.textContent = (qiDraftImages.length || qiXmlDumps.length)
+        ? 'พิมพ์โน้ตดิบก่อน — รูปหรือโครงหน้าจออย่างเดียวไม่พอ โมเดลไม่รู้ว่าอะไรคือสิ่งที่ผิด'
         : 'พิมพ์โน้ตดิบก่อน';
       return;
     }
@@ -372,6 +413,7 @@
         language: document.getElementById('qiLanguage').value,
         tracker: document.getElementById('qiTracker').value,
         images: fit.images,
+        uiXml: qiXmlDumps.map(d => ({ label: d.label, xml: d.xml })),
         pci: document.getElementById('qiPci').checked,
       });
     }).then(result => {
@@ -387,8 +429,11 @@
       // คำเตือนจากฝั่ง LLM (เช่น ขาดฝั่งภาษาที่ขอไป) ต่อท้ายแบบเดียวกับคำเตือนเรื่องย่อรูป
       const notices = [fitNotice, ...(result.warnings || [])].filter(Boolean);
       status.className = notices.length ? 'set-status' : 'set-status ok';
-      status.textContent = (images.length
-        ? `ร่างสำเร็จ (ดู ${images.length} รูปประกอบ) — ตรวจแล้วแก้ต่อได้ก่อนส่ง`
+      const seen = [];
+      if (images.length) seen.push(`${images.length} รูป`);
+      if (qiXmlDumps.length) seen.push(`โครงหน้าจอ ${qiXmlDumps.length} ชุด`);
+      status.textContent = (seen.length
+        ? `ร่างสำเร็จ (ดู ${seen.join(' + ')} ประกอบ) — ตรวจแล้วแก้ต่อได้ก่อนส่ง`
         : 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง') + (notices.length ? '\n' + notices.join('\n') : '');
       const d = result.draft;
       document.getElementById('qiSubject').value = d.subject || '';
@@ -975,6 +1020,35 @@
       qiDraftImages.splice(Number(btn.dataset.i), 1);
       qiRenderDraftImages();
     };
+    document.getElementById('qiWebGrabBtn').onclick = () => {
+      const status = document.getElementById('qiDraftStatus');
+      status.className = 'set-status';
+      status.textContent = 'เปิดหน้าต่างถอดแล้ว — ไปหน้าที่มีปัญหา (เปิด dialog ค้างไว้ได้) แล้วกด "📸 ถอดหน้านี้"';
+      api && api.openWebGrab && api.openWebGrab();
+    };
+    document.getElementById('qiXmlDumps').onclick = (e) => {
+      const view = e.target.closest('.qi-xml-view');
+      if (view) { qiOpenXmlViewer(Number(view.dataset.i)); return; }
+      const drop = e.target.closest('.qi-xml-drop');
+      if (!drop) return;
+      qiXmlDumps.splice(Number(drop.dataset.i), 1);
+      qiRenderXmlDumps();
+    };
+    document.getElementById('qiXmlViewerClose').onclick = () => {
+      document.getElementById('qiXmlViewer').classList.add('hidden');
+      document.getElementById('qiXmlViewerBody').innerHTML = '';   // ปล่อย iframe ทิ้ง ไม่ให้ค้างในหน่วยความจำ
+    };
+    // ลงทะเบียนครั้งเดียวตอน mount ไม่ใช่ตอนเปิดฟอร์ม — ipcRenderer.on สะสม listener ถ้าเรียกซ้ำ
+    api && api.onWebGrab && api.onWebGrab(payload => {
+      if (!payload || !payload.xml) return;
+      qiXmlDumps.push({ label: payload.label, url: payload.url, xml: payload.xml, nodes: payload.nodes });
+      qiRenderXmlDumps();
+      const status = document.getElementById('qiDraftStatus');
+      status.className = 'set-status ok';
+      status.textContent = `ได้โครงหน้าจอแล้ว (${payload.nodes} nodes)`
+        + (payload.pngDataUrl ? ' + รูป 1 ใบ แนบขึ้น Redmine ให้แล้ว' : ' — แคปรูปไม่ได้ ได้เฉพาะโครง');
+      if (payload.pngDataUrl) qiUploadDataUrl(payload.pngDataUrl, payload.filename);
+    });
   }
 
   // ===== การ์ดตั้งค่าของแท็บนี้ =====

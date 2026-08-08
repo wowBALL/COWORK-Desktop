@@ -39,8 +39,13 @@
   // ระหว่างร่าง #qiDraftStatus ไม่ได้เป็นแค่บรรทัดสถานะ แต่ถือปุ่ม #qiSkipDraft ไว้ด้วย ซึ่งเป็น
   // ทางเดียวที่จะยกเลิกการร่างที่กินเวลา 10-60 วินาที · ใครก็ตามที่เขียนทับบรรทัดนั้นระหว่างนี้
   // จะทำให้ผู้ใช้เหลือร่างที่ยกเลิกไม่ได้ ปุ่ม 🪄 ค้างเทา แล้วผลร่างไปทับหัวข้อ/รายละเอียดทีหลัง
-  // โดยไม่มีอะไรเตือน — commit adcaa2a กัน qiBsRefresh ไว้แล้ว ธงนี้กันฝั่งปุ่ม 📱 ที่เหลือ
-  let qiDraftBusy = false;
+  // โดยไม่มีอะไรเตือน — commit adcaa2a กัน qiBsRefresh ไว้แล้ว การ์ดนี้กันทางที่เหลือ (📱/🌐/วางรูป)
+  //
+  // ต้องเป็น "เลขรุ่นของการกดร่าง" ไม่ใช่บูลีนตัวเดียวทั้งโมดูล เพราะปุ่มยกเลิกเป็นของการกด
+  // แต่ละครั้ง: กด 🪄 → กดข้าม → กด 🪄 ใหม่ → ร่างแรกค่อยกลับมา ถ้าเป็นบูลีน ร่างแรกจะปลดการ์ด
+  // ของร่างที่สองแล้วเขียนทับปุ่มยกเลิกของมัน ผู้ใช้เหลือร่างที่ยกเลิกไม่ได้อีกรอบ
+  let qiDraftSeq = 0;      // เดินหน้าอย่างเดียว หนึ่งครั้งต่อการกดร่างหนึ่งครั้ง
+  let qiDraftOwner = 0;    // seq ของร่างที่ถือบรรทัดสถานะอยู่ตอนนี้ (0 = ไม่มีใครถือ)
   // รายชื่อโปรเจกต์จริงมาจาก payload ของแท็บ Redmine (tasks-update) ไม่ใช่ qaData ของแท็บนี้ —
   // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
   // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
@@ -182,27 +187,44 @@
   }
 
   // ทางเดียวที่งานเก็บหลักฐาน (📱 BlueStacks / 🌐 หน้าเว็บ) เขียนบรรทัดสถานะได้ — ระหว่างร่าง
-  // มันต้องยอมสละบรรทัดนั้นไป เพราะปุ่มยกเลิกร่างอยู่ในนั้น (ดูคอมเมนต์ที่ qiDraftBusy)
+  // มันต้องยอมสละบรรทัดนั้นไป เพราะปุ่มยกเลิกร่างอยู่ในนั้น (ดูคอมเมนต์ที่ qiDraftSeq)
   // ผลสำเร็จไม่หายไปไหนอยู่แล้ว: ชิปโครงหน้าจอโผล่ในฟอร์ม และรูปถูกอัปขึ้น Redmine เหมือนเดิม
   // ส่วนความล้มเหลวต้องไม่เงียบ จึงไปออกที่ #qiFormError ซึ่งเป็นช่องรายงานพลาดของงานแนบไฟล์
   // ในไฟล์นี้อยู่แล้ว และ qiDraft() ไม่เคยแตะ
+  //
+  // การตัดสินใจว่า "ข้อความนี้ไปลงที่ไหน" แยกออกมาเป็นฟังก์ชันบริสุทธิ์แบบเดียวกับ qiAcceptsGrab
+  // เพราะมันคือกฎที่พังแล้วผู้ใช้เสียปุ่มยกเลิก ไม่ใช่รายละเอียดการวาด DOM — node --test จึงคุมได้
+  // โดยไม่ต้องมี DOM · คืน 'status' | 'error' | 'drop'
+  function qiGrabStatusTarget(draftRunning, kind) {
+    if (!draftRunning) return 'status';
+    return kind === 'err' ? 'error' : 'drop';
+  }
+
   function qiGrabStatus(kind, text) {
-    if (!qiDraftBusy) {
-      const status = document.getElementById('qiDraftStatus');
-      status.className = kind ? `set-status ${kind}` : 'set-status';
-      status.textContent = text;
+    const target = qiGrabStatusTarget(qiDraftOwner !== 0, kind);
+    if (target === 'drop') return;
+    if (target === 'error') {
+      const errEl = document.getElementById('qiFormError');
+      errEl.style.display = 'block';
+      errEl.textContent = text;
       return;
     }
-    if (kind !== 'err') return;
-    const errEl = document.getElementById('qiFormError');
-    errEl.style.display = 'block';
-    errEl.textContent = text;
+    const status = document.getElementById('qiDraftStatus');
+    status.className = kind ? `set-status ${kind}` : 'set-status';
+    status.textContent = text;
   }
 
   // ที่เดียวที่แปลง payload เป็นชิป + ไฟล์แนบ — สองเส้นทาง (หน้าเว็บ push ผ่าน channel /
   // BlueStacks คืนผลทาง invoke) ต้องใช้ตัวนี้ทั้งคู่ ไม่งั้นแก้ที่หนึ่งแล้วลืมอีกที่
   function qiAcceptGrabPayload(payload) {
     if (!qiAcceptsGrab(qiFormAlive, payload)) return;
+    // ความล้มเหลวรอบก่อนไปนอนอยู่ที่ #qiFormError ซึ่งอยู่ใต้ปุ่มลงไปไกล (ใต้หัวข้อ/รายละเอียด/
+    // Risk Level/ฟิลด์กำหนดเอง/รายการไฟล์แนบ) และมีแค่ qiCloseForm กับ qiShowReview ที่ล้างมัน
+    // ⇒ เก็บพลาด แล้วเก็บใหม่สำเร็จ จะได้บรรทัดเขียว "ได้โครงหน้าจอแล้ว" อยู่บน กับป้ายแดง
+    // "เก็บจาก BlueStacks ไม่สำเร็จ" ค้างอยู่ล่างพร้อมกัน ผู้ใช้อ่านแล้วไม่รู้ว่าอันไหนคือความจริง
+    const errEl = document.getElementById('qiFormError');
+    errEl.style.display = 'none';
+    errEl.textContent = '';
     qiXmlDumps.push({
       kind: payload.kind || 'web', label: payload.label, url: payload.url,
       xml: payload.xml, nodes: payload.nodes,
@@ -217,6 +239,19 @@
   // ระหว่างวัน รายการที่ค้างจากตอนเปิดแอปจะชี้ไปเครื่องที่ปิดไปแล้ว (นับใหม่วัดได้ ~180ms)
   let qiBsInstances = [];
   let qiBsPicked = '';
+  // การกาง ▾ มีสองสถานะที่ผู้ใช้แยกไม่ออกจากภายนอก: กางอยู่จริง กับ "สั่งกางแล้วกำลังรอรายชื่อ"
+  // (รอบนั้นกินหลายร้อย ms) การดูแค่คลาส hidden จึงตอบผิดทั้งสองเคสที่เกิดในฟอร์มใบเดียวกัน
+  // — เลข qiFormGen ไม่ช่วยเลยเพราะมันเท่าเดิม: (1) กด ▾ แล้วคลิกไปที่ช่องรายละเอียด ตัวดัก
+  // คลิกทั้งเอกสารสั่งซ่อนเมนูที่ยังไม่ทันโผล่ พอรายชื่อกลับมาเมนูจึงเด้งคลุมช่องที่ผู้ใช้ย้ายไป
+  // พิมพ์อยู่ (2) กด ▾ รัว ๆ สองที ครั้งที่สองที่ตั้งใจจะปิดกลับกลายเป็นสั่งกางซ้ำ
+  let qiBsMenuOpen = false;   // ผู้ใช้ยังอยากให้เมนูกางอยู่ไหม (รวมช่วงที่ยังรอรายชื่อ)
+  let qiBsMenuSeq = 0;        // ทุกการยกเลิกเดินเลขนี้ คำสั่งกางที่ค้างอยู่จึงรู้ว่าตัวเองหมดอายุ
+
+  function qiBsMenuHide() {
+    qiBsMenuOpen = false;
+    qiBsMenuSeq++;
+    document.getElementById('qiBsMenu').classList.add('hidden');
+  }
 
   function qiBsRenderPick() {
     document.getElementById('qiBsPickName').textContent = qiBsPicked || 'ไม่พบเครื่อง';
@@ -430,9 +465,10 @@
     qiFormAlive = true;
     qiFormGen++;     // ใบใหม่ = รุ่นใหม่ ผลของใบก่อนที่ยังค้างอยู่ต้องตกรุ่นทันทีตรงนี้
     // ใบใหม่ยังไม่มีร่างของตัวเอง และปุ่มยกเลิกของใบก่อนถูก qiCloseForm ล้างไปแล้ว จึงไม่มีอะไร
-    // ให้ปกป้อง — ถ้าไม่รีเซ็ตตรงนี้ ธงจะค้างจนกว่าร่างของใบก่อนจะกลับมา แล้วปุ่ม 📱 ของใบใหม่
-    // จะเงียบไปโดยไม่มีเหตุผล
-    qiDraftBusy = false;
+    // ให้ปกป้อง — ถ้าไม่ปล่อยตรงนี้ การ์ดจะค้างจนกว่าร่างของใบก่อนจะกลับมา แล้วปุ่ม 📱 ของใบใหม่
+    // จะเงียบไปโดยไม่มีเหตุผล · ร่างของใบก่อนที่ยังวิ่งอยู่จะไม่เขียนอะไรลงใบนี้เพราะมันเช็ค
+    // qiFormGen ที่เพิ่งเดินไปข้างบนแล้ว
+    qiDraftOwner = 0;
     // ไม่ await — ฟอร์มต้องเปิดทันที รายชื่อเครื่องตามมาใน ~180ms · false = ห้ามฟ้อง error
     qiBsRefresh(false);
     document.getElementById('qaStage').classList.add('hidden');
@@ -462,6 +498,11 @@
     document.getElementById('qiRiskLevelRow').classList.remove('hidden');
     document.getElementById('qiDraftStatus').className = 'set-status';
     document.getElementById('qiDraftStatus').textContent = '';
+    // บรรทัดข้างบนเพิ่งลบปุ่ม #qiSkipDraft ทิ้ง ⇒ ไม่มีปุ่มยกเลิกให้ปกป้องอีกแล้ว ต้องปล่อยการ์ด
+    // ตามไปด้วย ไม่งั้นงานเก็บหลักฐานของใบถัดไปจะถูกกลืนเงียบ ๆ · qiBsMenuHide ปิดเมนูที่อาจ
+    // ค้างอยู่และยกเลิกคำสั่งกางที่ยังรอรายชื่ออยู่ ไม่งั้นมันเด้งขึ้นมาลอยอยู่บนหน้ารายการ
+    qiDraftOwner = 0;
+    qiBsMenuHide();
     document.getElementById('qiFormError').style.display = 'none';
     document.getElementById('qiAssignee').innerHTML = '<option value="">(ไม่ระบุ)</option>';
     document.getElementById('qiPriority').innerHTML = '';
@@ -524,16 +565,39 @@
     const images = qiDraftImages
       .filter(im => im.dataUrl)
       .map(im => ({ filename: im.filename, dataUrl: im.dataUrl }));
+    // ถ่ายชุดโครงหน้าจอออกมาตั้งแต่ตอนกด แบบเดียวกับ images — งานเก็บหลักฐานที่ลงกลางคันได้
+    // (📱/🌐 ระหว่างร่าง) เป็นเรื่องปกติของฟอร์มนี้แล้ว ถ้าอ่าน qiXmlDumps.length สด ๆ ตอนร่างเสร็จ
+    // บรรทัดจบจะโฆษณา "ดูโครงหน้าจอ N ชุด ประกอบ" ด้วยชุดที่โมเดลไม่เคยเห็น
+    const uiXml = qiXmlDumps.map(d => ({ label: d.label, xml: d.xml }));
     const btn = document.getElementById('qiDraftBtn');
     btn.disabled = true;
     status.className = 'set-status';
     status.innerHTML = 'กำลังร่าง... <button type="button" id="qiSkipDraft">ข้ามไปกรอกเองเลย</button>';
-    // ตั้งธงพร้อมกับที่ปุ่มยกเลิกถูกวางลงไป และปลดทุกทางออก — งานอื่นที่เขียนบรรทัดนี้ได้
-    // (📱/🌐/▾) จะได้รู้ว่าห้ามทับ ดูคอมเมนต์ที่ qiDraftBusy กับ qiGrabStatus
-    qiDraftBusy = true;
+    // จับรุ่นฟอร์มไว้ก่อนเข้า await เหมือนทุกเส้นทาง async ในไฟล์นี้ — ร่างกิน 10-60 วินาที ผู้ใช้
+    // ปิดใบนี้แล้วกด "+ งานใหม่" ทันสบาย ๆ ผลที่กลับมาจะไปทับหัวข้อ/รายละเอียด/Risk Level ของใบใหม่
+    // ด้วยเนื้อหาที่ร่างจากโน้ตของใบก่อน = หลักฐานข้ามใบ ซึ่งเป็นความผิดพลาดที่ทั้งงานนี้มีไว้เพื่อกัน
+    const gen = qiFormGen;
+    // ตั้งการ์ดพร้อมกับที่ปุ่มยกเลิกถูกวางลงไป และปลดทุกทางออก — งานอื่นที่เขียนบรรทัดนี้ได้
+    // (📱/🌐/▾/วางรูป) จะได้รู้ว่าห้ามทับ ดูคอมเมนต์ที่ qiDraftSeq กับ qiGrabStatusTarget
+    const mySeq = ++qiDraftSeq;
+    qiDraftOwner = mySeq;
     let skipped = false;
     document.getElementById('qiSkipDraft').onclick = () => {
-      skipped = true; qiDraftBusy = false; btn.disabled = false; status.textContent = '';
+      skipped = true;
+      // ปล่อยเฉพาะการ์ดของตัวเอง — กฎเดียวกับ settle() ทุกจุดที่แตะ qiDraftOwner ใช้กฎนี้เสมอ
+      if (qiDraftOwner === mySeq) qiDraftOwner = 0;
+      btn.disabled = false;
+      status.textContent = '';
+    };
+    // ด่านร่วมของทั้ง .then และ .catch — ร่างที่ตกรุ่นแล้วต้องไม่แตะ state ของใคร
+    const settle = () => {
+      // ปล่อยการ์ดได้เฉพาะการ์ดที่ตัวเองตั้ง ร่างเก่าที่เพิ่งกลับมาจึงลดการ์ดของร่างที่กำลังวิ่งไม่ได้
+      if (qiDraftOwner === mySeq) qiDraftOwner = 0;
+      // ปุ่ม 🪄 เป็น element เดียวใช้ร่วมทุกใบ จึงปลดตามเงื่อนไข "ไม่มีร่างใหม่กว่านี้" อย่างเดียว
+      // ไม่ผูกกับ qiFormGen ไม่งั้นปิดใบระหว่างร่างแล้วปุ่มจะค้างเทาถาวรในใบถัดไป
+      const latest = mySeq === qiDraftSeq;
+      if (latest) btn.disabled = false;
+      return latest && !skipped && qiFormAlive && gen === qiFormGen;
     };
     let fitNotice = '';
     qiFitImagesToBudget(images).then(fit => {
@@ -543,13 +607,11 @@
         language: document.getElementById('qiLanguage').value,
         tracker: document.getElementById('qiTracker').value,
         images: fit.images,
-        uiXml: qiXmlDumps.map(d => ({ label: d.label, xml: d.xml })),
+        uiXml,
         pci: document.getElementById('qiPci').checked,
       });
     }).then(result => {
-      qiDraftBusy = false;
-      btn.disabled = false;
-      if (skipped) return;
+      if (!settle()) return;
       if (!result || !result.ok) {
         status.className = 'set-status err';
         status.textContent = (result && result.error) || 'ร่างไม่สำเร็จ — กรอกมือแทน';
@@ -562,7 +624,7 @@
       status.className = notices.length ? 'set-status' : 'set-status ok';
       const seen = [];
       if (images.length) seen.push(`${images.length} รูป`);
-      if (qiXmlDumps.length) seen.push(`โครงหน้าจอ ${qiXmlDumps.length} ชุด`);
+      if (uiXml.length) seen.push(`โครงหน้าจอ ${uiXml.length} ชุด`);
       status.textContent = (seen.length
         ? `ร่างสำเร็จ (ดู ${seen.join(' + ')} ประกอบ) — ตรวจแล้วแก้ต่อได้ก่อนส่ง`
         : 'ร่างสำเร็จ — แก้ต่อได้ก่อนส่ง') + (notices.length ? '\n' + notices.join('\n') : '');
@@ -572,9 +634,7 @@
       if (d.suggested_risk_level) document.getElementById('qiRiskLevel').value = d.suggested_risk_level;
       qiRenderDraftGaps(d.missing_info);
     }).catch(e => {
-      qiDraftBusy = false;
-      btn.disabled = false;
-      if (skipped) return;
+      if (!settle()) return;
       status.className = 'set-status err';
       status.textContent = 'เกิดข้อผิดพลาด: ' + e.message;
     });
@@ -1141,9 +1201,9 @@
       const text = (e.clipboardData && e.clipboardData.getData('text')) || '';
       if (qiIsImageDataUrlText(text)) {
         e.preventDefault();
-        const status = document.getElementById('qiDraftStatus');
-        status.className = 'set-status err';
-        status.textContent = 'นี่คือ "ที่อยู่" ของรูปแบบข้อความ ไม่ใช่ตัวรูป — ก๊อปรูปจริงมาวางแทน (Ctrl+C จากรูปโดยตรง)';
+        // ผ่าน qiGrabStatus เหมือนทางอื่น — วางแบบนี้ระหว่างร่างก็ลบปุ่มยกเลิกได้เหมือนกัน
+        // และเป็น 'err' จึงไม่หายไปไหน ไปโผล่ที่ #qiFormError แทน
+        qiGrabStatus('err', 'นี่คือ "ที่อยู่" ของรูปแบบข้อความ ไม่ใช่ตัวรูป — ก๊อปรูปจริงมาวางแทน (Ctrl+C จากรูปโดยตรง)');
       }
     });
     document.getElementById('qiNotesImages').onclick = (e) => {
@@ -1153,9 +1213,8 @@
       qiRenderDraftImages();
     };
     document.getElementById('qiWebGrabBtn').onclick = () => {
-      const status = document.getElementById('qiDraftStatus');
-      status.className = 'set-status';
-      status.textContent = 'เปิดหน้าต่างถอดแล้ว — ไปหน้าที่มีปัญหา (เปิด dialog ค้างไว้ได้) แล้วกด "📸 ถอดหน้านี้"';
+      // ทางเดียวกับปุ่ม 📱 — เขียนตรงไม่ได้ เพราะกด 🪄 แล้วกด 🌐 จะลบปุ่มยกเลิกร่างทิ้งเหมือนกัน
+      qiGrabStatus('', 'เปิดหน้าต่างถอดแล้ว — ไปหน้าที่มีปัญหา (เปิด dialog ค้างไว้ได้) แล้วกด "📸 ถอดหน้านี้"');
       api && api.openWebGrab && api.openWebGrab();
     };
     document.getElementById('qiXmlDumps').onclick = (e) => {
@@ -1174,12 +1233,17 @@
     api && api.onWebGrab && api.onWebGrab(qiAcceptGrabPayload);
     document.getElementById('qiBsPickBtn').onclick = async () => {
       const menu = document.getElementById('qiBsMenu');
-      if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+      // เช็คเจตนา (qiBsMenuOpen) ไม่ใช่คลาส hidden — ระหว่างรอรายชื่อ เมนูยัง hidden อยู่ การกด
+      // ครั้งที่สองที่ตั้งใจจะปิดจึงเคยกลายเป็นสั่งกางซ้ำ แล้วเมนูเด้งขึ้นมาทีหลังทั้งที่ผู้ใช้สั่งปิด
+      if (qiBsMenuOpen) { qiBsMenuHide(); return; }
+      qiBsMenuOpen = true;
+      const token = ++qiBsMenuSeq;
       const gen = qiFormGen;
       await qiBsRefresh(true);   // ผู้ใช้กดเอง = รอบเดียวที่ error มีที่มาให้ผู้ใช้เข้าใจ
       // รายชื่อกลับมาช้าได้หลายร้อย ms ถ้ากางโดยไม่เช็ค เมนูจะเด้งขึ้นมาคลุมฟิลด์ที่ผู้ใช้ย้ายไป
-      // พิมพ์อยู่แล้ว หรือโผล่บนฟอร์มใบใหม่ที่ไม่มีใครสั่งให้กาง
-      if (!qiFormAlive || gen !== qiFormGen) return;
+      // พิมพ์อยู่แล้ว หรือโผล่บนฟอร์มใบใหม่ที่ไม่มีใครสั่งให้กาง · token คุมเคสในใบเดียวกัน
+      // (คลิกที่อื่น / กด ▾ ซ้ำ) ที่ qiFormGen มองไม่เห็นเพราะรุ่นฟอร์มไม่ได้เปลี่ยนเลย
+      if (!qiFormAlive || gen !== qiFormGen || token !== qiBsMenuSeq) return;
       menu.classList.remove('hidden');
     };
     document.getElementById('qiBsMenu').onclick = (e) => {
@@ -1190,18 +1254,21 @@
       qiBsPicked = inst.name;
       api && api.bsSetInstance && api.bsSetInstance(inst.name);
       qiBsRenderPick();
-      document.getElementById('qiBsMenu').classList.add('hidden');
+      qiBsMenuHide();
     };
-    // กดที่อื่นแล้วเมนูต้องปิด ไม่งั้นมันค้างทับฟิลด์ที่อยู่ใต้ปุ่ม
+    // กดที่อื่นแล้วเมนูต้องปิด ไม่งั้นมันค้างทับฟิลด์ที่อยู่ใต้ปุ่ม — และต้องยกเลิกคำสั่งกางที่ยัง
+    // รอรายชื่ออยู่ด้วย (qiBsMenuHide เดินเลข) ไม่งั้นซ่อนเมนูที่ยังไม่ทันโผล่ = ไม่ได้ยกเลิกอะไรเลย
     document.addEventListener('click', (e) => {
       if (e.target.closest('.qi-bs-split')) return;
-      document.getElementById('qiBsMenu').classList.add('hidden');
+      qiBsMenuHide();
     });
     document.getElementById('qiBsGrabBtn').onclick = async () => {
       const btn = document.getElementById('qiBsGrabBtn');
       // จับรุ่นของฟอร์มไว้ก่อนเข้า await — ผลที่กลับมาต้องเป็นของใบนี้เท่านั้น
       const gen = qiFormGen;
-      document.getElementById('qiBsMenu').classList.add('hidden');
+      // ผ่าน qiBsMenuHide ไม่ใช่ classList ตรง ๆ — ถ้ามีคำสั่งกางค้างอยู่ต้องยกเลิกด้วย ไม่งั้น
+      // เมนูเด้งขึ้นมาระหว่างกำลังเก็บ ทับฟิลด์อยู่ดี
+      qiBsMenuHide();
       qiGrabStatus('', 'กำลังเก็บจาก BlueStacks... (~3 วินาที)');
       // กดซ้ำระหว่างรอจะยิง adb ซ้อนกันบน serial เดียว ซึ่ง uiautomator dump ไม่ชอบ
       btn.disabled = true;
@@ -1300,7 +1367,7 @@
       buildReviewLines, qiDraftBtnLabel, qiThumbsHtml, qiDraftGapsHtml, qiPastedName, qiIsImageDataUrlText,
       qiImageTokens, qiFitPlan, QI_IMAGE_TOKEN_LIMIT, qiFitImagesToBudget,
       qiFitNotice, QI_SAFE_FIT_SCALE, qiCustomFieldsHtml, QI_CUSTOM_FIELD_DEFAULTS, qiXmlChipsHtml,
-      qiAcceptsGrab,
+      qiAcceptsGrab, qiGrabStatusTarget,
     };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

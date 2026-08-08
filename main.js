@@ -873,9 +873,25 @@ function openWebGrab() {
 
   webGrabBar.webContents.once('did-finish-load', () => {
     webGrabStatus({ url: webGrabLastUrl, busy: false, text: 'ไปหน้าที่ต้องการแล้วกด "ถอดหน้านี้"' });
-    if (webGrabLastUrl) webGrabPage.webContents.loadURL(webGrabLastUrl).catch(() => {});
+    if (webGrabLastUrl) webGrabPage.webContents.loadURL(webGrabLastUrl)
+      .catch(err => webGrabStatus({ text: 'เปิด URL ที่จำไว้ไม่สำเร็จ: ' + err.message, kind: 'err', busy: false }));
   });
-  webGrabWin.on('closed', () => { webGrabWin = null; webGrabBar = null; webGrabPage = null; });
+  webGrabWin.on('closed', () => {
+    // BaseWindow ไม่นำ WebContentsView ลูกมันตายไปด้วยตัว (ต่างจาก BrowserWindow)
+    // ถ้าไม่ทำความสะอาดด้วยตัวเอง webContents เก่าจะวิ่งต่ออยู่ และ syncUrl ของมันจะส่ง URL
+    // ไปยัง toolbar ของเซสชันใหม่ เมื่อเปิดอีกครั้ง
+    if (webGrabPage && !webGrabPage.isDestroyed()) {
+      webGrabPage.webContents.removeListener('did-navigate', syncUrl);
+      webGrabPage.webContents.removeListener('did-navigate-in-page', syncUrl);
+      webGrabPage.webContents.close();
+    }
+    if (webGrabBar && !webGrabBar.isDestroyed()) {
+      webGrabBar.webContents.close();
+    }
+    webGrabWin = null;
+    webGrabBar = null;
+    webGrabPage = null;
+  });
 }
 
 ipcMain.handle('open-web-grab', () => { openWebGrab(); return { ok: true }; });

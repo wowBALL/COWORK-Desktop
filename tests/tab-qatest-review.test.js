@@ -353,3 +353,11 @@ test('qiXmlChipsHtml: ชื่อหน้าจากเว็บภายน�
   assert.ok(!html.includes('<img src=x'), 'title ของหน้าเว็บเป็นข้อมูลที่เราคุมไม่ได้');
   assert.ok(html.includes('&lt;img'), html);
 });
+
+// เทสข้างบนวาง label ไว้ในเนื้อความ ส่วน url อยู่ใน attribute ซึ่งแตกออกได้ด้วยอัญประกาศตัวเดียว
+// — คนละช่องโหว่กัน qiThumbsHtml มีเทสคู่นี้ครบอยู่แล้ว ชิป XML ต้องมีเท่ากัน
+test('qiXmlChipsHtml: url ใน attribute ต้องแตกออกมาเป็น attribute ใหม่ไม่ได้', () => {
+  const html = qiXmlChipsHtml([{ label: 'ปกติ', url: 'https://x.test/" onmouseover="alert(1)', nodes: 1, xml: 'a' }]);
+  assert.ok(!html.includes('onmouseover="alert'), html);
+  assert.ok(html.includes('&quot;'), 'อัญประกาศต้องถูกแปลง ไม่ใช่ผ่านไปดิบ ๆ');
+});

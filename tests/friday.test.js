@@ -81,6 +81,27 @@ test('เปิดไม่สำเร็จ แสดงชั่วครา�
   assert.strictEqual(core.viewOf(ready(OFF), pending, core.PENDING_MS.failed + 1).cls, 'off');
 });
 
+test('เปิดไม่สำเร็จ หายทันทีถ้าเซิร์ฟเวอร์ยืนยันว่ารันอยู่แล้ว', () => {
+  // เหมือนเทส 'starting' หายทันทีเมื่อรันจริง (ข้อ 62) แต่ครอบ branch 'failed'
+  // ที่มี guard !running เดียวกัน ยังไม่เคยมีเทสตรง ๆ มาก่อน
+  const pending = { kind: 'failed', at: 0, action: 'start' };
+  assert.strictEqual(core.viewOf(ready(ON), pending, 10).cls, 'on');
+});
+
+test('ปิดไม่สำเร็จ แสดงป้ายเตือนและเสนอปิดใหม่ ไม่ใช่เปิด', () => {
+  const pending = { kind: 'failed', at: 0, action: 'stop' };
+  const v = core.viewOf(ready(ON), pending, 10);
+  assert.strictEqual(v.cls, 'failed');
+  assert.match(v.label, /ปิดไม่สำเร็จ/);
+  assert.strictEqual(v.action, 'stop');
+  assert.strictEqual(v.enabled, true);
+});
+
+test('ปิดไม่สำเร็จ หายไปถ้าจริง ๆ มันหยุดไปแล้ว', () => {
+  const pending = { kind: 'failed', at: 0, action: 'stop' };
+  assert.strictEqual(core.viewOf(ready(OFF), pending, 10).cls, 'off');
+});
+
 test('mount ไม่โยนเมื่อไม่มี DOM และไม่มี api', () => {
   assert.doesNotThrow(() => core.mount(null));
 });

@@ -26,9 +26,21 @@
 
     const running = c.state === 'running';
 
-    if (alive(pending, 'failed', now) && !running) {
-      return { hidden: false, cls: 'failed', label: 'Friday · เปิดไม่สำเร็จ',
-               action: c.can_start ? 'start' : 'none', enabled: !!c.can_start };
+    if (alive(pending, 'failed', now)) {
+      // เปิดไม่สำเร็จ -> โปรเซสน่าจะยังไม่รัน (running ต้องเป็น false ถึงเตือน)
+      // ปิดไม่สำเร็จ -> โปรเซสน่าจะยังรันอยู่ (running ต้องเป็น true ถึงเตือน)
+      // ถ้าสถานะจริงสวนทางกับที่คาดหลังความล้มเหลวนั้น แปลว่าความจริงตามทันแล้ว
+      // (เช่น บอกว่าปิดไม่สำเร็จ แต่จริง ๆ มันหยุดไปแล้ว) ไม่ต้องเตือนซ้ำ
+      const stopFailed = pending.action === 'stop';
+      if (running === stopFailed) {
+        if (stopFailed) {
+          // หลังปิดไม่สำเร็จ โปรเซสยังรันอยู่ เสนอ "ปิด" ซ้ำ ไม่ใช่ "เปิด" ซึ่งผิดทิศทาง
+          return { hidden: false, cls: 'failed', label: 'Friday · ปิดไม่สำเร็จ',
+                   action: 'stop', enabled: true };
+        }
+        return { hidden: false, cls: 'failed', label: 'Friday · เปิดไม่สำเร็จ',
+                 action: c.can_start ? 'start' : 'none', enabled: !!c.can_start };
+      }
     }
     // ต้องเช็ค running ก่อน: ถ้าเซิร์ฟเวอร์ยืนยันแล้วว่ารันอยู่ ป้าย "กำลังเปิด" ต้องหายทันที
     // ไม่ใช่รอจนหมดอายุ
@@ -71,7 +83,7 @@
       if (api && api.startFriday) {
         api.startFriday().then((r) => {
           // ล้มเหลวเท่านั้นที่ต้องบอก สำเร็จให้ poll รอบถัดไปเป็นคนยืนยัน
-          if (!r || !r.ok) pending = { kind: 'failed', at: Date.now() };
+          if (!r || !r.ok) pending = { kind: 'failed', at: Date.now(), action: 'start' };
           else pending = null;
           draw();
         });
@@ -82,7 +94,14 @@
     } else if (v.action === 'stop') {
       pending = null;
       draw();
-      if (api && api.stopFriday) api.stopFriday().then(draw);
+      if (api && api.stopFriday) {
+        api.stopFriday().then((r) => {
+          // สมมาตรกับฝั่งเปิด: ปิดไม่สำเร็จต้องบอกผู้ใช้ ไม่งั้นกดแล้วเงียบ
+          // แยกไม่ออกว่าคลิกไม่ติดหรือปิดไม่ได้จริง ๆ
+          if (!r || !r.ok) pending = { kind: 'failed', at: Date.now(), action: 'stop' };
+          draw();
+        });
+      }
     }
   }
 

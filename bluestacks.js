@@ -27,17 +27,29 @@ function parseConf(text) {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// ready = เครื่องที่เลือกได้จริง (มีหน้าต่างเปิดอยู่ และชื่อไม่ซ้ำกับหน้าต่างบานอื่น)
+// ready = เครื่องที่เลือกได้จริง (มีหน้าต่างเปิดอยู่ และชื่อไม่ซ้ำ ทั้งฝั่งหน้าต่างและฝั่ง conf)
 // ชื่อซ้ำต้องไม่ตกอยู่ใน ready เพราะการเดาว่าเป็นบานไหนแล้วเดาผิด = หลักฐานผิดเครื่องแบบเงียบ ๆ
+//
+// ต้องนับ display_name ที่ซ้ำกันใน conf ด้วย ไม่ใช่นับแต่ชื่อหน้าต่าง — ฟังก์ชันนี้ทิ้ง key ของ
+// instance ไป ตั้งแต่บรรทัดนี้ไปทั้งเส้นทาง (ข้าม IPC ไปกลับจนถึงตอนเลือกพอร์ต) จึงชี้เครื่องด้วย
+// ชื่ออย่างเดียว สอง instance ที่ตั้งชื่อเหมือนกันจะถูกยุบเหลือตัวแรกโดยไม่มีอะไรฟ้อง · เคสที่ร้าย
+// ที่สุดคือมีหน้าต่างเปิดอยู่บานเดียว: การ์ดทุกด่านผ่านหมด XML มาจากพอร์ตของตัวแรก ส่วนรูป (ทาง
+// สำรอง desktopCapturer ตอนโดน FLAG_SECURE) จับจากหน้าต่างที่เปิดอยู่ซึ่งอาจเป็นอีกเครื่อง
 function pairWithWindows(instances, windowNames) {
   const count = new Map();
   for (const n of windowNames || []) count.set(n, (count.get(n) || 0) + 1);
+  const confCount = new Map();
+  for (const inst of instances || []) confCount.set(inst.name, (confCount.get(inst.name) || 0) + 1);
   const ready = [];
   const duplicates = [];
   for (const inst of instances || []) {
     const c = count.get(inst.name) || 0;
     if (c === 0) continue;
-    if (c > 1) { duplicates.push(inst.name); continue; }
+    if (c > 1 || (confCount.get(inst.name) || 0) > 1) {
+      // ชื่อซ้ำใน conf เดินลูปถึงสองรอบ ถ้าไม่กันจะได้ชื่อเดิมสองครั้งในลิสต์เดียว
+      if (!duplicates.includes(inst.name)) duplicates.push(inst.name);
+      continue;
+    }
     ready.push({ name: inst.name, adbPort: inst.adbPort });
   }
   return { ready, duplicates };
@@ -113,12 +125,16 @@ function bsError(code, detail) {
 
 // Error ที่ข้อความเป็นไทยแล้ว ติดธง bsCode ไว้ให้ catch ปลายทางแยกออกว่าอันไหนส่งต่อให้ผู้ใช้ได้
 // ใช้ธงแทนการเทียบข้อความ เพราะการเทียบข้อความจะพังเงียบ ๆ วันที่มีคนไปแก้คำใน BS_ERRORS
-function bsThrow(code, detail) {
+//
+// ชื่อขึ้นต้นด้วย make ไม่ใช่ throw เพราะมัน "คืน" Error เฉย ๆ ผู้เรียกต้อง throw/reject เอง —
+// ชื่อที่เป็นคำสั่งชวนให้เขียน bsThrow('busy'); ลอย ๆ เป็นทั้งประโยค ซึ่งคอมไพล์ผ่าน lint ผ่าน
+// แล้วโค้ดวิ่งต่อเหมือนไม่มีอะไรเกิดขึ้น
+function makeBsError(code, detail) {
   const e = new Error(bsError(code, detail));
   e.bsCode = code;
   return e;
 }
 
 module.exports = {
-  parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError, bsThrow,
+  parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError, makeBsError,
 };

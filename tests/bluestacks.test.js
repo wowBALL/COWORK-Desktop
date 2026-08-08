@@ -48,6 +48,28 @@ test('pairWithWindows: ชื่อซ้ำเข้า duplicates และต
   assert.deepStrictEqual(ready, [{ name: 'Prod', adbPort: 5555 }]);
 });
 
+// ผู้ใช้ตั้ง display_name ซ้ำกันได้ใน BlueStacks (key ของ instance ต่างกัน แต่ชื่อที่โชว์เหมือนกัน)
+const CONF_SAME_NAME = [
+  'bst.instance.Pie64.adb_port="5555"',
+  'bst.instance.Pie64.display_name="DEV"',
+  'bst.instance.Pie64_1.adb_port="5565"',
+  'bst.instance.Pie64_1.display_name="DEV"',
+].join('\n');
+
+test('pairWithWindows: ชื่อซ้ำใน conf ต้องเข้า duplicates แม้หน้าต่างจะเปิดอยู่บานเดียว', () => {
+  const instances = parseConf(CONF_SAME_NAME);
+  assert.strictEqual(instances.length, 2, 'conf นี้ต้องได้สอง instance ที่ key ต่างกันแต่ชื่อซ้ำ');
+  const { ready, duplicates } = pairWithWindows(instances, ['DEV']);
+  assert.deepStrictEqual(duplicates, ['DEV'],
+    'ชื่อที่ซ้ำต้องถูกปฏิเสธที่นี่ที่เดียว เพราะตั้งแต่จุดนี้ไปทั้งเส้นทาง (ข้าม IPC ไปกลับ) '
+    + 'ชี้เครื่องด้วย display_name อย่างเดียว ไม่มีใครเห็น key อีกเลย');
+  assert.deepStrictEqual(ready, [],
+    'ปล่อยผ่านเข้า ready = การ์ดทุกด่านผ่านหมดโดยมีหน้าต่างเปิดอยู่บานเดียว: XML ถูกถอดจากพอร์ต '
+    + 'ของ instance ตัวแรก ส่วนรูป (ทางสำรอง desktopCapturer ตอนโดน FLAG_SECURE) จับจากหน้าต่าง '
+    + 'ที่เปิดอยู่ซึ่งอาจเป็นอีกเครื่อง แล้วแนบเข้าตั๋วใบเดียวกันโดยไม่มีอะไรฟ้อง — คนอ่านตั๋วเห็น '
+    + 'รูปกับโครงหน้าจอที่ขัดกันแต่เชื่อว่าเป็นหลักฐานชุดเดียวกัน');
+});
+
 test('chooseInstance: ตัวที่จำไว้ยังอยู่ ได้ตัวนั้น', () => {
   const ready = [{ name: 'DEV', adbPort: 5595 }, { name: 'Prod', adbPort: 5555 }];
   assert.strictEqual(chooseInstance(ready, 'Prod').name, 'Prod');

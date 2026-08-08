@@ -2,7 +2,7 @@
 // ทั้งคู่ ถ้าก๊อปไปไว้สองที่ สคริปต์ probe จะพิสูจน์คนละโค้ดกับที่แอปรันจริง
 // ไม่ require electron จึงรันได้ทั้งใน main process และใน node เปล่า ๆ
 const { spawn } = require('node:child_process');
-const { bsThrow } = require('./bluestacks.js');
+const { makeBsError } = require('./bluestacks.js');
 
 const DEFAULT_TIMEOUT_SEC = 30;
 
@@ -31,9 +31,9 @@ function adb(args, timeoutSec) {
       // Windows Node ไม่สนใจชื่อ signal เลย ยิง TerminateProcess ให้ทั้ง SIGTERM และ SIGKILL
       // เหมือนกัน แค่ p.kill() เฉย ๆ จึงพอแล้ว ไม่ต้องมีตัวไล่ฆ่าซ้ำรอบสอง
       try { p.kill(); } catch { /* ตายไปก่อนแล้วก็ถือว่าจบ */ }
-      reject(bsThrow('timeout', secs));
+      reject(makeBsError('timeout', secs));
     }, secs * 1000);
-    p.on('error', finish(e => reject(e.code === 'ENOENT' ? bsThrow('no-adb') : e)));
+    p.on('error', finish(e => reject(e.code === 'ENOENT' ? makeBsError('no-adb') : e)));
     p.stdout.on('data', d => out.push(d));
     p.stderr.on('data', d => err.push(d));
     p.on('close', finish(code => resolve({

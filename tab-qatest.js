@@ -36,6 +36,11 @@
   // ใบใหม่เงียบ ๆ ซึ่งคือความผิดพลาดชนิดที่ฟีเจอร์นี้ทั้งฟีเจอร์มีไว้เพื่อกัน เลขรุ่นนี้เดินหน้า
   // อย่างเดียวทุกครั้งที่เปิดฟอร์ม จับค่าไว้ก่อน await แล้วเทียบหลัง await จึงแยกสองใบออกจากกันได้
   let qiFormGen = 0;
+  // ระหว่างร่าง #qiDraftStatus ไม่ได้เป็นแค่บรรทัดสถานะ แต่ถือปุ่ม #qiSkipDraft ไว้ด้วย ซึ่งเป็น
+  // ทางเดียวที่จะยกเลิกการร่างที่กินเวลา 10-60 วินาที · ใครก็ตามที่เขียนทับบรรทัดนั้นระหว่างนี้
+  // จะทำให้ผู้ใช้เหลือร่างที่ยกเลิกไม่ได้ ปุ่ม 🪄 ค้างเทา แล้วผลร่างไปทับหัวข้อ/รายละเอียดทีหลัง
+  // โดยไม่มีอะไรเตือน — commit adcaa2a กัน qiBsRefresh ไว้แล้ว ธงนี้กันฝั่งปุ่ม 📱 ที่เหลือ
+  let qiDraftBusy = false;
   // รายชื่อโปรเจกต์จริงมาจาก payload ของแท็บ Redmine (tasks-update) ไม่ใช่ qaData ของแท็บนี้ —
   // onTasks รับ listener ได้หลายตัวพร้อมกัน (ipcRenderer.on ปกติของ Electron) แท็บนี้เลยแค่ดัก
   // ฟังเอง โดยไม่ต้องแตะ tab-redmine.js เลย ทุก issue มี projectId+project (ชื่อ) ติดมาอยู่แล้ว
@@ -176,6 +181,24 @@
       });
   }
 
+  // ทางเดียวที่งานเก็บหลักฐาน (📱 BlueStacks / 🌐 หน้าเว็บ) เขียนบรรทัดสถานะได้ — ระหว่างร่าง
+  // มันต้องยอมสละบรรทัดนั้นไป เพราะปุ่มยกเลิกร่างอยู่ในนั้น (ดูคอมเมนต์ที่ qiDraftBusy)
+  // ผลสำเร็จไม่หายไปไหนอยู่แล้ว: ชิปโครงหน้าจอโผล่ในฟอร์ม และรูปถูกอัปขึ้น Redmine เหมือนเดิม
+  // ส่วนความล้มเหลวต้องไม่เงียบ จึงไปออกที่ #qiFormError ซึ่งเป็นช่องรายงานพลาดของงานแนบไฟล์
+  // ในไฟล์นี้อยู่แล้ว และ qiDraft() ไม่เคยแตะ
+  function qiGrabStatus(kind, text) {
+    if (!qiDraftBusy) {
+      const status = document.getElementById('qiDraftStatus');
+      status.className = kind ? `set-status ${kind}` : 'set-status';
+      status.textContent = text;
+      return;
+    }
+    if (kind !== 'err') return;
+    const errEl = document.getElementById('qiFormError');
+    errEl.style.display = 'block';
+    errEl.textContent = text;
+  }
+
   // ที่เดียวที่แปลง payload เป็นชิป + ไฟล์แนบ — สองเส้นทาง (หน้าเว็บ push ผ่าน channel /
   // BlueStacks คืนผลทาง invoke) ต้องใช้ตัวนี้ทั้งคู่ ไม่งั้นแก้ที่หนึ่งแล้วลืมอีกที่
   function qiAcceptGrabPayload(payload) {
@@ -185,10 +208,8 @@
       xml: payload.xml, nodes: payload.nodes,
     });
     qiRenderXmlDumps();
-    const status = document.getElementById('qiDraftStatus');
-    status.className = 'set-status ok';
-    status.textContent = `ได้โครงหน้าจอแล้ว (${payload.nodes} nodes)`
-      + (payload.pngDataUrl ? ' + รูป 1 ใบ แนบขึ้น Redmine ให้แล้ว' : ' — แคปรูปไม่ได้ ได้เฉพาะโครง');
+    qiGrabStatus('ok', `ได้โครงหน้าจอแล้ว (${payload.nodes} nodes)`
+      + (payload.pngDataUrl ? ' + รูป 1 ใบ แนบขึ้น Redmine ให้แล้ว' : ' — แคปรูปไม่ได้ ได้เฉพาะโครง'));
     if (payload.pngDataUrl) qiUploadDataUrl(payload.pngDataUrl, payload.filename);
   }
 
@@ -233,18 +254,18 @@
         r = { ok: false, error: 'อ่านรายชื่อเครื่อง BlueStacks ไม่สำเร็จ: ' + ((e && e.message) || e) };
       }
     }
+    // เช็ค gen คู่กับ qiFormAlive กันผลที่กลับมาช้าไม่ให้เขียนทับฟอร์มที่ปิดไปแล้วหรือใบใหม่ —
+    // ต้องคลุมตัวข้อมูลด้วย ไม่ใช่แค่ข้อความ error: รอบอัตโนมัติตอนเปิดฟอร์มกินเวลาหลายร้อย ms
+    // ผู้ใช้กางเมนูเลือกเครื่องเสร็จก่อนมันกลับมาได้ แล้ว r.picked (ซึ่ง main คิดจากค่าที่จำไว้
+    // รอบก่อน) จะย้อนการเลือกที่เพิ่งกดทิ้งเงียบ ๆ ⇒ ปุ่ม 📱 ไปเก็บจากเครื่องที่ผู้ใช้ไม่ได้เลือก
+    if (!qiFormAlive || gen !== qiFormGen) return;
     qiBsInstances = (r && r.ok) ? r.instances : [];
     qiBsPicked = (r && r.ok) ? r.picked : '';
     // ต้องวาดเมนูทุกทางรวมทั้งทางที่ล้มเหลว ไม่งั้นกล่องที่กางออกมาเป็นกล่องเปล่า ๆ ไม่บอกอะไรเลย
     qiBsRenderPick();
     // ป้ายในปุ่มบอกได้แค่ "ไม่พบเครื่อง" ซึ่งชี้ผิดทางเมื่อความจริงคือ adb ต่อไม่ได้ —
     // ข้อความจาก main เป็นไทยและเขียนให้ผู้ใช้อ่านอยู่แล้ว จึงโชว์ทั้งดุ้นไม่ห่อไม่เติมคำนำหน้า
-    // เช็ค gen คู่กับ qiFormAlive กันผลที่กลับมาช้าไม่ให้เขียนทับฟอร์มที่ปิดไปแล้วหรือใบใหม่
-    if (showError && r && !r.ok && r.error && qiFormAlive && gen === qiFormGen) {
-      const status = document.getElementById('qiDraftStatus');
-      status.className = 'set-status err';
-      status.textContent = r.error;
-    }
+    if (showError && r && !r.ok && r.error) qiGrabStatus('err', r.error);
   }
 
   // วางรูปในช่องโน้ต = อัปขึ้น Redmine เป็นไฟล์แนบ + เก็บไบต์ไว้ส่งให้โมเดลดู ทำสองอย่างพร้อมกัน
@@ -408,6 +429,10 @@
   function qiOpenForm() {
     qiFormAlive = true;
     qiFormGen++;     // ใบใหม่ = รุ่นใหม่ ผลของใบก่อนที่ยังค้างอยู่ต้องตกรุ่นทันทีตรงนี้
+    // ใบใหม่ยังไม่มีร่างของตัวเอง และปุ่มยกเลิกของใบก่อนถูก qiCloseForm ล้างไปแล้ว จึงไม่มีอะไร
+    // ให้ปกป้อง — ถ้าไม่รีเซ็ตตรงนี้ ธงจะค้างจนกว่าร่างของใบก่อนจะกลับมา แล้วปุ่ม 📱 ของใบใหม่
+    // จะเงียบไปโดยไม่มีเหตุผล
+    qiDraftBusy = false;
     // ไม่ await — ฟอร์มต้องเปิดทันที รายชื่อเครื่องตามมาใน ~180ms · false = ห้ามฟ้อง error
     qiBsRefresh(false);
     document.getElementById('qaStage').classList.add('hidden');
@@ -503,8 +528,13 @@
     btn.disabled = true;
     status.className = 'set-status';
     status.innerHTML = 'กำลังร่าง... <button type="button" id="qiSkipDraft">ข้ามไปกรอกเองเลย</button>';
+    // ตั้งธงพร้อมกับที่ปุ่มยกเลิกถูกวางลงไป และปลดทุกทางออก — งานอื่นที่เขียนบรรทัดนี้ได้
+    // (📱/🌐/▾) จะได้รู้ว่าห้ามทับ ดูคอมเมนต์ที่ qiDraftBusy กับ qiGrabStatus
+    qiDraftBusy = true;
     let skipped = false;
-    document.getElementById('qiSkipDraft').onclick = () => { skipped = true; btn.disabled = false; status.textContent = ''; };
+    document.getElementById('qiSkipDraft').onclick = () => {
+      skipped = true; qiDraftBusy = false; btn.disabled = false; status.textContent = '';
+    };
     let fitNotice = '';
     qiFitImagesToBudget(images).then(fit => {
       fitNotice = fit.notice;
@@ -517,6 +547,7 @@
         pci: document.getElementById('qiPci').checked,
       });
     }).then(result => {
+      qiDraftBusy = false;
       btn.disabled = false;
       if (skipped) return;
       if (!result || !result.ok) {
@@ -541,6 +572,7 @@
       if (d.suggested_risk_level) document.getElementById('qiRiskLevel').value = d.suggested_risk_level;
       qiRenderDraftGaps(d.missing_info);
     }).catch(e => {
+      qiDraftBusy = false;
       btn.disabled = false;
       if (skipped) return;
       status.className = 'set-status err';
@@ -1143,7 +1175,11 @@
     document.getElementById('qiBsPickBtn').onclick = async () => {
       const menu = document.getElementById('qiBsMenu');
       if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+      const gen = qiFormGen;
       await qiBsRefresh(true);   // ผู้ใช้กดเอง = รอบเดียวที่ error มีที่มาให้ผู้ใช้เข้าใจ
+      // รายชื่อกลับมาช้าได้หลายร้อย ms ถ้ากางโดยไม่เช็ค เมนูจะเด้งขึ้นมาคลุมฟิลด์ที่ผู้ใช้ย้ายไป
+      // พิมพ์อยู่แล้ว หรือโผล่บนฟอร์มใบใหม่ที่ไม่มีใครสั่งให้กาง
+      if (!qiFormAlive || gen !== qiFormGen) return;
       menu.classList.remove('hidden');
     };
     document.getElementById('qiBsMenu').onclick = (e) => {
@@ -1163,12 +1199,10 @@
     });
     document.getElementById('qiBsGrabBtn').onclick = async () => {
       const btn = document.getElementById('qiBsGrabBtn');
-      const status = document.getElementById('qiDraftStatus');
       // จับรุ่นของฟอร์มไว้ก่อนเข้า await — ผลที่กลับมาต้องเป็นของใบนี้เท่านั้น
       const gen = qiFormGen;
       document.getElementById('qiBsMenu').classList.add('hidden');
-      status.className = 'set-status';
-      status.textContent = 'กำลังเก็บจาก BlueStacks... (~3 วินาที)';
+      qiGrabStatus('', 'กำลังเก็บจาก BlueStacks... (~3 วินาที)');
       // กดซ้ำระหว่างรอจะยิง adb ซ้อนกันบน serial เดียว ซึ่ง uiautomator dump ไม่ชอบ
       btn.disabled = true;
       try {
@@ -1180,8 +1214,7 @@
         if (!qiFormAlive || gen !== qiFormGen) return;
         if (!r || !r.ok) {
           // qiOpenForm ไม่ล้างบรรทัดสถานะ ข้อความจึงค้างไปโผล่ในตั๋วใบถัดไปถ้าไม่กันตรงนี้
-          status.className = 'set-status err';
-          status.textContent = (r && r.error) || 'เก็บจาก BlueStacks ไม่สำเร็จ';
+          qiGrabStatus('err', (r && r.error) || 'เก็บจาก BlueStacks ไม่สำเร็จ');
           return;
         }
         qiAcceptGrabPayload(r.payload);
@@ -1189,8 +1222,7 @@
         // ไม่มี catch แล้ว finally จะปลดปุ่มให้กดใหม่ได้ก็จริง แต่สถานะค้างที่ "กำลังเก็บ..."
         // ตลอดกาล ผู้ใช้จึงนั่งรอผลที่ไม่มีวันมา
         if (qiFormAlive && gen === qiFormGen) {
-          status.className = 'set-status err';
-          status.textContent = 'เก็บจาก BlueStacks ไม่สำเร็จ: ' + ((e && e.message) || e);
+          qiGrabStatus('err', 'เก็บจาก BlueStacks ไม่สำเร็จ: ' + ((e && e.message) || e));
         }
       } finally {
         btn.disabled = false;

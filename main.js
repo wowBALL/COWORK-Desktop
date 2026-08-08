@@ -27,7 +27,7 @@ const { buildIssueUpdate } = require('./finishtest.js');
 const { injectableSource } = require('./webdump.js');
 // ตรรกะจับคู่ instance อยู่ในไฟล์แยกที่ไม่มี I/O เลย เพื่อให้ node --test พิสูจน์ได้ว่า
 // "จับคู่ผิดคู่" ไม่เกิด โดยไม่ต้องเปิด BlueStacks สองตัวตอนรันเทส
-const { parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError, bsThrow }
+const { parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError, makeBsError }
   = require('./bluestacks.js');
 // ตัวเรียก adb อยู่ในไฟล์แยกเพราะสคริปต์ probe ต้องใช้ตัวเดียวกันเป๊ะ — require('./main.js')
 // ไม่ได้ (มันเปิดหน้าต่างทันทีที่โหลด) ถ้าปล่อยให้ก๊อปไปไว้ทั้งสองที่ probe จะพิสูจน์คนละโค้ด
@@ -992,7 +992,7 @@ function bsReadConf() {
   } catch (e) {
     // ไฟล์ถูกล็อกหรือสิทธิ์ไม่ถึง (EACCES/EPERM/EBUSY) ไม่ใช่ "ไม่พบไฟล์" — ถ้าไม่บอกรหัส
     // ผู้ใช้จะไปนั่งหาไฟล์ที่วางอยู่ตรงนั้นอยู่แล้ว แทนที่จะรู้ว่าเป็นเรื่องสิทธิ์
-    throw bsThrow('no-conf', e && e.code ? `${BS_CONF} (${e.code})` : BS_CONF);
+    throw makeBsError('no-conf', e && e.code ? `${BS_CONF} (${e.code})` : BS_CONF);
   }
 }
 
@@ -1059,14 +1059,25 @@ ipcMain.handle('bs-grab', async (_e, instanceName) => {
     if (!ready.length) {
       return { ok: false, error: duplicates.length ? bsError('duplicate-window', duplicates[0]) : bsError('no-window') };
     }
-    const inst = ready.find(i => i.name === instanceName);
-    if (!inst) return { ok: false, error: bsError('gone', instanceName) };
+    // ชื่อว่าง = "เอาเครื่องเริ่มต้น" ไม่ใช่ชื่อเครื่องที่หายไป — ผู้ใช้ที่เปิดฟอร์มตอน BlueStacks
+    // ยังไม่รัน จะได้ป้าย "ไม่พบเครื่อง" แล้วชื่อที่ renderer ส่งมาเป็นค่าว่างตลอดจนกว่าจะกางเมนู
+    // พอเปิด instance แล้วกด 📱 เลย ready ไม่ว่างแล้วการ์ดข้างบนจึงผ่าน แต่ find ไม่เจอ ผู้ใช้จะได้
+    // ข้อความ 'เครื่อง "" ไม่ได้เปิดอยู่แล้ว' ที่ชี้ไปเครื่องซึ่งไม่มีอยู่จริง ⇒ เลือกด้วยตัวเดียว
+    // กับ bs-list-instances เพื่อให้ป้ายกับสิ่งที่กดได้ตรงกันเสมอ
+    const wanted = String(instanceName || '') || chooseInstance(ready, bsLastInstance).name;
+    const inst = ready.find(i => i.name === wanted);
+    if (!inst) return { ok: false, error: bsError('gone', wanted) };
 
     const serial = `127.0.0.1:${inst.adbPort}`;
     // adb devices ว่างเปล่าทั้งที่ BlueStacks เปิดอยู่ — ต้อง connect ก่อนเสมอ (วัดแล้ว 43ms)
     const conn = await adb(['connect', serial], 5);
-    if (conn.code !== 0) {
-      return { ok: false, error: bsError('connect-failed', conn.stderr || conn.stdout.toString().trim()) };
+    const connOut = conn.stdout.toString().trim();
+    // exit code ของ adb connect เชื่อไม่ได้ — platform-tools หลายรุ่นพิมพ์ "cannot connect to ..."
+    // แล้วยัง exit 0 ความล้มเหลวจึงไปโผล่อีกขั้นหนึ่งเป็น "ถอดโครงหน้าจอไม่ได้: device not found"
+    // ซึ่งเป็นไทยก็จริงแต่ชี้ผิดขั้น ส่วน connect-failed ที่มีรายละเอียดพอจะแก้ได้ไม่เคยถูกยิงเลย
+    // "connected to" ออกทั้งตอนต่อใหม่และตอนที่ต่ออยู่แล้ว จึงใช้เป็นสัญญาณว่าสำเร็จได้
+    if (conn.code !== 0 || !connOut.includes('connected to')) {
+      return { ok: false, error: bsError('connect-failed', conn.stderr || connOut) };
     }
 
     // ชื่อไฟล์ไม่ซ้ำทั้งฝั่งเครื่องและฝั่งโฮสต์ — ชื่อคงที่ทำให้ไฟล์ค้างจากรอบก่อน (ลบไม่สำเร็จ
@@ -1119,7 +1130,9 @@ ipcMain.handle('bs-grab', async (_e, instanceName) => {
       console.error('[bs-grab] screencap ไม่สำเร็จ ลองทางสำรอง:', e);
     }
     if (!png) {
-      try { png = await bsCaptureWindow(instanceName); }
+      // ใช้ inst.name ไม่ใช่ instanceName — ตอนกดโดยยังไม่เลือกเมนู instanceName เป็นค่าว่าง
+      // ซึ่งจับหน้าต่างไม่ตรงกับพอร์ตที่เพิ่งถอด XML มา (คือความไม่ตรงกันที่ทั้งเส้นทางนี้กันอยู่)
+      try { png = await bsCaptureWindow(inst.name); }
       catch (e) { console.error('[bs-grab] แคปหน้าต่างไม่สำเร็จ ส่งเฉพาะ XML:', e); }
     }
 
@@ -1127,7 +1140,7 @@ ipcMain.handle('bs-grab', async (_e, instanceName) => {
     // แคปรูปไม่ได้ยังถือว่าสำเร็จ — XML คือของหลัก กฎเดียวกับที่เส้นทางหน้าเว็บตั้งไว้แล้ว
     return { ok: true, payload: {
       kind: 'bluestacks',
-      label: labelFor(instanceName, xml),
+      label: labelFor(inst.name, xml),
       url: '',
       xml,
       nodes,

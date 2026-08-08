@@ -57,6 +57,7 @@
       "grafana.js",
       "uidump.js",
       "webdump.js",
+      "bluestacks.js",
       "meetingrun.js",
       "meetingrun.css",
       "friday.js",

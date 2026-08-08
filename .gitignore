@@ -15,8 +15,3 @@ _harness-*.css
 # ใบเทสจริงของ Testing Room — repo นี้ public และใบเทสมีหัวเรื่อง issue ภายในติดไปด้วย
 # (โครงไฟล์ดูได้จาก testingroom/TEMPLATE.md ซึ่ง track ไว้ เพราะเป็นตัวอย่างล้วน)
 testingroom/Qtest/
-
-# ผู้ช่วยตอบคำถามระหว่างประชุม — เป็น git repo ของตัวเองซ้อนอยู่ข้างใน ไม่ใช่ส่วนหนึ่ง
-# ของแอปนี้ (electron-builder ก็ไม่แพ็กอยู่แล้วเพราะ build.files เป็น allow-list)
-# แยกไว้เพราะ repo นี้ public ส่วนตัวนั้นยังไม่ได้ตัดสินใจเรื่องการเผยแพร่
-Friday/

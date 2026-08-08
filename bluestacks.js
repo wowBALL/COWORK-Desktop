@@ -97,6 +97,13 @@ const BS_ERRORS = {
   'empty-dump': () => 'ถอดโครงหน้าจอได้ไฟล์ว่าง — รอให้หน้าจอนิ่ง (ไม่มีอนิเมชัน) แล้วกดใหม่',
   'timeout': d => `adb ไม่ตอบภายใน ${d} วินาที`,
   'gone': n => `เครื่อง "${n}" ไม่ได้เปิดอยู่แล้ว — เลือกเครื่องใหม่จากเมนู`,
+  // สองครั้งพร้อมกันบน adb เดียวได้ XML ของเครื่องหนึ่งคู่กับรูปของอีกเครื่อง ปุ่มฝั่ง renderer
+  // กันได้แค่หน้าต่างเดียว จึงต้องมีข้อความให้ main process ตอบกลับตอนปฏิเสธด้วย
+  'busy': () => 'กำลังเก็บจาก BlueStacks อยู่ — รอให้ครั้งก่อนเสร็จก่อนแล้วกดใหม่',
+  // ตาข่ายรับข้อผิดพลาดที่ไม่ได้มาจาก bsError (desktopCapturer, fs, spawn EACCES) — ผู้ใช้ต้อง
+  // ไม่เห็นภาษาอังกฤษดิบจาก libuv/Electron ส่วนข้อความจริงไปโผล่ที่ console ให้คนแก้โค้ดอ่าน
+  'unexpected': () => 'เก็บจาก BlueStacks ไม่สำเร็จเพราะข้อผิดพลาดที่ไม่คาดคิด — '
+    + 'ลองใหม่อีกครั้ง ถ้ายังไม่ได้ให้แจ้งผู้ดูแลพร้อมเวลาที่กด',
 };
 
 function bsError(code, detail) {
@@ -104,6 +111,14 @@ function bsError(code, detail) {
   return f ? f(detail) : `เกิดข้อผิดพลาดที่ไม่รู้จัก (${code})`;
 }
 
+// Error ที่ข้อความเป็นไทยแล้ว ติดธง bsCode ไว้ให้ catch ปลายทางแยกออกว่าอันไหนส่งต่อให้ผู้ใช้ได้
+// ใช้ธงแทนการเทียบข้อความ เพราะการเทียบข้อความจะพังเงียบ ๆ วันที่มีคนไปแก้คำใน BS_ERRORS
+function bsThrow(code, detail) {
+  const e = new Error(bsError(code, detail));
+  e.bsCode = code;
+  return e;
+}
+
 module.exports = {
-  parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError,
+  parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError, bsThrow,
 };

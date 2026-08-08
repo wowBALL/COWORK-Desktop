@@ -27,7 +27,7 @@ const { buildIssueUpdate } = require('./finishtest.js');
 const { injectableSource } = require('./webdump.js');
 // ตรรกะจับคู่ instance อยู่ในไฟล์แยกที่ไม่มี I/O เลย เพื่อให้ node --test พิสูจน์ได้ว่า
 // "จับคู่ผิดคู่" ไม่เกิด โดยไม่ต้องเปิด BlueStacks สองตัวตอนรันเทส
-const { parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError }
+const { parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError, bsThrow }
   = require('./bluestacks.js');
 // ตัวเรียก adb อยู่ในไฟล์แยกเพราะสคริปต์ probe ต้องใช้ตัวเดียวกันเป๊ะ — require('./main.js')
 // ไม่ได้ (มันเปิดหน้าต่างทันทีที่โหลด) ถ้าปล่อยให้ก๊อปไปไว้ทั้งสองที่ probe จะพิสูจน์คนละโค้ด
@@ -89,6 +89,9 @@ let webGrabLastUrl = '';
 // (งานชุดเดียวกันมักอยู่บนเครื่องเดิม เปิดฟอร์มใหม่แล้วต้องไม่ต้องเลือกซ้ำ)
 let bsLastInstance = '';
 let bsGrabCount = 0;
+// ธงกันเก็บซ้อน — ปุ่มฝั่ง renderer กันได้แค่หน้าต่างของตัวเอง แต่ main process เป็นตัวเดียว
+// ที่เห็นทุกคำขอ · เก็บซ้อนบน adb ทำให้ XML ของเครื่องหนึ่งไปคู่กับรูปของอีกเครื่องแบบเงียบ ๆ
+let bsGrabBusy = false;
 const BS_CONF = 'C:/ProgramData/BlueStacks_nxt/bluestacks.conf';
 let workspaceDir = '';
 let meetingsDir = '';
@@ -986,8 +989,10 @@ async function bsWindowNames() {
 function bsReadConf() {
   try {
     return parseConf(fs.readFileSync(BS_CONF, 'utf8'));
-  } catch {
-    throw new Error(bsError('no-conf', BS_CONF));
+  } catch (e) {
+    // ไฟล์ถูกล็อกหรือสิทธิ์ไม่ถึง (EACCES/EPERM/EBUSY) ไม่ใช่ "ไม่พบไฟล์" — ถ้าไม่บอกรหัส
+    // ผู้ใช้จะไปนั่งหาไฟล์ที่วางอยู่ตรงนั้นอยู่แล้ว แทนที่จะรู้ว่าเป็นเรื่องสิทธิ์
+    throw bsThrow('no-conf', e && e.code ? `${BS_CONF} (${e.code})` : BS_CONF);
   }
 }
 
@@ -1003,6 +1008,15 @@ async function bsCaptureWindow(instanceName) {
   return img.isEmpty() ? null : img.toPNG();
 }
 
+// ด่านสุดท้ายก่อนข้อความถึงผู้ใช้ — ที่โยนมาจาก bsError ติดธง bsCode ไว้แล้วจึงเป็นไทยแน่นอน
+// ที่เหลือ (desktopCapturer reject, spawn EACCES, fs) เป็นอังกฤษดิบของ Electron/libuv ที่ผู้ใช้
+// เอาไปทำอะไรต่อไม่ได้ ⇒ แปลงเป็นไทย แล้วโยนของจริงลง console ให้คนแก้โค้ดอ่าน (main.js ใช้ทรงนี้อยู่แล้ว)
+function bsUserError(where, e) {
+  if (e && e.bsCode) return e.message;
+  console.error(`[${where}]`, e);
+  return bsError('unexpected');
+}
+
 ipcMain.handle('bs-list-instances', async () => {
   try {
     const { ready, duplicates } = pairWithWindows(bsReadConf(), await bsWindowNames());
@@ -1013,7 +1027,7 @@ ipcMain.handle('bs-list-instances', async () => {
     }
     return { ok: true, instances: ready, duplicates, picked: chooseInstance(ready, bsLastInstance).name };
   } catch (e) {
-    return { ok: false, error: e.message };
+    return { ok: false, error: bsUserError('bs-list-instances', e) };
   }
 });
 
@@ -1026,9 +1040,19 @@ ipcMain.handle('bs-set-instance', (_e, name) => {
 // ต่างจากเฟส 1 ที่ push ผลทาง channel เพราะหน้าต่างถอดเป็นคนละหน้าต่างและกดถอดกี่ครั้งก็ได้
 // เส้นทางนี้เป็นการกดปุ่มเดียวรอผลเดียว invoke จึงพา error กลับไปถึงปุ่มที่กดได้โดยตรง
 ipcMain.handle('bs-grab', async (_e, instanceName) => {
+  // ตั้งธงก่อน await ตัวแรก — event loop เป็นเธรดเดียว คำขอที่สองจึงเห็นธงนี้เสมอ
+  // ไม่มีช่องให้สองรอบวิ่งคาบกันได้เลย
+  if (bsGrabBusy) return { ok: false, error: bsError('busy') };
+  bsGrabBusy = true;
   try {
     const { ready, duplicates } = pairWithWindows(bsReadConf(), await bsWindowNames());
     if (duplicates.includes(instanceName)) return { ok: false, error: bsError('duplicate-window', instanceName) };
+    // ไม่มีเครื่องเปิดอยู่เลยต้องมาก่อน gone — ไม่งั้นตอนปิด BlueStacks หมด ชื่อที่ renderer ส่งมา
+    // เป็นค่าว่าง ผู้ใช้จะได้ข้อความ 'เครื่อง "" ไม่ได้เปิดอยู่แล้ว — เลือกเครื่องใหม่จากเมนู'
+    // ซึ่งชี้ไปเมนูที่ว่างเปล่า · ลำดับเดียวกับ bs-list-instances เป๊ะ
+    if (!ready.length) {
+      return { ok: false, error: duplicates.length ? bsError('duplicate-window', duplicates[0]) : bsError('no-window') };
+    }
     const inst = ready.find(i => i.name === instanceName);
     if (!inst) return { ok: false, error: bsError('gone', instanceName) };
 
@@ -1039,28 +1063,49 @@ ipcMain.handle('bs-grab', async (_e, instanceName) => {
       return { ok: false, error: bsError('connect-failed', conn.stderr || conn.stdout.toString().trim()) };
     }
 
+    // ชื่อไฟล์ไม่ซ้ำทั้งฝั่งเครื่องและฝั่งโฮสต์ — ชื่อคงที่ทำให้ไฟล์ค้างจากรอบก่อน (ลบไม่สำเร็จ
+    // หรือลบไม่ทัน) กลายเป็นผลของรอบนี้ได้เงียบ ๆ คือได้ XML เก่าคู่กับรูปใหม่
+    const token = `${process.pid}-${Date.now().toString(36)}`;
     // ใช้ dump + pull ตามที่วัดมา (2199ms) ไม่ใช่ exec-out cat ที่สั้นกว่าแต่ยังไม่ได้ยิงจริง
-    const devFile = '/sdcard/cowork-ui.xml';
+    const devFile = `/sdcard/cowork-ui-${token}.xml`;
     const dump = await adb(['-s', serial, 'shell', 'uiautomator', 'dump', devFile], 30);
-    if (dump.code !== 0) return { ok: false, error: bsError('dump-failed', dump.stderr || 'exit ' + dump.code) };
+    // uiautomator พิมพ์ "ERROR: could not get idle state." แล้ว exit 0 โดยไม่เขียนไฟล์ได้
+    // ⇒ ต้องเห็นว่ามันบอกว่าเขียนลง path ของรอบนี้จริง ห้ามเชื่อ exit code อย่างเดียว
+    const dumpSays = dump.stdout.toString() + '\n' + dump.stderr;
+    if (dump.code !== 0 || !dumpSays.includes(`dumped to: ${devFile}`)) {
+      return { ok: false, error: bsError('dump-failed', dump.stderr || dumpSays.trim() || 'exit ' + dump.code) };
+    }
 
-    const hostFile = path.join(app.getPath('temp'), `cowork-ui-${process.pid}.xml`);
-    const pull = await adb(['-s', serial, 'pull', devFile, hostFile], 15);
-    adb(['-s', serial, 'shell', 'rm', '-f', devFile], 10).catch(() => {});   // เก็บกวาด ไม่ต้องรอ
-    if (pull.code !== 0) return { ok: false, error: bsError('dump-failed', pull.stderr || 'pull exit ' + pull.code) };
-
+    const hostFile = path.join(app.getPath('temp'), `cowork-ui-${token}.xml`);
     let xml = '';
-    try { xml = fs.readFileSync(hostFile, 'utf8'); } catch {}
-    try { fs.unlinkSync(hostFile); } catch {}
+    try {
+      const pull = await adb(['-s', serial, 'pull', devFile, hostFile], 15);
+      if (pull.code !== 0) return { ok: false, error: bsError('dump-failed', pull.stderr || 'pull exit ' + pull.code) };
+      xml = fs.readFileSync(hostFile, 'utf8');
+    } finally {
+      // เก็บกวาดทุกทางออกรวมทั้งทางที่ throw — เดิมเก็บเฉพาะทางที่สำเร็จ ไฟล์จึงกองใน temp
+      // ทุกครั้งที่พลาด · ฝั่งเครื่องไม่ต้องรอผล ชื่อไม่ซ้ำอยู่แล้วจึงไม่กระทบรอบถัดไป
+      adb(['-s', serial, 'shell', 'rm', '-f', devFile], 10).catch(() => {});
+      try { fs.unlinkSync(hostFile); } catch {}
+    }
     const nodes = countNodes(xml);
     if (!nodes) return { ok: false, error: bsError('empty-dump') };
 
     // screencap ก่อนเสมอ — ได้พิกเซลของเครื่องตรง ๆ ไม่ติดขอบ chrome ของ BlueStacks จึงไม่ต้อง crop
     // FLAG_SECURE ทำให้ได้ 0 ไบต์เงียบ ๆ ไม่ใช่ error ⇒ เช็คความยาว ห้ามเช็คแค่ exit code
+    // ทั้งสองทางครอบ try ของตัวเอง เพราะ XML ที่ได้มาแล้วต้องไม่หายไปเพราะรูปแคปไม่ติด
+    // (ทรงเดียวกับที่เส้นทางหน้าเว็บครอบ capturePage ไว้ด้วยเหตุผลเดียวกัน)
     let png = null;
-    const shot = await adb(['-s', serial, 'exec-out', 'screencap', '-p'], 15);
-    if (shot.code === 0 && shot.stdout.length > 0) png = shot.stdout;
-    if (!png) png = await bsCaptureWindow(instanceName);
+    try {
+      const shot = await adb(['-s', serial, 'exec-out', 'screencap', '-p'], 15);
+      if (shot.code === 0 && shot.stdout.length > 0) png = shot.stdout;
+    } catch (e) {
+      console.error('[bs-grab] screencap ไม่สำเร็จ ลองทางสำรอง:', e);
+    }
+    if (!png) {
+      try { png = await bsCaptureWindow(instanceName); }
+      catch (e) { console.error('[bs-grab] แคปหน้าต่างไม่สำเร็จ ส่งเฉพาะ XML:', e); }
+    }
 
     bsGrabCount += 1;
     // แคปรูปไม่ได้ยังถือว่าสำเร็จ — XML คือของหลัก กฎเดียวกับที่เส้นทางหน้าเว็บตั้งไว้แล้ว
@@ -1074,7 +1119,9 @@ ipcMain.handle('bs-grab', async (_e, instanceName) => {
       pngDataUrl: png ? 'data:image/png;base64,' + png.toString('base64') : '',
     } };
   } catch (e) {
-    return { ok: false, error: e.message };
+    return { ok: false, error: bsUserError('bs-grab', e) };
+  } finally {
+    bsGrabBusy = false;
   }
 });
 

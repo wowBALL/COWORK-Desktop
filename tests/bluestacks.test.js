@@ -105,7 +105,7 @@ test('countNodes: XML ว่างคืน 0 ไม่โยน', () => {
 
 test('bsError: ทุก code ที่เส้นทางนี้ใช้ต้องมีข้อความไทย ไม่หลุดเป็นค่า fallback', () => {
   const codes = ['no-conf', 'no-window', 'duplicate-window', 'no-adb', 'connect-failed',
-    'dump-failed', 'empty-dump', 'timeout', 'gone'];
+    'dump-failed', 'empty-dump', 'timeout', 'gone', 'busy', 'unexpected'];
   for (const c of codes) {
     const msg = bsError(c, 'x');
     assert.ok(msg && !msg.includes('ไม่รู้จัก'), `${c} ยังไม่มีข้อความ`);

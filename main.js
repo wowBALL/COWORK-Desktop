@@ -1506,8 +1506,12 @@ ipcMain.handle('friday-stop', async () => {
       method: 'POST',
       signal: AbortSignal.timeout(5000),
     });
+    // อ่าน body เหมือน friday-start และ runner-stop ที่อยู่ติดกัน -- route นี้ตอบ 200
+    // เสมอในเวอร์ชันปัจจุบัน แต่ถ้าเจอ service รุ่นเก่าที่ยังไม่มีทางนี้ ข้อความจริงจาก
+    // เซิร์ฟเวอร์มีค่ากว่า http_404 และการทำต่างจากพี่น้องข้าง ๆ คือหนี้ที่ไม่มีเหตุผลรองรับ
+    const body = await res.json().catch(() => ({}));
     if (res.status === 200) return { ok: true };
-    return { error: `http_${res.status}` };
+    return { error: body.error || `http_${res.status}` };
   } catch { return { error: 'unreachable' }; }
 });
 ipcMain.handle('get-runner-config', () => ({

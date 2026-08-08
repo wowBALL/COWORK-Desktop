@@ -1,4 +1,4 @@
-const { app, BrowserWindow, BaseWindow, WebContentsView, ipcMain, screen, globalShortcut, shell, dialog, session } = require('electron');
+const { app, BrowserWindow, BaseWindow, WebContentsView, ipcMain, screen, globalShortcut, shell, dialog, session, desktopCapturer } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -25,6 +25,14 @@ const { normalizeRefreshMinutes } = require('./util.js');
 // จึงมีที่เดียวและถูกเทสด้วย node --test ได้ ไม่ต้องยิงขึ้น Redmine จริงเพื่อพิสูจน์
 const { buildIssueUpdate } = require('./finishtest.js');
 const { injectableSource } = require('./webdump.js');
+// ตรรกะจับคู่ instance อยู่ในไฟล์แยกที่ไม่มี I/O เลย เพื่อให้ node --test พิสูจน์ได้ว่า
+// "จับคู่ผิดคู่" ไม่เกิด โดยไม่ต้องเปิด BlueStacks สองตัวตอนรันเทส
+const { parseConf, pairWithWindows, chooseInstance, findWindow, labelFor, countNodes, bsError, makeBsError }
+  = require('./bluestacks.js');
+// ตัวเรียก adb อยู่ในไฟล์แยกเพราะสคริปต์ probe ต้องใช้ตัวเดียวกันเป๊ะ — require('./main.js')
+// ไม่ได้ (มันเปิดหน้าต่างทันทีที่โหลด) ถ้าปล่อยให้ก๊อปไปไว้ทั้งสองที่ probe จะพิสูจน์คนละโค้ด
+// กับที่แอปรันจริง ซึ่งทำให้ทั้ง task 5 ไร้ความหมาย
+const { adb } = require('./bluestacks-adb.js');
 
 const MODE = process.argv.includes('--screensaver') ? 'screensaver' : 'widget';
 let win;
@@ -77,6 +85,14 @@ let redmineConfig = { url: '', apiKey: '' };
 let llmConfig = { baseUrl: '', apiKey: '' };
 // URL ล่าสุดของหน้าต่างถอดหน้าเว็บ — เปิดครั้งหน้าเริ่มที่เดิม เพราะบั๊กชุดเดียวกันมักอยู่หน้าเดิม
 let webGrabLastUrl = '';
+// เครื่อง BlueStacks ที่เลือกไว้ล่าสุด — ทรงเดียวกับ webGrabLastUrl ด้วยเหตุผลเดียวกัน
+// (งานชุดเดียวกันมักอยู่บนเครื่องเดิม เปิดฟอร์มใหม่แล้วต้องไม่ต้องเลือกซ้ำ)
+let bsLastInstance = '';
+let bsGrabCount = 0;
+// ธงกันเก็บซ้อน — ปุ่มฝั่ง renderer กันได้แค่หน้าต่างของตัวเอง แต่ main process เป็นตัวเดียว
+// ที่เห็นทุกคำขอ · เก็บซ้อนบน adb ทำให้ XML ของเครื่องหนึ่งไปคู่กับรูปของอีกเครื่องแบบเงียบ ๆ
+let bsGrabBusy = false;
+const BS_CONF = 'C:/ProgramData/BlueStacks_nxt/bluestacks.conf';
 let workspaceDir = '';
 let meetingsDir = '';
 // QA test results — { label, path }[], array from day one: more sources
@@ -174,6 +190,7 @@ function loadAppConfig() {
   redmineConfig = { url: saved.redmineUrl || '', apiKey: saved.redmineApiKey || '' };
   llmConfig = { baseUrl: saved.llmBaseUrl || '', apiKey: saved.llmApiKey || '' };
   webGrabLastUrl = saved.webGrabLastUrl || '';
+  bsLastInstance = saved.bsLastInstance || '';
   workspaceDir = saved.workspaceDir || '';
   meetingsDir = saved.meetingsDir || '';
   qaSources = Array.isArray(saved.qaSources) ? saved.qaSources : [];
@@ -956,6 +973,185 @@ ipcMain.on('web-grab-capture', async () => {
     text: `ถอดแล้ว ✓ ${dump.nodes} nodes` + (pngDataUrl ? ' + รูป' : ' (แคปรูปไม่ได้)'),
     kind: 'ok', busy: false,
   });
+});
+
+// ── BlueStacks: รูป + UI hierarchy จากหน้าจอที่เปิดค้างอยู่ (spec 2026-08-08) ──
+
+// นับหน้าต่างอย่างเดียวใช้ thumbnailSize 0 — วัดแล้ว ~180ms อุ่นแล้ว เทียบกับ ~440ms ถ้าขอรูปด้วย
+// เร็วพอจะเรียกทุกครั้งที่เปิดฟอร์มและทุกครั้งที่กางเมนู ซึ่งจำเป็นเพราะผู้ใช้เปิด-ปิด instance ระหว่างวัน
+async function bsWindowNames() {
+  const sources = await desktopCapturer.getSources({
+    types: ['window'], thumbnailSize: { width: 0, height: 0 },
+  });
+  return sources.map(s => s.name);
+}
+
+function bsReadConf() {
+  try {
+    return parseConf(fs.readFileSync(BS_CONF, 'utf8'));
+  } catch (e) {
+    // ไฟล์ถูกล็อกหรือสิทธิ์ไม่ถึง (EACCES/EPERM/EBUSY) ไม่ใช่ "ไม่พบไฟล์" — ถ้าไม่บอกรหัส
+    // ผู้ใช้จะไปนั่งหาไฟล์ที่วางอยู่ตรงนั้นอยู่แล้ว แทนที่จะรู้ว่าเป็นเรื่องสิทธิ์
+    throw makeBsError('no-conf', e && e.code ? `${BS_CONF} (${e.code})` : BS_CONF);
+  }
+}
+
+// ทางสำรองเมื่อ screencap โดน FLAG_SECURE — BlueStacks วาดภาพลงหน้าต่าง Windows ผ่าน compositor
+// ของโฮสต์ ซึ่ง Android ห้ามไม่ได้ · ชื่อซ้ำห้ามเดา คืน null ดีกว่าแนบรูปของเครื่องอื่นเข้าตั๋ว
+async function bsCaptureWindow(instanceName) {
+  const sources = await desktopCapturer.getSources({
+    types: ['window'], thumbnailSize: { width: 1600, height: 2000 },
+  });
+  const { index, count } = findWindow(sources.map(s => s.name), instanceName);
+  if (index < 0 || count !== 1) return null;
+  const img = sources[index].thumbnail;
+  return img.isEmpty() ? null : img.toPNG();
+}
+
+// ด่านสุดท้ายก่อนข้อความถึงผู้ใช้ — ที่โยนมาจาก bsError ติดธง bsCode ไว้แล้วจึงเป็นไทยแน่นอน
+// ที่เหลือ (desktopCapturer reject, spawn EACCES, fs) เป็นอังกฤษดิบของ Electron/libuv ที่ผู้ใช้
+// เอาไปทำอะไรต่อไม่ได้ ⇒ แปลงเป็นไทย แล้วโยนของจริงลง console ให้คนแก้โค้ดอ่าน (main.js ใช้ทรงนี้อยู่แล้ว)
+function bsUserError(where, e) {
+  if (e && e.bsCode) return e.message;
+  console.error(`[${where}]`, e);
+  return bsError('unexpected');
+}
+
+ipcMain.handle('bs-list-instances', async () => {
+  try {
+    const { ready, duplicates } = pairWithWindows(bsReadConf(), await bsWindowNames());
+    // ชื่อซ้ำต้องมาก่อน "ไม่พบหน้าต่าง" — ผู้ใช้ที่ตั้งชื่อซ้ำจะได้รู้ว่าต้องเปลี่ยนชื่อ
+    // ไม่ใช่ไปไล่หาว่าทำไมเครื่องที่เปิดอยู่ชัด ๆ ถึงไม่ขึ้น
+    if (!ready.length) {
+      return { ok: false, error: duplicates.length ? bsError('duplicate-window', duplicates[0]) : bsError('no-window') };
+    }
+    return { ok: true, instances: ready, duplicates, picked: chooseInstance(ready, bsLastInstance).name };
+  } catch (e) {
+    return { ok: false, error: bsUserError('bs-list-instances', e) };
+  }
+});
+
+ipcMain.handle('bs-set-instance', (_e, name) => {
+  try {
+    bsLastInstance = String(name || '');
+    writeConfigMerge({ bsLastInstance });
+    return { ok: true };
+  } catch (e) {
+    // ไฟล์ config ล็อกอยู่หรือสิทธิ์ไม่ถึง (EACCES/ENOSPC ฯลฯ) — สองแฮนเดลอีกตัวห่อแบบนี้อยู่แล้ว
+    // ตัวนี้ไม่มี try/catch มาก่อนเลยหลุดเป็น "Error invoking remote method..." ดิบ ๆ ถึง renderer
+    return { ok: false, error: bsUserError('bs-set-instance', e) };
+  }
+});
+
+// ต่างจากเฟส 1 ที่ push ผลทาง channel เพราะหน้าต่างถอดเป็นคนละหน้าต่างและกดถอดกี่ครั้งก็ได้
+// เส้นทางนี้เป็นการกดปุ่มเดียวรอผลเดียว invoke จึงพา error กลับไปถึงปุ่มที่กดได้โดยตรง
+ipcMain.handle('bs-grab', async (_e, instanceName) => {
+  // ตั้งธงก่อน await ตัวแรก — event loop เป็นเธรดเดียว คำขอที่สองจึงเห็นธงนี้เสมอ
+  // ไม่มีช่องให้สองรอบวิ่งคาบกันได้เลย
+  if (bsGrabBusy) return { ok: false, error: bsError('busy') };
+  bsGrabBusy = true;
+  try {
+    const { ready, duplicates } = pairWithWindows(bsReadConf(), await bsWindowNames());
+    if (duplicates.includes(instanceName)) return { ok: false, error: bsError('duplicate-window', instanceName) };
+    // ไม่มีเครื่องเปิดอยู่เลยต้องมาก่อน gone — ไม่งั้นตอนปิด BlueStacks หมด ชื่อที่ renderer ส่งมา
+    // เป็นค่าว่าง ผู้ใช้จะได้ข้อความ 'เครื่อง "" ไม่ได้เปิดอยู่แล้ว — เลือกเครื่องใหม่จากเมนู'
+    // ซึ่งชี้ไปเมนูที่ว่างเปล่า · ลำดับเดียวกับ bs-list-instances เป๊ะ
+    if (!ready.length) {
+      return { ok: false, error: duplicates.length ? bsError('duplicate-window', duplicates[0]) : bsError('no-window') };
+    }
+    // ชื่อว่าง = "เอาเครื่องเริ่มต้น" ไม่ใช่ชื่อเครื่องที่หายไป — ผู้ใช้ที่เปิดฟอร์มตอน BlueStacks
+    // ยังไม่รัน จะได้ป้าย "ไม่พบเครื่อง" แล้วชื่อที่ renderer ส่งมาเป็นค่าว่างตลอดจนกว่าจะกางเมนู
+    // พอเปิด instance แล้วกด 📱 เลย ready ไม่ว่างแล้วการ์ดข้างบนจึงผ่าน แต่ find ไม่เจอ ผู้ใช้จะได้
+    // ข้อความ 'เครื่อง "" ไม่ได้เปิดอยู่แล้ว' ที่ชี้ไปเครื่องซึ่งไม่มีอยู่จริง ⇒ เลือกด้วยตัวเดียว
+    // กับ bs-list-instances เพื่อให้ป้ายกับสิ่งที่กดได้ตรงกันเสมอ
+    const wanted = String(instanceName || '') || chooseInstance(ready, bsLastInstance).name;
+    const inst = ready.find(i => i.name === wanted);
+    if (!inst) return { ok: false, error: bsError('gone', wanted) };
+
+    const serial = `127.0.0.1:${inst.adbPort}`;
+    // adb devices ว่างเปล่าทั้งที่ BlueStacks เปิดอยู่ — ต้อง connect ก่อนเสมอ (วัดแล้ว 43ms)
+    const conn = await adb(['connect', serial], 5);
+    const connOut = conn.stdout.toString().trim();
+    // exit code ของ adb connect เชื่อไม่ได้ — platform-tools หลายรุ่นพิมพ์ "cannot connect to ..."
+    // แล้วยัง exit 0 ความล้มเหลวจึงไปโผล่อีกขั้นหนึ่งเป็น "ถอดโครงหน้าจอไม่ได้: device not found"
+    // ซึ่งเป็นไทยก็จริงแต่ชี้ผิดขั้น ส่วน connect-failed ที่มีรายละเอียดพอจะแก้ได้ไม่เคยถูกยิงเลย
+    // "connected to" ออกทั้งตอนต่อใหม่และตอนที่ต่ออยู่แล้ว จึงใช้เป็นสัญญาณว่าสำเร็จได้
+    if (conn.code !== 0 || !connOut.includes('connected to')) {
+      return { ok: false, error: bsError('connect-failed', conn.stderr || connOut) };
+    }
+
+    // ชื่อไฟล์ไม่ซ้ำทั้งฝั่งเครื่องและฝั่งโฮสต์ — ชื่อคงที่ทำให้ไฟล์ค้างจากรอบก่อน (ลบไม่สำเร็จ
+    // หรือลบไม่ทัน) กลายเป็นผลของรอบนี้ได้เงียบ ๆ คือได้ XML เก่าคู่กับรูปใหม่
+    const token = `${process.pid}-${Date.now().toString(36)}`;
+    // ใช้ dump + pull ตามที่วัดมา (2199ms) ไม่ใช่ exec-out cat ที่สั้นกว่าแต่ยังไม่ได้ยิงจริง
+    const devFile = `/sdcard/cowork-ui-${token}.xml`;
+    const dump = await adb(['-s', serial, 'shell', 'uiautomator', 'dump', devFile], 30);
+    const dumpOut = dump.stdout.toString().trim();
+    // ไม่เช็คถ้อยคำ "dumped to:" อีกต่อไป — สำนวนที่ uiautomator พิมพ์ตอนสำเร็จต่างกันไปตามรุ่น/
+    // locale ของ Android แต่ละอิมเมจ และบางรุ่นพิมพ์ path ที่ resolve แล้วไม่ตรงกับ devFile ที่ส่งไป
+    // เดายากพอ ๆ กับเช็คไม่ได้จริง ส่วนไฟล์ค้างจากรอบก่อนถูกกันไว้แล้วด้วยชื่อไม่ซ้ำต่อรอบ (token)
+    // จึงเหลือแค่ exit code พอ — เก็บ stdout ไว้ก่อน เผื่อ pull ล้มเหลวทีหลังแล้วต้องใช้ข้อความนี้
+    if (dump.code !== 0) {
+      return { ok: false, error: bsError('dump-failed', dump.stderr || dumpOut || 'exit ' + dump.code) };
+    }
+
+    const hostFile = path.join(app.getPath('temp'), `cowork-ui-${token}.xml`);
+    let xml = '';
+    try {
+      const pull = await adb(['-s', serial, 'pull', devFile, hostFile], 15);
+      if (pull.code !== 0) {
+        // แนบ stdout/stderr ของ dump เองด้วย ไม่ใช่แค่ของ pull — ข้อความที่บอกได้ว่าต้องทำอะไรต่อ
+        // เช่น "ERROR: could not get idle state." (uiautomator exit 0 แต่ยังพิมพ์ข้อความนี้ได้)
+        // โผล่ตรงนี้ ไม่ใช่ในผลของ pull ซึ่งมักบอกแค่ว่าไฟล์ปลายทางไม่มี
+        const detail = [pull.stderr || 'pull exit ' + pull.code, dump.stderr || dumpOut].filter(Boolean).join(' | ');
+        return { ok: false, error: bsError('dump-failed', detail) };
+      }
+      // adb รุ่นเก่าบางตัวคืน exit 0 ทั้งที่ pull ไม่ได้ไฟล์จริง — กันด้วย try แล้วปล่อย xml ว่าง
+      // ให้ไปเข้าทาง empty-dump ข้างล่าง ซึ่งบอกผู้ใช้ได้ตรงกว่า catch ชั้นนอกของ handler
+      try { xml = fs.readFileSync(hostFile, 'utf8'); } catch {}
+    } finally {
+      // เก็บกวาดทุกทางออกรวมทั้งทางที่ throw — เดิมเก็บเฉพาะทางที่สำเร็จ ไฟล์จึงกองใน temp
+      // ทุกครั้งที่พลาด · ฝั่งเครื่องไม่ต้องรอผล ชื่อไม่ซ้ำอยู่แล้วจึงไม่กระทบรอบถัดไป
+      adb(['-s', serial, 'shell', 'rm', '-f', devFile], 10).catch(() => {});
+      try { fs.unlinkSync(hostFile); } catch {}
+    }
+    const nodes = countNodes(xml);
+    if (!nodes) return { ok: false, error: bsError('empty-dump') };
+
+    // screencap ก่อนเสมอ — ได้พิกเซลของเครื่องตรง ๆ ไม่ติดขอบ chrome ของ BlueStacks จึงไม่ต้อง crop
+    // FLAG_SECURE ทำให้ได้ 0 ไบต์เงียบ ๆ ไม่ใช่ error ⇒ เช็คความยาว ห้ามเช็คแค่ exit code
+    // ทั้งสองทางครอบ try ของตัวเอง เพราะ XML ที่ได้มาแล้วต้องไม่หายไปเพราะรูปแคปไม่ติด
+    // (ทรงเดียวกับที่เส้นทางหน้าเว็บครอบ capturePage ไว้ด้วยเหตุผลเดียวกัน)
+    let png = null;
+    try {
+      const shot = await adb(['-s', serial, 'exec-out', 'screencap', '-p'], 15);
+      if (shot.code === 0 && shot.stdout.length > 0) png = shot.stdout;
+    } catch (e) {
+      console.error('[bs-grab] screencap ไม่สำเร็จ ลองทางสำรอง:', e);
+    }
+    if (!png) {
+      // ใช้ inst.name ไม่ใช่ instanceName — ตอนกดโดยยังไม่เลือกเมนู instanceName เป็นค่าว่าง
+      // ซึ่งจับหน้าต่างไม่ตรงกับพอร์ตที่เพิ่งถอด XML มา (คือความไม่ตรงกันที่ทั้งเส้นทางนี้กันอยู่)
+      try { png = await bsCaptureWindow(inst.name); }
+      catch (e) { console.error('[bs-grab] แคปหน้าต่างไม่สำเร็จ ส่งเฉพาะ XML:', e); }
+    }
+
+    bsGrabCount += 1;
+    // แคปรูปไม่ได้ยังถือว่าสำเร็จ — XML คือของหลัก กฎเดียวกับที่เส้นทางหน้าเว็บตั้งไว้แล้ว
+    return { ok: true, payload: {
+      kind: 'bluestacks',
+      label: labelFor(inst.name, xml),
+      url: '',
+      xml,
+      nodes,
+      filename: `bluestacks-${bsGrabCount}.png`,
+      pngDataUrl: png ? 'data:image/png;base64,' + png.toString('base64') : '',
+    } };
+  } catch (e) {
+    return { ok: false, error: bsUserError('bs-grab', e) };
+  } finally {
+    bsGrabBusy = false;
+  }
 });
 
 // renderer asks to quit (screensaver: mouse move / key press)

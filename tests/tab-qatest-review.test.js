@@ -362,6 +362,23 @@ test('qiXmlChipsHtml: url ใน attribute ต้องแตกออกมา�
   assert.ok(html.includes('&quot;'), 'อัญประกาศต้องถูกแปลง ไม่ใช่ผ่านไปดิบ ๆ');
 });
 
+// ชิปสองแหล่งใช้คลาสเดียวกันหมด ต่างแค่ไอคอน — payload เก่าที่ไม่มี kind ต้องยังเป็น 🌐
+// ไม่งั้นชิปของหน้าเว็บที่ค้างอยู่ในฟอร์มจะเปลี่ยนหน้าตาเองตอนวาดรอบถัดไป
+test('qiXmlChipsHtml: ชิปจาก BlueStacks ใช้ 📱 ส่วนของหน้าเว็บยังเป็น 🌐', () => {
+  const html = qiXmlChipsHtml([
+    { kind: 'bluestacks', label: 'DEV · Login', xml: '<hierarchy/>', nodes: 18 },
+    { label: 'Booking Settings', url: 'https://x/y', xml: '<hierarchy/>', nodes: 143 },
+  ]);
+  assert.ok(html.includes('📱 DEV · Login'), 'ชิป BlueStacks ต้องขึ้น 📱');
+  assert.ok(html.includes('🌐 Booking Settings'), 'ชิปหน้าเว็บที่ไม่มี kind ต้องยังเป็น 🌐');
+});
+
+test('qiXmlChipsHtml: ชิป BlueStacks ที่ไม่มี label ต้องไม่ตกไปใช้คำว่า "หน้าเว็บ"', () => {
+  const html = qiXmlChipsHtml([{ kind: 'bluestacks', xml: '<hierarchy/>', nodes: 3 }]);
+  assert.ok(html.includes('BlueStacks'));
+  assert.ok(!html.includes('หน้าเว็บ'));
+});
+
 // qiCloseForm อยู่ใน IIFE ที่พึ่ง DOM จริง เรียกตรงจาก node --test ไม่ได้ — ดักที่ระดับซอร์ส
 // แทน เพราะความพลาดที่ต้องกันคือ "ลืมเพิ่มบรรทัดล้าง" ซึ่งอ่านจากซอร์สก็เห็น
 // (ถ้าลืม XML ของ issue ใบก่อนจะติดไปกับใบถัดไปเงียบ ๆ แล้วร่างอ้างหน้าจอผิดหน้า)
@@ -387,4 +404,70 @@ test('qiAcceptsGrab: ผลที่มาถึงตอนฟอร์มป�
 test('qiAcceptsGrab: ผลที่ไม่มี xml ไม่รับ แม้ฟอร์มยังเปิดอยู่', () => {
   assert.strictEqual(qiAcceptsGrab(true, { label: 'ว่าง', nodes: 0 }), false);
   assert.strictEqual(qiAcceptsGrab(true, null), false);
+});
+
+// ---- ข้อความของงานเก็บหลักฐานไปลงที่ไหน (แยกออกมาจาก qiGrabStatus เพื่อเทสได้แบบเดียวกับ
+// qiAcceptsGrab ข้างบน) ----
+// กฎนี้ไม่ใช่เรื่องความสวยงามของ UI แต่คือกฎที่กันไม่ให้ผู้ใช้เหลือร่างที่ยกเลิกไม่ได้:
+// #qiDraftStatus ระหว่างร่างไม่ได้ถือแค่ข้อความ แต่ถือปุ่ม #qiSkipDraft ซึ่งเป็นทางเดียวที่จะ
+// ทิ้งร่างที่กิน 10-60 วินาที ใครเขียนทับบรรทัดนั้น = ลบปุ่มนั้น
+const { qiGrabStatusTarget } = require('../tab-qatest.js');
+
+test('qiGrabStatusTarget: ไม่มีร่างวิ่งอยู่ = เขียนบรรทัดสถานะได้ตามปกติ', () => {
+  assert.strictEqual(qiGrabStatusTarget(false, 'ok'), 'status',
+    'ไม่มีร่าง = ไม่มีปุ่ม #qiSkipDraft ให้ทับ งานเก็บหลักฐานจึงต้องรายงานผลของตัวเองใน '
+    + '#qiDraftStatus ได้ ถ้าตรงนี้กลายเป็น drop ผู้ใช้กด 📱/🌐 แล้วจะไม่มีอะไรตอบสนองเลย');
+  assert.strictEqual(qiGrabStatusTarget(false, 'err'), 'status',
+    'ความล้มเหลวตอนไม่มีร่างก็ต้องอยู่ที่บรรทัดสถานะติดกับปุ่มที่เพิ่งกด ไม่ใช่ไปซ่อนที่ '
+    + '#qiFormError ซึ่งอยู่ใต้ฟอร์มลงไปไกลจนผู้ใช้ไม่เห็น');
+  assert.strictEqual(qiGrabStatusTarget(false, ''), 'status');
+});
+
+test('qiGrabStatusTarget: ระหว่างร่าง ความล้มเหลวต้องย้ายไป #qiFormError ไม่ใช่หายไป', () => {
+  assert.strictEqual(qiGrabStatusTarget(true, 'err'), 'error',
+    'ระหว่างร่างห้ามแตะ #qiDraftStatus เพราะปุ่มยกเลิกร่างอยู่ในนั้น แต่ "ห้ามแตะ" ต้องไม่แปลว่า '
+    + '"เงียบ" — ความล้มเหลวที่ไม่มีใครเห็นทำให้ผู้ใช้รอผลที่ไม่มีวันมา จึงต้องไปออกที่ '
+    + '#qiFormError ซึ่งเป็นช่องรายงานพลาดของงานแนบไฟล์ที่ qiDraft() ไม่เคยแตะ');
+});
+
+test('qiGrabStatusTarget: ระหว่างร่าง ข้อความที่ไม่ใช่ความล้มเหลวต้องถูกทิ้ง', () => {
+  assert.strictEqual(qiGrabStatusTarget(true, 'ok'), 'drop',
+    'ผลสำเร็จระหว่างร่างต้องถูกทิ้ง เพราะการเขียนมันลง #qiDraftStatus จะลบปุ่ม #qiSkipDraft '
+    + 'ทิ้งไปด้วย แล้วร่างที่ยกเลิกไม่ได้จะวิ่งจนจบและทับหัวข้อ/รายละเอียดที่ผู้ใช้พิมพ์เอง · '
+    + 'ทิ้งได้เพราะผลสำเร็จไม่ได้หายไปไหน: ชิปโครงหน้าจอโผล่ในฟอร์มและรูปถูกอัปขึ้น Redmine อยู่แล้ว');
+  assert.strictEqual(qiGrabStatusTarget(true, ''), 'drop',
+    'ข้อความความคืบหน้า (เช่น "กำลังเก็บจาก BlueStacks...") ก็ทับปุ่มยกเลิกได้เท่ากับข้อความอื่น '
+    + 'kind ว่างไม่ใช่ข้อยกเว้น');
+});
+
+// ---- กับดัก CSS ของปุ่มแบ่งสองส่วน (ด่านอ่านซอร์ส แบบเดียวกับ qiCloseForm ข้างบน) ----
+// ฟีเจอร์นี้ผลิตบั๊ก Critical มาแล้วสองตัว และทั้งสองตัวเป็น CSS ที่ทำให้เมนู "หายไปเฉย ๆ"
+// โดยที่ JS ถูกหมดทุกบรรทัด — เทส DOM จับไม่ได้เลยเพราะ node --test ไม่คำนวณ style
+// ตอนนี้กันไว้ด้วยคอมเมนต์ใน tab-qatest.css อย่างเดียว ซึ่งกันได้เฉพาะคนที่บังเอิญอ่านมัน
+function qatestCssSource() {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  return fs.readFileSync(path.join(__dirname, '..', 'tab-qatest.css'), 'utf8');
+}
+
+test('tab-qatest.css: .qi-bs-split ต้องไม่มี overflow', () => {
+  const m = qatestCssSource().match(/\.qi-bs-split\s*\{([^}]*)\}/);
+  assert.ok(m, 'หากฎ .qi-bs-split ไม่เจอ — ถ้าเปลี่ยนชื่อคลาสแล้ว ให้ย้ายด่านนี้ตามไป อย่าลบทิ้ง '
+    + 'เพราะกับดักที่มันกันอยู่ยังอยู่ที่เดิม');
+  assert.ok(!/overflow/.test(m[1]),
+    '.qi-bs-split มี overflow: กล่องนี้เป็น containing block ของ .qi-bs-menu (จาก position: relative '
+    + 'ที่ต้องคงไว้เพื่อให้เมนูเกาะปุ่ม) และเมนูวางที่ top: 100% ซึ่งอยู่นอกกล่องพอดี overflow จึง clip '
+    + 'มันหายทั้งใบ อาการคือกดปุ่ม ▾ แล้วไม่มีอะไรขึ้นเลย (บั๊ก Critical ของ task 4) — '
+    + 'ถ้าต้องการมุมโค้ง ให้ใส่ border-radius ที่ปุ่มลูกแทน อย่าใช้ overflow clip');
+});
+
+test('tab-qatest.css: .qi-bs-menu.hidden ต้องประกาศ display: none ของตัวเอง', () => {
+  const m = qatestCssSource().match(/\.qi-bs-menu\.hidden\s*\{([^}]*)\}/);
+  assert.ok(m, 'ไม่มีกฎ .qi-bs-menu.hidden แล้ว: tab-qatest.css ถูก <link> หลัง <style> ที่นิยาม .hidden '
+    + 'ใน widget.html วันไหนมีใครเติม display ให้ .qi-bs-menu กฎนั้นจะชนะ .hidden ที่ specificity เท่ากัน '
+    + 'แต่มาก่อน แล้วเมนูจะกางค้างทับฟิลด์ตลอดเวลาโดยไม่มี error ใด ๆ (บั๊ก Critical ของเฟส 1 เป็นแบบนี้เป๊ะ) '
+    + 'กฎนี้จึงต้องอยู่ถาวร ไม่ใช่ของซ้ำซ้อนที่ลบได้');
+  assert.ok(/display\s*:\s*none/.test(m[1]),
+    'กฎ .qi-bs-menu.hidden มีอยู่แต่ไม่ได้ตั้ง display: none — การซ่อนเมนูทั้งหมดในไฟล์นี้ทำผ่าน '
+    + 'classList.add(\'hidden\') ถ้ากฎนี้ไม่ซ่อนจริง เมนูจะกางค้างทับฟิลด์ที่อยู่ใต้ปุ่ม');
 });

@@ -535,6 +535,15 @@ test('friendlyEndpointError: error เรื่องรูปต้องบอ
   assert.ok(/รูป/.test(msg), 'ต้องบอกว่าปัญหาอยู่ที่รูป');
 });
 
+// หน้าเว็บจริงถอดเป็น XML ได้ยาวกว่าที่ประเมินไว้ตอนออกแบบมาก และแนบได้หลายชุด
+// เคสนี้จึงเกิดได้จริง ไม่ใช่การกันไว้ก่อน — และทางแก้คือเอาชิปออก ซึ่งข้อความดิบไม่ได้บอก
+test('friendlyEndpointError: เกิน context ต้องบอกให้เอาชุดโครงหน้าจอออก ไม่ใช่พ่นข้อความดิบ', () => {
+  const msg = friendlyEndpointError(400,
+    '{"error":{"message":"This model\'s maximum context length is 32768 tokens."}}');
+  assert.ok(!msg.includes('32768'), 'ตัวเลขภายในของ endpoint ไม่ช่วยผู้ใช้ตัดสินใจ');
+  assert.ok(msg.includes('โครงหน้าจอ'), 'ต้องชี้ว่าให้เอาอะไรออก');
+});
+
 test('friendlyEndpointError: error อื่นต้องส่งข้อความเดิมต่อ ไม่กลืนจนดีบักไม่ได้', () => {
   assert.ok(friendlyEndpointError(401, '{"error":"invalid api key"}').includes('invalid api key'));
 });
